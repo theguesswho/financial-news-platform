@@ -1,0 +1,11 @@
+feedparser
+psycopg2-binary
+SQLAlchemy
+requests
+beautifulsoup4
+yfinance
+google-cloud-pubsub
+google-generativeai
+fastapi
+uvicorn
+streamlit

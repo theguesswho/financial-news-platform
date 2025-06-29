@@ -1,0 +1,8 @@
+# Ignore environment secrets
+env.yaml
+
+# Ignore state files
+seen_filings.txt
+
+# Ignore Python virtual environment
+venv/

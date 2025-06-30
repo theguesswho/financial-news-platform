@@ -1,4 +1,5 @@
 # Ignore environment secrets
+.env
 env.yaml
 
 # Ignore state files

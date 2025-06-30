@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "financial-news-platform"
+version = "0.0.1"
+authors = [
+  { name="Your Name", email="you@example.com" },
+]
+description = "A platform for aggregating and analyzing financial news."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "feedparser",
+    "psycopg2-binary",
+    "SQLAlchemy",
+    "requests",
+    "beautifulsoup4",
+    "yfinance",
+    "google-cloud-pubsub",
+    "google-generativeai",
+    "fastapi",
+    "uvicorn",
+    "streamlit",
+]
+
+[project.scripts]
+create-cik-list = "create_cik_list:generate_cik_list"
+create-company-map = "utils:create_company_map_from_list"
+
+[project.urls]
+"Homepage" = "https://github.com/theguesswho/financial-news-platform"
+"Bug Tracker" = "https://github.com/theguesswho/financial-news-platform/issues"

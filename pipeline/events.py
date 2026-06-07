@@ -1,0 +1,177 @@
+"""
+8-K material events pipeline.
+
+8-Ks are filed for: earnings results, M&A, CEO/CFO changes, guidance updates,
+restructurings, and other material events. They typically hit EDGAR hours before
+the news cycle picks them up.
+
+Uses Claude Haiku for classification + summarisation (cheap — 8-Ks are short).
+"""
+import json
+import os
+import time
+from datetime import datetime, timedelta
+
+import anthropic
+import requests
+from bs4 import BeautifulSoup
+from sqlalchemy.orm import Session
+
+from db.models import Filing
+from pipeline.ingestion import (
+    EDGAR_HEADERS,
+    _build_cik_map,
+    _scrape_filing_content,
+)
+
+HAIKU = "claude-haiku-4-5-20251001"
+LOOKBACK_DAYS = 90
+MAX_8K_CHARS = 15_000  # 8-Ks are short; this captures the full text
+
+EVENT_TYPES = ["EARNINGS", "M&A", "EXEC_CHANGE", "GUIDANCE", "RESTRUCTURING", "LEGAL", "OTHER"]
+
+_client: anthropic.Anthropic | None = None
+
+
+def _get_client() -> anthropic.Anthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    return _client
+
+
+# ---------------------------------------------------------------------------
+# EDGAR helpers
+# ---------------------------------------------------------------------------
+
+def _get_recent_8ks(cik: str, lookback_days: int = LOOKBACK_DAYS) -> list[dict]:
+    url = f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json"
+    resp = requests.get(url, headers=EDGAR_HEADERS, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+
+    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+    recent = data.get("filings", {}).get("recent", {})
+    results = []
+
+    for i, form in enumerate(recent.get("form", [])):
+        if form not in ("8-K", "8-K/A"):
+            continue
+        filing_date = datetime.strptime(recent["filingDate"][i], "%Y-%m-%d")
+        if filing_date < cutoff:
+            break  # filings are newest-first; stop once past lookback window
+
+        acc = recent["accessionNumber"][i]
+        acc_clean = acc.replace("-", "")
+        primary = recent["primaryDocument"][i]
+        filing_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}"
+            f"/{acc_clean}/{primary}"
+        )
+        results.append({
+            "type": form,
+            "date": recent["filingDate"][i],
+            "url": filing_url,
+            "title": f"8-K — {data.get('name', '')} ({recent['filingDate'][i]})",
+            "items": recent.get("items", [""])[i] if recent.get("items") else "",
+        })
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# AI classification
+# ---------------------------------------------------------------------------
+
+def _classify_8k(symbol: str, content: str, items: str) -> dict:
+    """Classify and summarise an 8-K using Haiku."""
+    items_hint = f"SEC item numbers reported: {items}\n" if items else ""
+
+    prompt = f"""You are a financial analyst. Classify and summarise this 8-K filing for {symbol}.
+
+{items_hint}Filing content:
+{content[:MAX_8K_CHARS]}
+
+Return ONLY valid JSON — no markdown:
+{{
+  "event_type": "<one of: EARNINGS, M&A, EXEC_CHANGE, GUIDANCE, RESTRUCTURING, LEGAL, OTHER>",
+  "headline": "<10-15 word headline capturing the key event>",
+  "summary": "<2-3 sentence plain-English summary, no dollar signs>",
+  "impact": "<POSITIVE, NEGATIVE, or NEUTRAL>",
+  "score": <integer -5 to 5>
+}}"""
+
+    response = _get_client().messages.create(
+        model=HAIKU,
+        max_tokens=200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = response.content[0].text.strip().strip("`").lstrip("json").strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {
+            "event_type": "OTHER",
+            "headline": "8-K filing",
+            "summary": raw[:300],
+            "impact": "NEUTRAL",
+            "score": 0,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+def run_events(session: Session, tickers: list[str]) -> dict:
+    """
+    Fetch and analyse recent 8-K filings for all tracked tickers.
+    Skips filings already in the DB.
+    """
+    print(f"Building CIK map for {len(tickers)} tickers...")
+    cik_map = _build_cik_map(tickers)
+
+    added = 0
+    errors = 0
+
+    for symbol, cik in cik_map.items():
+        try:
+            recent_8ks = _get_recent_8ks(cik)
+            for f in recent_8ks:
+                if session.query(Filing).filter_by(url=f["url"]).first():
+                    continue
+
+                print(f"  [8-K] {symbol}: {f['date']}...", end=" ", flush=True)
+                try:
+                    content = _scrape_filing_content(f["url"])
+                except Exception as exc:
+                    content = ""
+                    print(f"scrape failed ({exc}), ", end="")
+
+                classification = _classify_8k(symbol, content, f.get("items", ""))
+
+                session.add(Filing(
+                    symbol=symbol,
+                    cik=cik,
+                    filing_type=f["type"],
+                    event_type=classification["event_type"],
+                    title=classification["headline"],
+                    url=f["url"],
+                    filing_date=datetime.fromisoformat(f["date"]),
+                    content=content,
+                    llm_analysis=json.dumps(classification),
+                    sentiment_score=classification["score"],
+                    processed_at=datetime.utcnow(),
+                ))
+                session.commit()
+                added += 1
+                print(f"{classification['event_type']} / {classification['impact']}")
+                time.sleep(0.1)
+
+        except Exception as exc:
+            errors += 1
+            print(f"  [8-K] {symbol} error: {exc}")
+            session.rollback()
+
+    print(f"\n8-K ingest complete: {added} new events, {errors} errors.")
+    return {"added": added, "errors": errors}

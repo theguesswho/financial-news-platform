@@ -47,8 +47,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",  # Next.js frontend
         "http://localhost:8000",
         "http://localhost:5173",  # Vite dev server
+        "http://127.0.0.1:3001",  # Alternative localhost
         "*",  # Allow all origins in development; restrict in production
     ],
     allow_credentials=True,

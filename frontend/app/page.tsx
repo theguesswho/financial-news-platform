@@ -66,7 +66,7 @@ export default function HomePage() {
           <p className="text-xl text-slate-200 mb-8 max-w-2xl">
             Discover undervalued companies using advanced V2 mismatch scoring. Quality, Value, Trajectory — all in one intelligent metric.
           </p>
-          {!user && (
+          {!user ? (
             <div className="flex flex-col sm:flex-row gap-4">
               <Link href="/register">
                 <Button variant="primary" size="lg" className="min-w-[180px]">
@@ -79,6 +79,12 @@ export default function HomePage() {
                 </Button>
               </Link>
             </div>
+          ) : (
+            <Link href="/screener">
+              <Button variant="primary" size="lg" className="min-w-[180px]">
+                Open Screener →
+              </Button>
+            </Link>
           )}
         </div>
       </div>
@@ -90,13 +96,11 @@ export default function HomePage() {
             <h2 className="text-3xl font-black text-slate-900">Top Opportunities</h2>
             <p className="text-slate-600 mt-1">Highest-scoring stocks this week</p>
           </div>
-          {user && (
-            <Link href="/screener">
-              <Button variant="secondary" size="md">
-                View Screener →
-              </Button>
-            </Link>
-          )}
+          <Link href={user ? "/screener" : "/register"}>
+            <Button variant="secondary" size="md">
+              {user ? "View Screener" : "Get Started"} →
+            </Button>
+          </Link>
         </div>
 
         {loading ? (

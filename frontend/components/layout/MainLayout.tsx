@@ -37,6 +37,9 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <Link href="/dashboard" className="text-slate-700 font-medium hover:text-blue-600 transition-colors px-3 py-1.5">
                   Dashboard
                 </Link>
+                <Link href="/screener" className="text-slate-700 font-medium hover:text-blue-600 transition-colors px-3 py-1.5">
+                  Screener
+                </Link>
                 <Link href="/watchlist" className="text-slate-700 font-medium hover:text-blue-600 transition-colors px-3 py-1.5">
                   Watchlist
                 </Link>

@@ -330,6 +330,86 @@ def after_close_refresh():
     _banner("AFTER-CLOSE REFRESH COMPLETE")
 
 
+# ── Weekly Sunday 6 PM UTC ───────────────────────────────────────────────────
+
+def weekly_deep_refresh():
+    _banner(f"WEEKLY DEEP REFRESH  {datetime.now():%Y-%m-%d %H:%M}")
+    _wait_for_network()
+    symbols = _load_tickers()
+
+    _step(1, "Full fundamentals refresh")
+    try:
+        from pipeline.fundamentals import refresh_fundamentals
+        from db.session import get_session
+        s = get_session()
+        r = refresh_fundamentals(s, symbols)
+        s.close()
+        _ok(f"{r.get('updated', 0)} updated")
+    except Exception as e:
+        _err("Fundamentals failed", e)
+
+    _step(2, "Re-score + archive leaderboard")
+    gems = None
+    try:
+        from pipeline.hidden_gem_scorer import get_engine, score_all_stocks
+        from pipeline.leaderboard_archiver import create_table, archive_leaderboard, apply_qual_tiers
+        eng = get_engine()
+        gems = score_all_stocks(eng)
+        create_table(eng)
+        archive_leaderboard(eng, gems=gems)
+        apply_qual_tiers(eng)
+        eng.dispose()
+        _ok(f"{len(gems)} scored")
+    except Exception as e:
+        _err("Scoring failed", e)
+
+    _step(3, "Full qual assessment (all scored stocks)")
+    try:
+        from pipeline.qual_assessor import run_qual_assessment
+        from pipeline.leaderboard_archiver import apply_qual_tiers, create_table as ct
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        run_qual_assessment(gems=gems or [])
+        eng = _ge()
+        ct(eng)
+        apply_qual_tiers(eng)
+        eng.dispose()
+        _ok("Full qual assessment complete")
+    except Exception as e:
+        _err("Qual assessment failed", e)
+
+    _step(4, "Deep dives (top stocks)")
+    try:
+        from pipeline.deep_dive import generate_deep_dive
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        with eng.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT symbol FROM leaderboard_history
+                WHERE date = CURRENT_DATE AND tier IN ('Strong Buy', 'Buy')
+                ORDER BY gem_score DESC LIMIT 20
+            """)).fetchall()
+        top_symbols = [r[0] for r in rows]
+        eng.dispose()
+        for sym in top_symbols:
+            try:
+                generate_deep_dive(sym, force=False)
+                _ok(f"Deep dive: {sym}")
+            except Exception as ex:
+                _err(f"Deep dive {sym}", ex)
+    except Exception as e:
+        _err("Deep dives failed", e)
+
+    _step(5, "Embeddings refresh")
+    try:
+        from pipeline.embeddings import run_embeddings
+        r = run_embeddings()
+        _ok(f"Embeddings done: {r}")
+    except Exception as e:
+        _err("Embeddings failed", e)
+
+    _banner("WEEKLY DEEP REFRESH COMPLETE")
+
+
 # ── Scheduler setup ───────────────────────────────────────────────────────────
 
 def start_scheduler():
@@ -352,6 +432,13 @@ def start_scheduler():
         trigger=CronTrigger(day_of_week="0-4", hour=21, minute=0, timezone="UTC"),
         id="after_close", name="After-close refresh (Mon–Fri)",
         replace_existing=True, misfire_grace_time=1800,
+    )
+
+    scheduler.add_job(
+        weekly_deep_refresh,
+        trigger=CronTrigger(day_of_week="6", hour=18, minute=0, timezone="UTC"),
+        id="weekly", name="Weekly deep refresh (Sunday)",
+        replace_existing=True, misfire_grace_time=7200,
     )
 
     scheduler.start()

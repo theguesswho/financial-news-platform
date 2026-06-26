@@ -116,7 +116,8 @@ def fetch_historical_metrics(session: Session, symbols: list[str]) -> dict:
                     "operating_margin": om,
                     "net_margin":       nm,
                     "interest_coverage": _safe(m.get("interestCoverage")),
-                    "debt_to_equity":   _safe(m.get("debtToEquity")),
+                    # FMP also returns debtToEquity as a percentage — divide by 100
+                    "debt_to_equity":   round(_safe(m.get("debtToEquity")) / 100, 4) if _safe(m.get("debtToEquity")) is not None else None,
                     "current_ratio":    _safe(m.get("currentRatio")),
                     "revenue":          rev,
                     "net_income":       _safe(inc.get("netIncome"), int),

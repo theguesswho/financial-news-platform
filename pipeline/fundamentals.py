@@ -267,7 +267,9 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.operating_margin    = ttm_margins.get("operating_margin") or _pct(info.get("operatingMargins"))
             row.net_margin          = ttm_margins.get("net_margin") or _pct(info.get("profitMargins"))
             row.fcf_margin          = fcf_margin
-            row.debt_to_equity      = _safe(info.get("debtToEquity"))
+            # yfinance returns debtToEquity as a percentage (e.g. 35.78 = 0.3578x ratio)
+            _raw_de = _safe(info.get("debtToEquity"))
+            row.debt_to_equity      = round(_raw_de / 100, 4) if _raw_de is not None else None
             row.current_ratio       = _safe(info.get("currentRatio"))
             row.interest_coverage   = int_cov
             row.revenue_growth_yoy  = rev_growth
@@ -279,10 +281,15 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.fifty_two_week_low  = _safe(info.get("fiftyTwoWeekLow"))
             row.fifty_two_week_high = hi52
             row.price_vs_52w_high   = p_vs_hi
+            row.sector              = info.get("sector") or None
+            row.industry            = info.get("industry") or None
+            row.analyst_rating      = info.get("recommendationKey") or None
+            row.analyst_target_price = _safe(info.get("targetMeanPrice"))
+            row.analysts_count      = info.get("numberOfAnalystOpinions") or None
 
             session.commit()
             done += 1
-            print(f"P/E={row.pe_trailing or '—'}  PEG={row.peg_ratio or '—'}  ROE={round(row.roe*100,1) if row.roe else '—'}%")
+            print(f"P/E={row.pe_trailing or '—'}  PEG={row.peg_ratio or '—'}  ROE={round(row.roe*100,1) if row.roe else '—'}%  sector={row.sector or '—'}")
             time.sleep(0.3)  # polite to Yahoo
 
         except Exception as exc:

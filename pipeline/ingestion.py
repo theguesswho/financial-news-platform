@@ -250,3 +250,54 @@ def run_ingestion(session: Session, tickers: list[str]) -> dict:
     prices_added = _fetch_eod_prices(session, tickers)
 
     return {"filings_added": filings_added, "prices_added": prices_added}
+
+
+def backfill_historical_filings(session: Session, tickers: list[str], n: int = 20):
+    """
+    Fetch up to n 10-K/10-Q filings per company from EDGAR (default 20 ≈ 5 years).
+    Skips filings already in the DB. Safe to re-run — idempotent.
+    """
+    cik_map = _build_cik_map(tickers)
+    added = 0
+    skipped = 0
+
+    for i, (ticker, cik) in enumerate(cik_map.items(), 1):
+        try:
+            filings = _get_edgar_filings(ticker, cik, n=n)
+            new_for_ticker = 0
+            for f in filings:
+                if session.query(Filing).filter_by(url=f["url"]).first():
+                    skipped += 1
+                    continue
+
+                try:
+                    content = _scrape_filing_content(f["url"])
+                except Exception as exc:
+                    print(f"    {ticker}: scrape failed — {exc}")
+                    content = ""
+
+                session.add(Filing(
+                    symbol=ticker,
+                    cik=cik,
+                    filing_type=f["type"],
+                    title=f["title"],
+                    url=f["url"],
+                    filing_date=datetime.fromisoformat(f["date"]),
+                    content=content,
+                ))
+                session.commit()
+                added += 1
+                new_for_ticker += 1
+                time.sleep(0.15)
+
+            if new_for_ticker:
+                print(f"  [{i}/{len(cik_map)}] {ticker}: +{new_for_ticker} filings")
+            elif i % 50 == 0:
+                print(f"  [{i}/{len(cik_map)}] {ticker}: all up to date")
+
+        except Exception as exc:
+            print(f"  [{i}/{len(cik_map)}] {ticker}: error — {exc}")
+            session.rollback()
+
+    print(f"\n10-K/10-Q backfill complete: {added} new filings, {skipped} already existed")
+    return added

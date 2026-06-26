@@ -29,7 +29,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-@st.cache_resource
 def get_db():
     return get_session()
 

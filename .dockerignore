@@ -1,0 +1,10 @@
+data/postgres/
+venv/
+__pycache__/
+*.pyc
+.env
+logs/
+*.log
+*.err
+.claude/
+tmp_regen.py

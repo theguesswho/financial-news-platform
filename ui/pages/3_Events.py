@@ -53,7 +53,6 @@ EVENT_LABELS = {
 IMPACT_ICONS = {"POSITIVE": "🟢", "NEGATIVE": "🔴", "NEUTRAL": "⚪"}
 
 
-@st.cache_resource
 def get_db():
     return get_session()
 

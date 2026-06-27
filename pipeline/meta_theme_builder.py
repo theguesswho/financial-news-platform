@@ -24,6 +24,10 @@ MODEL = "claude-sonnet-4-6"   # Need the smarter model for clustering judgment
 
 
 def get_engine():
+    if os.getenv("DATABASE_URL"):
+        url = os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg2://")
+        from sqlalchemy import create_engine
+        return create_engine(url, pool_pre_ping=True)
     host = os.getenv("DB_HOST_IP", "localhost")
     password = os.getenv("DB_PASSWORD", "")
     user = os.getenv("DB_USER", "postgres")

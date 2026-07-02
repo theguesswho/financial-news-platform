@@ -96,10 +96,10 @@ def daily_data_update():
 
     _step(2, "Fundamentals refresh")
     try:
-        from pipeline.fundamentals import refresh_fundamentals
+        from pipeline.fundamentals import fetch_fundamentals
         from db.session import get_session
         s = get_session()
-        r = refresh_fundamentals(s, symbols)
+        r = fetch_fundamentals(s, symbols)
         s.close()
         _ok(f"{r.get('updated', 0)} updated")
     except Exception as e:
@@ -339,10 +339,10 @@ def weekly_deep_refresh():
 
     _step(1, "Full fundamentals refresh")
     try:
-        from pipeline.fundamentals import refresh_fundamentals
+        from pipeline.fundamentals import fetch_fundamentals
         from db.session import get_session
         s = get_session()
-        r = refresh_fundamentals(s, symbols)
+        r = fetch_fundamentals(s, symbols)
         s.close()
         _ok(f"{r.get('updated', 0)} updated")
     except Exception as e:

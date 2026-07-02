@@ -53,6 +53,18 @@ for i in range(0, len(symbols), batch_size):
     if (i // batch_size + 1) % 5 == 0:
         log.info(f"  Downloaded {i+batch_size}/{len(symbols)} symbols, {len(price_rows)} rows")
 
+# Ensure unique constraint exists
+log.info("Ensuring unique constraint on eod_prices(symbol, date)...")
+try:
+    with eng.begin() as conn:
+        conn.execute(text("""
+            ALTER TABLE eod_prices
+            ADD CONSTRAINT uq_eod_prices_symbol_date UNIQUE (symbol, date)
+        """))
+    log.info("  Constraint added.")
+except Exception as e:
+    log.info(f"  Constraint already exists or error: {e}")
+
 log.info(f"Inserting {len(price_rows)} price rows...")
 CHUNK = 500
 inserted = 0

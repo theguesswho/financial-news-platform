@@ -298,7 +298,7 @@ def get_synopsis(filing_id, symbol, filing_type, title, llm_analysis,
     cats = catalysts if isinstance(catalysts, list) else (json.loads(catalysts) if catalysts else [])
     rsks = risks if isinstance(risks, list) else (json.loads(risks) if risks else [])
     return get_or_generate_synopsis(
-        engine, filing_id, symbol, filing_type, title,
+        engine, filing_id, symbol, filing_type, title, llm_analysis,
         trajectory or "stable", tone or "neutral", cats, rsks
     )
 

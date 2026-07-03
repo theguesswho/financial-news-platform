@@ -261,7 +261,7 @@ def load_gem_scores_map():
                    lh.quality_score,  lh.gap_score
             FROM leaderboard_history lh
             WHERE lh.date = (SELECT MAX(date) FROM leaderboard_history)
-              AND (lh.tier IS NOT NULL OR lh.assessed_tier IS NOT NULL)
+              AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy')
         """)).fetchall()
     return {
         r[0]: {

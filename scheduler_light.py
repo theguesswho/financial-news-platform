@@ -132,7 +132,41 @@ def daily_data_update():
     except Exception as e:
         _err("Scoring failed", e)
 
-    _step(6, "Archive daily scores")
+    _step(6, "Backfill missing 8-K classifications")
+    try:
+        import json, time as _time
+        from pipeline.events import _classify_8k
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        with eng.connect() as conn:
+            unclassified = conn.execute(text("""
+                SELECT id, symbol, content FROM filings
+                WHERE filing_type IN ('8-K','8-K/A')
+                AND (llm_analysis IS NULL
+                     OR llm_analysis::jsonb->>'impact' IS NULL
+                     OR llm_analysis::jsonb->>'headline' IS NULL)
+                ORDER BY filing_date DESC LIMIT 50
+            """)).fetchall()
+        fixed = 0
+        for fid, sym, content in unclassified:
+            try:
+                result = _classify_8k(sym, content or "", "")
+                with eng.begin() as conn:
+                    conn.execute(text("""
+                        UPDATE filings SET llm_analysis=:a, event_type=:et,
+                        title=:hl, sentiment_score=:sc WHERE id=:id
+                    """), {"a": json.dumps(result), "et": result["event_type"],
+                          "hl": result["headline"], "sc": result.get("score", 0), "id": fid})
+                fixed += 1
+                _time.sleep(0.3)
+            except Exception:
+                pass
+        eng.dispose()
+        _ok(f"{fixed} 8-K filings backfilled")
+    except Exception as e:
+        _err("8-K backfill failed", e)
+
+    _step(7, "Archive daily scores")
     try:
         from pipeline.daily_score_archiver import archive_daily_scores
         r = archive_daily_scores()

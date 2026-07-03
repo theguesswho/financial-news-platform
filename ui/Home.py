@@ -29,7 +29,7 @@ engine = get_engine()
 st.markdown("""
 <style>
 /* Page */
-.block-container { padding-top: 1.2rem !important; max-width: 1300px; }
+.block-container { padding-top: 2.5rem !important; max-width: 1300px; }
 
 /* Header */
 .brief-header {

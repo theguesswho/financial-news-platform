@@ -22,7 +22,8 @@ st.set_page_config(page_title="Insider Trading", page_icon="👁", layout="wide"
 
 st.markdown("""
 <style>
-.block-container { max-width: 1100px; padding: 2rem 2rem 4rem; }
+.block-container { max-width: 1100px; padding: 3.5rem 2rem 4rem; }
+header[data-testid="stHeader"] { display: none; }
 .cluster-box { background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
 .cluster-title { font-weight: 700; margin-bottom: 0.25rem; }
 </style>

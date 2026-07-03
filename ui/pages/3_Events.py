@@ -21,7 +21,8 @@ st.set_page_config(page_title="Material Events", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
-.block-container { max-width: 960px; padding: 2rem 2rem 4rem; }
+.block-container { max-width: 960px; padding: 3.5rem 2rem 4rem; }
+header[data-testid="stHeader"] { display: none; }
 .event-card { border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; border-left: 5px solid #ccc; background: #fafafa; }
 .event-positive { border-left-color: #28a745; background: #f6fff8; }
 .event-negative { border-left-color: #dc3545; background: #fff6f6; }

@@ -36,7 +36,8 @@ st.set_page_config(page_title="Stock Detail", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
-.block-container { max-width: 980px; padding: 1.5rem 2rem 4rem; }
+.block-container { max-width: 980px; padding: 3.5rem 2rem 4rem; }
+header[data-testid="stHeader"] { display: none; }
 
 /* Section header */
 .section-hdr {

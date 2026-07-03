@@ -36,7 +36,8 @@ st.set_page_config(page_title="Hidden Gem Leaderboard", page_icon="💎", layout
 st.markdown("""
 <style>
 /* Layout */
-.block-container { max-width: 1080px; padding: 1.5rem 2rem 4rem; }
+.block-container { max-width: 1080px; padding: 3.5rem 2rem 4rem; }
+header[data-testid="stHeader"] { display: none; }
 
 /* Page header */
 .page-header {

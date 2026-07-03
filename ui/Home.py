@@ -29,7 +29,8 @@ engine = get_engine()
 st.markdown("""
 <style>
 /* Page */
-.block-container { padding-top: 2.5rem !important; max-width: 1300px; }
+.block-container { padding-top: 3.5rem !important; max-width: 1300px; }
+header[data-testid="stHeader"] { display: none; }
 
 /* Header */
 .brief-header {
@@ -430,7 +431,7 @@ with col_filings:
       &nbsp;{date_fmt}
     </span>
   </div>
-  <div class="fc-synopsis">{synopsis}</div>
+  <div class="fc-synopsis">{synopsis.lstrip('# ').strip()}</div>
   <div class="fc-signals">{pills}</div>
 </div>
 """, unsafe_allow_html=True)

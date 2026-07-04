@@ -24,6 +24,34 @@ from pipeline.ingestion import (
     _scrape_filing_content,
 )
 
+THIN_CONTENT_THRESHOLD = 5000  # chars — below this, try to fetch EX-99 exhibit
+
+
+def _fetch_exhibit_content(filing_url: str) -> str:
+    """Fetch the EX-99 exhibit for cover-only 8-Ks that reference an attached press release."""
+    try:
+        base = filing_url.rsplit("/", 1)[0]
+        folder = base.split("/")[-1]  # accession folder e.g. 000003799626000151
+        # Format accession number: 000003799626000151 -> 0000037996-26-000151
+        acc = f"{folder[:10]}-{folder[10:12]}-{folder[12:]}"
+        index_url = f"{base}/{acc}-index.htm"
+        resp = requests.get(index_url, headers=EDGAR_HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return ""
+        soup = BeautifulSoup(resp.text, "lxml")
+        for row in soup.find_all("tr"):
+            cells = row.find_all("td")
+            if len(cells) >= 3:
+                doc_type = cells[-2].get_text(strip=True) if len(cells) > 2 else ""
+                if "EX-99" in doc_type:
+                    link = row.find("a", href=True)
+                    if link:
+                        exhibit_url = base + "/" + link["href"].split("/")[-1]
+                        return _scrape_filing_content(exhibit_url)
+    except Exception:
+        pass
+    return ""
+
 HAIKU = "claude-haiku-4-5-20251001"
 LOOKBACK_DAYS = 90
 MAX_8K_CHARS = 15_000  # 8-Ks are short; this captures the full text
@@ -150,6 +178,10 @@ def run_events(session: Session, tickers: list[str]) -> dict:
                 print(f"  [8-K] {symbol}: {f['date']}...", end=" ", flush=True)
                 try:
                     content = _scrape_filing_content(f["url"])
+                    if len(content) < THIN_CONTENT_THRESHOLD:
+                        exhibit = _fetch_exhibit_content(f["url"])
+                        if exhibit:
+                            content = exhibit
                 except Exception as exc:
                     content = ""
                     print(f"scrape failed ({exc}), ", end="")

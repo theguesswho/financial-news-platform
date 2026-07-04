@@ -330,13 +330,14 @@ def after_close_refresh():
     except Exception as e:
         _err("Synopsis generation failed", e)
 
-    _step(6, "Qual assessment (tier movers)")
+    _step(6, "Qual assessment (tier movers + unassessed Buy/Strong Buy)")
     try:
         from pipeline.qual_assessor import run_qual_assessment
         from pipeline.leaderboard_archiver import apply_qual_tiers, create_table as ct
         from pipeline.hidden_gem_scorer import get_engine as _ge
         eng = _ge()
         with eng.connect() as conn:
+            # Tier movers since yesterday
             movers = conn.execute(text("""
                 SELECT today.symbol
                 FROM leaderboard_history today
@@ -348,15 +349,28 @@ def after_close_refresh():
                   AND (yest.symbol IS NULL OR yest.tier IS DISTINCT FROM today.tier OR yest.tier IS NULL)
                 ORDER BY today.gem_score DESC
             """)).fetchall()
-        mover_syms = [r[0] for r in movers]
-        if mover_syms:
-            _ok(f"Assessing {len(mover_syms)} movers: {', '.join(mover_syms)}")
-            run_qual_assessment(symbols=mover_syms, gems=gems or [])
+            # Buy/Strong Buy stocks never assessed
+            unassessed = conn.execute(text("""
+                SELECT lh.symbol
+                FROM leaderboard_history lh
+                LEFT JOIN qual_assessments qa ON qa.symbol = lh.symbol
+                WHERE lh.date = CURRENT_DATE
+                  AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy')
+                  AND qa.symbol IS NULL
+                ORDER BY lh.gem_score DESC
+            """)).fetchall()
+
+        to_assess = list(dict.fromkeys(
+            [r[0] for r in movers] + [r[0] for r in unassessed]
+        ))
+        if to_assess:
+            _ok(f"Assessing {len(to_assess)} stocks: {', '.join(to_assess)}")
+            run_qual_assessment(symbols=to_assess, gems=gems or [])
             ct(eng)
             updated = apply_qual_tiers(eng)
             _ok(f"Qual tiers stamped: {updated} rows")
         else:
-            _ok("No tier movers — qual assessment skipped")
+            _ok("No stocks need qual assessment")
         eng.dispose()
     except Exception as e:
         _err("Qual assessment failed", e)

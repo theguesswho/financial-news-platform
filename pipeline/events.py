@@ -92,11 +92,17 @@ def _classify_8k(symbol: str, content: str, items: str) -> dict:
 {items_hint}Filing content:
 {content[:MAX_8K_CHARS]}
 
+Rules for the summary:
+- Lead with the ACTUAL news — specific numbers, names, percentages, dollar amounts
+- Do NOT describe what was filed or reference the 8-K itself (e.g. never write "filed an 8-K" or "the filing discloses")
+- Include concrete figures where available (e.g. "sales rose 12% YoY", "CEO John Smith resigned", "USD 2.1B acquisition")
+- 2-3 sentences maximum
+
 Return ONLY valid JSON — no markdown:
 {{
   "event_type": "<one of: EARNINGS, M&A, EXEC_CHANGE, GUIDANCE, RESTRUCTURING, LEGAL, OTHER>",
   "headline": "<10-15 word headline capturing the key event>",
-  "summary": "<2-3 sentence plain-English summary, no dollar signs>",
+  "summary": "<2-3 sentence plain-English summary with specific figures, no dollar signs>",
   "impact": "<POSITIVE, NEGATIVE, or NEUTRAL>",
   "score": <integer -5 to 5>
 }}"""

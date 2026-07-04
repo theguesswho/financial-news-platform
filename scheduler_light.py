@@ -108,9 +108,9 @@ def daily_data_update():
     _step(3, "Insider trades (SEC Form 4)")
     try:
         from db.session import get_session
-        from pipeline.insiders import fetch_insiders
+        from pipeline.insider import run_insiders
         s = get_session()
-        r = fetch_insiders(s, symbols)
+        r = run_insiders(s, symbols)
         s.close()
         _ok(f"{r.get('added', 0)} insider records added")
     except Exception as e:
@@ -449,8 +449,8 @@ def weekly_deep_refresh():
 
     _step(5, "Embeddings refresh")
     try:
-        from pipeline.embeddings import run_embeddings
-        r = run_embeddings()
+        from pipeline.embedding_builder import run_embedding_build
+        r = run_embedding_build()
         _ok(f"Embeddings done: {r}")
     except Exception as e:
         _err("Embeddings failed", e)

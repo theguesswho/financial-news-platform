@@ -192,6 +192,7 @@ class DailyScore(Base):
     quality_score = Column(Numeric(10, 4))
     value_score = Column(Numeric(10, 4))
     trajectory_score = Column(Numeric(10, 4))
+    narrative_score = Column(Numeric(10, 4))
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (

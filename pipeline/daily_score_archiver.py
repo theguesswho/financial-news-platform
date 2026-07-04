@@ -84,6 +84,7 @@ def archive_daily_scores() -> dict:
                     quality_score=round(float(breakdown.get("quality_score", 0)), 4),
                     value_score=round(float(breakdown.get("value_score", 0)), 4),
                     trajectory_score=round(float(breakdown.get("trajectory_score", 0)), 4),
+                    narrative_score=round(float(breakdown.get("narrative_score", 0)), 4),
                 )
 
                 session.add(daily_score)

@@ -409,9 +409,17 @@ with col_filings:
             type_cls = "earn" if ftype == "EARN_CALL" else ""
             date_fmt = fdate.strftime("%b %d") if fdate else "–"
 
-            # Generate synopsis (cached in DB after first call)
-            synopsis = get_synopsis(fid, sym, ftype, title, llm_analysis,
-                                    trajectory, tone, catalysts, risks)
+            # For 8-Ks use the structured LLM summary directly (filing_themes data is unreliable for 8-Ks)
+            if ftype == "8-K":
+                try:
+                    ana = json.loads(llm_analysis) if isinstance(llm_analysis, str) else (llm_analysis or {})
+                    synopsis = ana.get("summary") or ana.get("headline") or title
+                except Exception:
+                    synopsis = title
+            else:
+                # Generate synopsis (cached in DB after first call)
+                synopsis = get_synopsis(fid, sym, ftype, title, llm_analysis,
+                                        trajectory, tone, catalysts, risks)
 
             gem_badge = ('&nbsp;<span class="pill pill-blue">💎 Gem</span>'
                          if sym in gem_syms else "")

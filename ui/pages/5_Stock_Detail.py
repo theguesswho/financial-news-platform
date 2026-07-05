@@ -691,19 +691,41 @@ if px_rows:
         sc_df["date"] = pd.to_datetime(sc_df["date"])
         for c in ["Gem Score", "Narrative", "Value", "Quality", "Gap"]:
             sc_df[c] = sc_df[c].astype(float)
-        sc_long = sc_df.melt("date", var_name="component", value_name="score")
-        score_chart = alt.Chart(sc_long).mark_line(strokeWidth=1.6).encode(
+
+        # Gem score vs the tier thresholds — shows distance to upgrade/downgrade
+        y_max = max(0.70, float(sc_df["Gem Score"].max()) + 0.05)
+        tiers = pd.DataFrame([
+            {"y0": 0.58, "y1": y_max, "tier": "Strong Buy", "color": "#dcfce7"},
+            {"y0": 0.46, "y1": 0.58,  "tier": "Buy",        "color": "#dbeafe"},
+            {"y0": 0.34, "y1": 0.46,  "tier": "Watch",      "color": "#fef9c3"},
+        ])
+        bands = alt.Chart(tiers).mark_rect(opacity=0.45).encode(
+            y="y0:Q", y2="y1:Q",
+            color=alt.Color("color:N", scale=None),
+            tooltip=["tier:N"],
+        )
+        score_line = alt.Chart(sc_df).mark_line(color="#111827", strokeWidth=2.6, point=True).encode(
             x=alt.X("date:T", title=None),
-            y=alt.Y("score:Q", title="Score (0–1)", scale=alt.Scale(domain=[0, 1])),
-            color=alt.Color("component:N", title=None, scale=alt.Scale(
-                domain=["Gem Score", "Narrative", "Value", "Quality", "Gap"],
-                range=["#111827", "#6366f1", "#0ea5e9", "#10b981", "#f59e0b"])),
-            strokeWidth=alt.condition(alt.datum.component == "Gem Score",
-                                      alt.value(2.8), alt.value(1.2)),
-            tooltip=[alt.Tooltip("date:T"), "component:N", alt.Tooltip("score:Q", format=".3f")],
-        ).properties(height=220)
-        st.altair_chart(score_chart, use_container_width=True)
-        st.caption("Gem score (bold) with its four components — see exactly which input drove any score change.")
+            y=alt.Y("Gem Score:Q", title="Gem score",
+                    scale=alt.Scale(domain=[0, y_max])),
+            tooltip=[alt.Tooltip("date:T"), alt.Tooltip("Gem Score:Q", format=".3f")],
+        )
+        st.altair_chart((bands + score_line).properties(height=220), use_container_width=True)
+        st.caption("Gem score against tier bands (green = Strong Buy ≥0.58, blue = Buy ≥0.46, yellow = Watch ≥0.34). "
+                   "How close is this stock to an upgrade or downgrade?")
+
+        with st.expander("What's driving the score? (component history)"):
+            sc_long = sc_df.melt("date", var_name="component", value_name="score")
+            comp_chart = alt.Chart(sc_long[sc_long["component"] != "Gem Score"]).mark_line(strokeWidth=1.6).encode(
+                x=alt.X("date:T", title=None),
+                y=alt.Y("score:Q", title="Component (0–1)", scale=alt.Scale(domain=[0, 1])),
+                color=alt.Color("component:N", title=None, scale=alt.Scale(
+                    domain=["Narrative", "Value", "Quality", "Gap"],
+                    range=["#6366f1", "#0ea5e9", "#10b981", "#f59e0b"])),
+                tooltip=[alt.Tooltip("date:T"), "component:N", alt.Tooltip("score:Q", format=".3f")],
+            ).properties(height=200)
+            st.altair_chart(comp_chart, use_container_width=True)
+            st.caption("If the gem score moved, this shows which input (narrative, value, quality, call–filing gap) drove it.")
 
 # Bull / Bear from qual assessment
 if key_bull and key_bear:
@@ -811,14 +833,6 @@ if fund:
 """, unsafe_allow_html=True)
 else:
     st.info("No fundamentals data available for this stock.")
-
-# Price chart
-if prices:
-    df_prices = pd.DataFrame(
-        {"Price": [float(p[1]) for p in reversed(prices)]},
-        index=[p[0] for p in reversed(prices)]
-    )
-    st.line_chart(df_prices, height=180, use_container_width=True)
 
 # ────────────────────────────────────────────────────────────────────────────
 # 4. EARNINGS CALL HISTORY

@@ -197,6 +197,14 @@ def daily_data_update():
     except Exception as e:
         _err("Earnings ingestion failed", e)
 
+    _step("4b", "Narrative theme extraction (catch-up)")
+    try:
+        from pipeline.narrative_extractor import run_extraction
+        run_extraction(limit=30)
+        _ok("Narrative extraction done")
+    except Exception as e:
+        _err("Narrative extraction failed", e)
+
     _step(5, "Re-score + archive leaderboard")
     engine = None
     gems = None
@@ -374,6 +382,25 @@ def after_close_refresh():
         _ok(f"{r.get('added', 0)} events stored")
     except Exception as e:
         _err("Events failed", e)
+
+    _step("3b", "10-K/10-Q filings (SEC EDGAR)")
+    try:
+        from db.session import get_session
+        from pipeline.ingestion import run_ingestion
+        s = get_session()
+        r = run_ingestion(s, symbols)
+        s.close()
+        _ok(f"10-K/Q ingestion: {r}")
+    except Exception as e:
+        _err("10-K/Q ingestion failed", e)
+
+    _step("3c", "Narrative theme extraction (new filings)")
+    try:
+        from pipeline.narrative_extractor import run_extraction
+        run_extraction(limit=30)
+        _ok("Narrative extraction done")
+    except Exception as e:
+        _err("Narrative extraction failed", e)
 
     _step(4, "Re-score + archive leaderboard")
     gems = None

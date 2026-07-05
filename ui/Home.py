@@ -151,7 +151,23 @@ def load_filings_intelligence(days: int = 14):
             ORDER BY filing_date DESC, narrative_strength DESC
             LIMIT 12
         """), {"cutoff": cutoff}).fetchall()
-    return rows
+
+        # High-impact 8-Ks keep the feed live between earnings seasons
+        eightks = conn.execute(text("""
+            SELECT id, symbol, filing_type, filing_date, title, llm_analysis,
+                   NULL, NULL, NULL, NULL, NULL, 0
+            FROM filings
+            WHERE filing_type IN ('8-K', '8-K/A')
+              AND filing_date >= :cutoff8k
+              AND llm_analysis IS NOT NULL
+              AND ABS(COALESCE(sentiment_score, 0)) >= 2
+            ORDER BY filing_date DESC, ABS(sentiment_score) DESC
+            LIMIT 8
+        """), {"cutoff8k": datetime.utcnow() - timedelta(days=7)}).fetchall()
+
+    merged = sorted(list(rows) + list(eightks),
+                    key=lambda r: r[3] or datetime.min, reverse=True)
+    return merged[:14]
 
 
 @st.cache_data(ttl=300)
@@ -475,10 +491,14 @@ with col_filings:
             date_fmt = fdate.strftime("%b %d") if fdate else "–"
 
             # For 8-Ks use the structured LLM summary directly (filing_themes data is unreliable for 8-Ks)
-            if ftype == "8-K":
+            impact_pill = ""
+            if ftype in ("8-K", "8-K/A"):
                 try:
                     ana = json.loads(llm_analysis) if isinstance(llm_analysis, str) else (llm_analysis or {})
                     synopsis = ana.get("summary") or ana.get("headline") or title
+                    impact = ana.get("impact", "NEUTRAL")
+                    impact_cls = {"POSITIVE": "pill-green", "NEGATIVE": "pill-red"}.get(impact, "pill-gray")
+                    impact_pill = f'<span class="pill {impact_cls}">{impact.title()}</span>'
                 except Exception:
                     synopsis = title
             else:
@@ -489,11 +509,14 @@ with col_filings:
             gem_badge = ('&nbsp;<span class="pill pill-blue">💎 Gem</span>'
                          if sym in gem_syms else "")
 
-            pills = (
-                trajectory_pill(trajectory)
-                + narrative_pill(narr_str)
-                + delta_pill(narr_delta)
-            )
+            if ftype in ("8-K", "8-K/A"):
+                pills = impact_pill
+            else:
+                pills = (
+                    trajectory_pill(trajectory)
+                    + narrative_pill(narr_str)
+                    + delta_pill(narr_delta)
+                )
 
             st.markdown(f"""
 <div class="filing-card">

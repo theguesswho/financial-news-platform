@@ -136,7 +136,7 @@ RAW THEMES FROM S&P 500 FILINGS:
 
     response1 = client.messages.create(
         model=MODEL,
-        max_tokens=3000,
+        max_tokens=8000,
         messages=[{"role": "user", "content": prompt1}]
     )
 
@@ -147,7 +147,14 @@ RAW THEMES FROM S&P 500 FILINGS:
             raw1 = raw1[4:]
         raw1 = raw1.rsplit("```", 1)[0]
 
-    meta_themes = json.loads(raw1)
+    try:
+        meta_themes = json.loads(raw1)
+    except json.JSONDecodeError:
+        # Truncated output: salvage complete objects up to the last full '}'
+        cut = raw1.rfind("},")
+        if cut == -1:
+            raise
+        meta_themes = json.loads(raw1[:cut + 1] + "]")
     print(f"  ✓ Identified {len(meta_themes)} meta-themes")
 
     # Pass 2: For each meta-theme, find which symbols match (done in scoring phase)

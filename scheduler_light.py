@@ -561,6 +561,17 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Meta-theme build failed", e)
 
+    _step("5d", "Narrative exposure scoring (the brain — LLM-judged, cited)")
+    try:
+        from pipeline.narrative_exposure import run_exposure_scoring
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        r = run_exposure_scoring(eng)
+        eng.dispose()
+        _ok(f"Exposures: {r}")
+    except Exception as e:
+        _err("Narrative exposure scoring failed", e)
+
     _step(6, "Historical metrics refresh (FMP quarterly)")
     try:
         from pipeline.fmp_historical import fetch_historical_metrics

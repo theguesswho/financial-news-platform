@@ -69,98 +69,110 @@ def _engine():
 def load_themes():
     with _engine().connect() as conn:
         themes = conn.execute(text("""
-            SELECT id, name, description, momentum,
-                   constituent_themes->>'momentum_evidence' AS evidence,
-                   company_count
-            FROM meta_themes
-            WHERE COALESCE(status,'active') = 'active'
-              AND name NOT ILIKE '%idiosyncratic%'
-            ORDER BY (momentum = 'accelerating') DESC, company_count DESC NULLS LAST
-            LIMIT 12
+            SELECT id, name, description, momentum, thesis, tier, sector_scope,
+                   parent_id, falsification
+            FROM narratives
+            WHERE status IN ('active', 'declining')
+            ORDER BY (tier = 'macro') DESC, (momentum = 'accelerating') DESC, name
         """)).fetchall()
 
         gems = conn.execute(text("""
-            SELECT sta.meta_theme_id, lh.symbol,
+            SELECT ne.narrative_id, lh.symbol,
                    COALESCE(lh.assessed_tier, lh.tier) AS tier,
-                   lh.gem_score, sta.alignment_score,
+                   lh.gem_score, ne.exposure, ne.evidence,
                    tvg.pe_discount, tvg.stock_pe_fwd, tvg.peer_median_pe
-            FROM stock_theme_alignment sta
+            FROM narrative_exposures ne
             JOIN leaderboard_history lh
-                ON lh.symbol = sta.symbol
+                ON lh.symbol = ne.symbol
                 AND lh.date = (SELECT MAX(date) FROM leaderboard_history)
                 AND lh.tier IS NOT NULL
             LEFT JOIN theme_valuation_gaps tvg
-                ON tvg.symbol = sta.symbol AND tvg.meta_theme_id = sta.meta_theme_id
-            ORDER BY sta.meta_theme_id, lh.gem_score DESC
+                ON tvg.symbol = ne.symbol AND tvg.meta_theme_id = ne.narrative_id
+            ORDER BY ne.narrative_id, lh.gem_score DESC
         """)).fetchall()
-
-        history = conn.execute(text("""
-            SELECT meta_theme_id, snapshot_date, company_count
-            FROM theme_history
-            WHERE snapshot_date >= '2024-10-01'
-            ORDER BY meta_theme_id, snapshot_date
-        """)).fetchall()
-    return themes, gems, history
+    return themes, gems
 
 
-themes, gems, history = load_themes()
+themes, gems = load_themes()
 
 by_theme_gems: dict = {}
 for row in gems:
     by_theme_gems.setdefault(row[0], []).append(row)
 
-by_theme_hist: dict = {}
-for tid, d, n in history:
-    by_theme_hist.setdefault(tid, []).append((d, n))
-
 st.markdown(f"""
-<div class="page-title">🧭 Meta-Narrative Themes</div>
-<div class="page-subtitle">The structural forces extracted from every filing we track — and the
-best-scored stocks exposed to each. Updated weekly; emergence curves since Q4 2024.
-&nbsp;·&nbsp; {datetime.utcnow().strftime('%A, %B %d, %Y')}</div>
+<div class="page-title">🧭 The Meta-Narrative</div>
+<div class="page-subtitle">The secular tailwinds we are heading into — macro forces first, then
+the sector narratives beneath them, each with the falsification conditions that would kill it and
+the best-scored gems genuinely exposed. Exposure is judged from each company's own filings, with
+cited evidence. &nbsp;·&nbsp; {datetime.utcnow().strftime('%A, %B %d, %Y')}</div>
 """, unsafe_allow_html=True)
 
 tier_cls = {"Strong Buy": "t-sb", "Buy": "t-buy", "Watch": "t-watch"}
 
-for t in themes:
-    tid, name, desc, momentum, evidence, n_comp = t
+
+def render_narrative(t, indent=False):
+    tid, name, desc, momentum, thesis, ntier, scope, parent_id, fals = t
     mom = (momentum or "stable").lower()
     theme_gems = by_theme_gems.get(tid, [])[:5]
 
     rows_html = ""
-    for _, sym, tier, gem_score, align, pe_disc, pe_s, med_pe in theme_gems:
+    for _, sym, tier, gem_score, exposure, evidence, pe_disc, pe_s, med_pe in theme_gems:
         disc_html = ""
         if pe_disc is not None and float(pe_disc) > 0.10:
-            disc_html = (f'<span class="disc-good">{float(pe_disc)*100:.0f}% below theme peers'
+            disc_html = (f'<span class="disc-good">{float(pe_disc)*100:.0f}% below narrative peers'
                          f' ({float(pe_s):.1f}x vs {float(med_pe):.1f}x)</span>')
         elif pe_disc is not None:
-            disc_html = f'<span class="disc-bad">in line with theme peers</span>'
+            disc_html = '<span class="disc-bad">in line with narrative peers</span>'
+        ev_short = (evidence or "")[:160]
         rows_html += f"""
 <div class="stock-row">
   <span class="stock-sym">{sym}</span>
   <span class="stock-tier {tier_cls.get(tier, 't-watch')}">{tier or '—'}</span>
-  <span class="stock-meta">gem {float(gem_score):.3f} · alignment {float(align):.2f}</span>
+  <span class="stock-meta" style="flex:1; margin:0 0.8rem;">exposure {float(exposure):.2f} · {ev_short}</span>
   <span>{disc_html}</span>
 </div>"""
-
     if not rows_html:
-        rows_html = '<div class="stock-row"><span class="stock-meta">No hidden-gem stocks currently aligned.</span></div>'
+        rows_html = '<div class="stock-row"><span class="stock-meta">No hidden-gem stocks currently exposed.</span></div>'
 
+    try:
+        fals_list = fals if isinstance(fals, list) else (json.loads(fals) if fals else [])
+    except Exception:
+        fals_list = []
+    fals_html = "".join(f'<div class="theme-evidence">✗ {f}</div>' for f in fals_list[:3])
+
+    scope_html = f'<span class="stock-meta">&nbsp;· {scope}</span>' if scope else ""
+    margin = "margin-left:1.6rem;" if indent else ""
     st.markdown(f"""
-<div class="theme-card">
+<div class="theme-card" style="{margin}">
   <div style="display:flex; justify-content:space-between; align-items:center;">
-    <span class="theme-name">{name}</span>
+    <span class="theme-name">{name}{scope_html}</span>
     <span class="mom-pill mom-{mom}">{momentum or 'stable'}</span>
   </div>
-  <div class="theme-desc">{desc or ''}</div>
-  {'<div class="theme-evidence">Evidence: ' + evidence + '</div>' if evidence else ''}
+  <div class="theme-desc">{thesis or desc or ''}</div>
   {rows_html}
 </div>
 """, unsafe_allow_html=True)
+    if fals_html:
+        with st.expander("What would kill this narrative"):
+            st.markdown(fals_html, unsafe_allow_html=True)
 
-    hist = by_theme_hist.get(tid, [])
-    if len(hist) >= 3:
-        hdf = pd.DataFrame(hist, columns=["quarter", "companies"])
-        hdf["quarter"] = pd.to_datetime(hdf["quarter"])
-        with st.expander(f"Emergence curve — companies discussing this per quarter"):
-            st.line_chart(hdf.set_index("quarter")["companies"], height=140)
+
+macros = [t for t in themes if t[5] == "macro"]
+sectors_by_parent: dict = {}
+orphans = []
+for t in themes:
+    if t[5] != "macro":
+        if t[7]:
+            sectors_by_parent.setdefault(t[7], []).append(t)
+        else:
+            orphans.append(t)
+
+for m in macros:
+    render_narrative(m)
+    for s in sectors_by_parent.get(m[0], []):
+        render_narrative(s, indent=True)
+
+if orphans:
+    st.markdown('<div class="page-subtitle" style="margin-top:1rem;">Sector narratives (unparented)</div>', unsafe_allow_html=True)
+    for s in orphans:
+        render_narrative(s, indent=True)

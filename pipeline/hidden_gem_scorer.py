@@ -181,64 +181,58 @@ def compute_call_vs_filing_gap(engine) -> dict:
 
 def compute_narrative_score(engine) -> dict:
     """
-    Narrative score = weighted blend of two signals:
+    Narrative score from the narrative brain (LLM-judged exposures with cited
+    evidence — see pipeline/narrative_exposure.py), not cosine alignment.
 
-    1. Theme alignment (80%) — how strongly does this stock align with
-       accelerating meta-themes? Earnings calls now included alongside
-       10-K/10-Q filings, so management's actual spoken language counts.
+    Per stock: noisy-OR over its exposures, each weighted by the narrative's
+    momentum and status:
+        accelerating active   × 1.00
+        stable active         × 0.60
+        declining             × 0.20   (a dying tailwind is nearly worthless)
+    n = 1 - Π(1 - exposure_i × w_i)  — one strong narrative dominates; a second
+    genuine one adds a modest kicker. No exposure → n = 0 → gated out.
 
-    2. Call-vs-filing gap (20%) — does management consistently sound more
-       bullish on earnings calls than in cautious legal filings? A persistent
-       positive gap (calls > filings) means the market may be anchoring on
-       dry 10-Q language and missing real momentum (e.g. Corning in 2024).
-
-    Both components normalised 0–1 across universe.
+    Blended 85/15 with the call-vs-filing gap signal.
     """
     with engine.connect() as conn:
-        accel_ids = [r[0] for r in conn.execute(text(
-            "SELECT id FROM meta_themes WHERE momentum = 'accelerating'"
-        )).fetchall()]
+        rows = conn.execute(text("""
+            SELECT ne.symbol, ne.exposure, nar.momentum, nar.status
+            FROM narrative_exposures ne
+            JOIN narratives nar ON nar.id = ne.narrative_id
+            WHERE nar.status IN ('active', 'declining')
+        """)).fetchall()
 
-        if not accel_ids:
-            return {}
+    theme_scores: dict[str, float] = {}
+    if rows:
+        per_stock: dict[str, list[float]] = {}
+        for sym, exposure, momentum, status in rows:
+            if status == "declining":
+                w = 0.20
+            elif momentum == "accelerating":
+                w = 1.00
+            else:
+                w = 0.60
+            per_stock.setdefault(sym, []).append(float(exposure) * w)
 
-        # Positive themes: alignment boosts score (trajectory bonus applies)
-        # Negative themes: alignment PENALISES score — being tariff-exposed,
-        #   litigation-laden, or restructuring is a headwind, not a tailwind
-        # Neutral themes: ignored (no score impact either way)
-        result = conn.execute(text("""
-            SELECT sta.symbol,
-                   SUM(
-                     CASE mt.sentiment
-                       WHEN 'negative' THEN
-                         -1.0 * sta.alignment_score   -- penalty
-                       WHEN 'neutral' THEN
-                         0.0                           -- ignored
-                       ELSE
-                         sta.alignment_score *
-                         CASE WHEN sta.trajectory = 'accelerating' THEN 1.5
-                              WHEN sta.trajectory = 'decelerating' THEN 0.6
-                              ELSE 1.0 END
-                     END
-                   ) as narrative_score
-            FROM stock_theme_alignment sta
-            JOIN meta_themes mt ON mt.id = sta.meta_theme_id
-            WHERE sta.meta_theme_id = ANY(:ids)
-            GROUP BY sta.symbol
-        """), {"ids": accel_ids}).fetchall()
+        # Dominant exposure + small kicker for a genuine second narrative.
+        # Then percentile-rank across exposed stocks: ~90% of large caps have
+        # SOME narrative exposure, so absolute values alone don't discriminate —
+        # the gate must separate "the business IS the narrative" (DELL, 0.78
+        # with a cited 51B backlog) from "meaningful contributor" (0.35).
+        raw = {}
+        for sym, weighted in per_stock.items():
+            ws = sorted(weighted, reverse=True)
+            raw[sym] = min(1.0, ws[0] + (0.15 * ws[1] if len(ws) > 1 else 0.0))
 
-        raw = {r[0]: float(r[1]) for r in result}
+        ranked = sorted(raw, key=raw.get)
+        n_exposed = len(ranked)
+        for i, sym in enumerate(ranked):
+            pct = (i + 1) / n_exposed
+            # Blend absolute exposure (60%) with percentile (40%): absolute
+            # keeps cited-evidence meaning, percentile restores discrimination.
+            theme_scores[sym] = 0.60 * raw[sym] + 0.40 * pct
 
-    if not raw:
-        return {}
-    # Shift so minimum = 0, then scale max to 1.0
-    # Negative raw scores (net headwind companies) map to low but non-zero values
-    min_val = min(raw.values())
-    max_val = max(raw.values())
-    spread  = (max_val - min_val) or 1.0
-    theme_scores = {s: (v - min_val) / spread for s, v in raw.items()}
-
-    # Blend in call-vs-filing gap (20% weight)
+    # Blend in call-vs-filing gap (15% weight)
     call_gap = compute_call_vs_filing_gap(engine)
 
     all_syms = set(theme_scores) | set(call_gap)
@@ -246,7 +240,7 @@ def compute_narrative_score(engine) -> dict:
     for sym in all_syms:
         t = theme_scores.get(sym, 0.0)
         g = call_gap.get(sym, 0.50)   # 0.50 = neutral when no gap data
-        blended[sym] = round(0.80 * t + 0.20 * g, 4)
+        blended[sym] = round(0.85 * t + 0.15 * g, 4)
 
     return blended
 
@@ -857,16 +851,11 @@ def score_all_stocks(engine=None) -> list:
         #   n=0.50 → gate=0.354  (heavy penalty — halves the score)
         #   n=0.30 → gate=0.164  (near-zero — never makes the cut)
         #
-        # VALUE UNLOCK EXCEPTION: A high-quality business (ROIC>15%, quality>0.65)
-        # that has significantly repriced (gap>0.65 = stock down hard vs peers)
-        # should not be gated out purely by narrative. The price dislocation IS the
-        # signal — the market has moved faster than the story has developed.
-        # For these stocks, gate is floored at 0.70, ensuring they can reach Buy.
+        # No exceptions to the narrative gate: a stock earns its place on the
+        # board through genuine exposure to a live narrative, or not at all.
+        # (The old "value unlock" bypass let FSLR rank #3 with narrative 0.14.)
         narrative_gate = n ** 1.5 if n > 0 else 0.0
         roic_f = float(f[6]) if f and f[6] else 0
-        g_pre  = gap.get(sym, 0.0)
-        if roic_f > 0.15 and q >= 0.65 and g_pre >= 0.65:
-            narrative_gate = max(narrative_gate, 0.70)
         gem = (v * q) ** 0.5 * narrative_gate if (v > 0 and q > 0) else 0.0
 
         # ── Fundamental momentum gate ──────────────────────────────────────────

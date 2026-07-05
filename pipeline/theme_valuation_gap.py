@@ -17,10 +17,10 @@ from statistics import median
 
 from sqlalchemy import text
 
-STRONG_ALIGNMENT = 0.55   # stock counts as genuinely exposed to the theme
-PEER_ALIGNMENT   = 0.60   # peers used for the valuation benchmark
-MIN_PEERS        = 4      # below this the median is noise
-TOP_THEMES       = 3      # themes stored per stock
+STRONG_ALIGNMENT = 0.40   # LLM-judged exposure: stock genuinely exposed
+PEER_ALIGNMENT   = 0.40   # peers used for the valuation benchmark
+MIN_PEERS        = 3      # below this the median is noise
+TOP_THEMES       = 3      # narratives stored per stock
 
 
 def create_table(engine):
@@ -51,26 +51,26 @@ def compute_theme_gaps(engine) -> dict:
     create_table(engine)
 
     with engine.connect() as conn:
-        # Every stock's strong theme alignments (accelerating themes only —
-        # a discount to peers in a decelerating theme is not a signal)
+        # LLM-judged exposures to accelerating active narratives (the brain) —
+        # a discount to peers in a declining narrative is not a signal
         alignments = conn.execute(text("""
-            SELECT sta.symbol, sta.meta_theme_id, mt.name, mt.momentum,
-                   sta.alignment_score
-            FROM stock_theme_alignment sta
-            JOIN meta_themes mt ON mt.id = sta.meta_theme_id
-            WHERE sta.alignment_score >= :strong
-              AND mt.momentum = 'accelerating'
-              AND mt.name NOT ILIKE '%idiosyncratic%'
-            ORDER BY sta.symbol, sta.alignment_score DESC
+            SELECT ne.symbol, ne.narrative_id, nar.name, nar.momentum,
+                   ne.exposure
+            FROM narrative_exposures ne
+            JOIN narratives nar ON nar.id = ne.narrative_id
+            WHERE ne.exposure >= :strong
+              AND nar.status = 'active'
+              AND nar.momentum = 'accelerating'
+            ORDER BY ne.symbol, ne.exposure DESC
         """), {"strong": STRONG_ALIGNMENT}).fetchall()
 
-        # Peer pools per theme
+        # Peer pools per narrative
         peers_rows = conn.execute(text("""
-            SELECT sta.meta_theme_id, sta.symbol,
+            SELECT ne.narrative_id, ne.symbol,
                    f.pe_forward, f.ev_to_ebitda
-            FROM stock_theme_alignment sta
-            JOIN fundamentals f ON f.symbol = sta.symbol
-            WHERE sta.alignment_score >= :peer
+            FROM narrative_exposures ne
+            JOIN fundamentals f ON f.symbol = ne.symbol
+            WHERE ne.exposure >= :peer
         """), {"peer": PEER_ALIGNMENT}).fetchall()
 
         fund_rows = conn.execute(text(

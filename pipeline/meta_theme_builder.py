@@ -416,9 +416,9 @@ def score_stock_alignments(engine, client):
 
     print(f"  Storing alignments (threshold: top {int((1-PERCENTILE_THRESHOLD)*100)}%)...")
 
-    engine_conn = engine.connect()
-    stored = 0
-
+    # Collect all rows first, then write in one batched executemany —
+    # row-by-row round trips to a remote DB turn this into a 25-minute job.
+    batch = []
     for idx, symbol in enumerate(symbols):
         filings = stock_filings[symbol]
         n = len(filings)
@@ -445,25 +445,28 @@ def score_stock_alignments(engine, client):
             per_sims = [round(float(per_filing_sims_all[symbol][fi, j]), 4)
                         for fi in range(n)]
 
-            engine_conn.execute(text("""
-                INSERT INTO stock_theme_alignment
-                    (symbol, meta_theme_id, alignment_score, trajectory, quarter_scores)
-                VALUES
-                    (:symbol, :meta_theme_id, :score, :trajectory, :quarter_scores)
-                ON CONFLICT (symbol, meta_theme_id) DO UPDATE SET
-                    alignment_score = EXCLUDED.alignment_score,
-                    trajectory      = EXCLUDED.trajectory,
-                    quarter_scores  = EXCLUDED.quarter_scores,
-                    updated_at      = NOW()
-            """), {
+            batch.append({
                 "symbol":         symbol,
                 "meta_theme_id":  mt_id,
                 "score":          round(raw_sim, 4),
                 "trajectory":     traj,
                 "quarter_scores": json.dumps(per_sims),
             })
-            stored += 1
 
+    stored = len(batch)
+    engine_conn = engine.connect()
+    if batch:
+        engine_conn.execute(text("""
+            INSERT INTO stock_theme_alignment
+                (symbol, meta_theme_id, alignment_score, trajectory, quarter_scores)
+            VALUES
+                (:symbol, :meta_theme_id, :score, :trajectory, :quarter_scores)
+            ON CONFLICT (symbol, meta_theme_id) DO UPDATE SET
+                alignment_score = EXCLUDED.alignment_score,
+                trajectory      = EXCLUDED.trajectory,
+                quarter_scores  = EXCLUDED.quarter_scores,
+                updated_at      = NOW()
+        """), batch)
     engine_conn.commit()
     engine_conn.close()
 

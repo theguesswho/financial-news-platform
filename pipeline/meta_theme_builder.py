@@ -307,6 +307,7 @@ def score_stock_alignments(engine, client):
             SELECT id, name, momentum, embedding
             FROM meta_themes
             WHERE embedding IS NOT NULL
+              AND COALESCE(status, 'active') = 'active'
         """)).fetchall()
 
     if not mt_rows:
@@ -513,6 +514,15 @@ def run_meta_theme_build():
             UPDATE meta_themes SET status = 'active'
             WHERE name = ANY(:names)
         """), {"names": returned_names})
+
+    # Embed any theme that lacks a vector BEFORE alignment scoring — otherwise
+    # newly created themes are invisible to Phase 3 until the next embeddings run.
+    print("\nEmbedding new meta-themes...")
+    try:
+        from pipeline.embedding_builder import load_model, embed_meta_themes
+        embed_meta_themes(engine, load_model(), force=False)
+    except Exception as exc:
+        print(f"  ⚠️ Meta-theme embedding failed: {exc}")
 
     print("\n" + "=" * 70)
     print("PHASE 3 — STOCK ALIGNMENT SCORING")

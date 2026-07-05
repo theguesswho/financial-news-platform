@@ -632,6 +632,79 @@ for col, label, val, color, desc in [
 """, unsafe_allow_html=True)
         st.caption(desc)
 
+# ────────────────────────────────────────────────────────────────────────────
+# 2b. PRICE & SCORE HISTORY
+# ────────────────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=900)
+def load_history(sym: str):
+    eng = get_engine()
+    with eng.connect() as conn:
+        px = conn.execute(text("""
+            SELECT date, close FROM eod_prices
+            WHERE symbol = :s ORDER BY date
+        """), {"s": sym}).fetchall()
+        sc = conn.execute(text("""
+            SELECT date, gem_score, narrative_score, value_score, quality_score, gap_score
+            FROM leaderboard_history WHERE symbol = :s ORDER BY date
+        """), {"s": sym}).fetchall()
+        ev = conn.execute(text("""
+            SELECT filing_date::date, filing_type, title FROM filings
+            WHERE symbol = :s AND filing_date >= NOW() - INTERVAL '8 months'
+            ORDER BY filing_date
+        """), {"s": sym}).fetchall()
+    return px, sc, ev
+
+
+px_rows, sc_rows, ev_rows = load_history(symbol)
+
+if px_rows:
+    import altair as alt
+    st.markdown('<div class="section-hdr">Price & Score History</div>', unsafe_allow_html=True)
+
+    px_df = pd.DataFrame(px_rows, columns=["date", "close"])
+    px_df["date"] = pd.to_datetime(px_df["date"])
+    px_df["close"] = px_df["close"].astype(float)
+
+    price_line = alt.Chart(px_df).mark_line(color="#0ea5e9", strokeWidth=1.8).encode(
+        x=alt.X("date:T", title=None),
+        y=alt.Y("close:Q", title="Close (USD)", scale=alt.Scale(zero=False)),
+        tooltip=[alt.Tooltip("date:T"), alt.Tooltip("close:Q", format=".2f")],
+    )
+
+    layers = [price_line]
+    if ev_rows:
+        ev_df = pd.DataFrame(ev_rows, columns=["date", "type", "title"])
+        ev_df["date"] = pd.to_datetime(ev_df["date"])
+        ev_df = ev_df[ev_df["date"] >= px_df["date"].min()]
+        if not ev_df.empty:
+            layers.append(
+                alt.Chart(ev_df).mark_rule(color="#f59e0b", strokeDash=[3, 3], opacity=0.6).encode(
+                    x="date:T",
+                    tooltip=[alt.Tooltip("date:T"), "type:N", "title:N"],
+                )
+            )
+    st.altair_chart(alt.layer(*layers).properties(height=260), use_container_width=True)
+    st.caption("Dashed markers = SEC filings (hover for details). Price reaction — or lack of it — after a filing is the price-lag signal.")
+
+    if sc_rows and len(sc_rows) >= 2:
+        sc_df = pd.DataFrame(sc_rows, columns=["date", "Gem Score", "Narrative", "Value", "Quality", "Gap"])
+        sc_df["date"] = pd.to_datetime(sc_df["date"])
+        for c in ["Gem Score", "Narrative", "Value", "Quality", "Gap"]:
+            sc_df[c] = sc_df[c].astype(float)
+        sc_long = sc_df.melt("date", var_name="component", value_name="score")
+        score_chart = alt.Chart(sc_long).mark_line(strokeWidth=1.6).encode(
+            x=alt.X("date:T", title=None),
+            y=alt.Y("score:Q", title="Score (0–1)", scale=alt.Scale(domain=[0, 1])),
+            color=alt.Color("component:N", title=None, scale=alt.Scale(
+                domain=["Gem Score", "Narrative", "Value", "Quality", "Gap"],
+                range=["#111827", "#6366f1", "#0ea5e9", "#10b981", "#f59e0b"])),
+            strokeWidth=alt.condition(alt.datum.component == "Gem Score",
+                                      alt.value(2.8), alt.value(1.2)),
+            tooltip=[alt.Tooltip("date:T"), "component:N", alt.Tooltip("score:Q", format=".3f")],
+        ).properties(height=220)
+        st.altair_chart(score_chart, use_container_width=True)
+        st.caption("Gem score (bold) with its four components — see exactly which input drove any score change.")
+
 # Bull / Bear from qual assessment
 if key_bull and key_bear:
     st.markdown('<div class="section-hdr">Conviction Summary</div>', unsafe_allow_html=True)

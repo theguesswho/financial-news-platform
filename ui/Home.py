@@ -374,13 +374,78 @@ def filing_type_label(ft: str) -> str:
 
 # ── Page ─────────────────────────────────────────────────────────────────────
 
-today_str = datetime.utcnow().strftime("%A, %B %d, %Y")
+@st.cache_data(ttl=600)
+def load_daily_brief():
+    """Latest stored brief + its date. Read-only: generation happens in the scheduler."""
+    with get_engine().connect() as conn:
+        row = conn.execute(text("""
+            SELECT date, content FROM daily_briefs ORDER BY date DESC LIMIT 1
+        """)).fetchone()
+    if not row or not row[1]:
+        return None, None
+    try:
+        return row[0], json.loads(row[1])
+    except Exception:
+        return row[0], None
+
+
+brief_date, brief = load_daily_brief()
+date_label = brief_date.strftime("%A, %B %d, %Y") if brief_date else datetime.utcnow().strftime("%A, %B %d, %Y")
 st.markdown(f"""
 <div class="brief-header">
   <div class="brief-title">📋 Daily Brief</div>
-  <div class="brief-date">{today_str} · Updated ~6 AM</div>
+  <div class="brief-date">{date_label}</div>
 </div>
 """, unsafe_allow_html=True)
+
+if brief:
+    ts = brief.get("top_signal") or {}
+    if ts.get("title"):
+        sym_chip = f'<span class="pill pill-blue">{ts["symbol"]}</span>&nbsp;' if ts.get("symbol") else ""
+        st.markdown(f"""
+<div class="filing-card" style="border-left: 3px solid #3b82f6;">
+  <div class="fc-header"><span class="fc-sym">{sym_chip}{ts['title']}</span></div>
+  <div class="fc-synopsis">{ts.get('body', '')}</div>
+  <div class="fc-synopsis" style="color:#1d4ed8; margin-top:0.35rem;"><b>Why it matters:</b> {ts.get('why_it_matters', '')}</div>
+</div>
+""", unsafe_allow_html=True)
+
+    wl = brief.get("watch_list") or []
+    rad = brief.get("on_radar") or []
+    if wl or rad:
+        bc1, bc2 = st.columns(2, gap="large")
+        with bc1:
+            if wl:
+                st.markdown('<div class="section-hdr">👀 Watch Today</div>', unsafe_allow_html=True)
+                for w in wl[:4]:
+                    stance = w.get("stance", "NEUTRAL")
+                    color = {"POSITIVE": "#059669", "NEGATIVE": "#dc2626"}.get(stance, "#6b7280")
+                    st.markdown(f"""
+<div class="filing-card">
+  <div class="fc-header">
+    <span class="fc-sym">{w.get('symbol', '')}</span>
+    <span class="fc-meta" style="color:{color}; font-weight:600;">{stance}</span>
+  </div>
+  <div class="fc-synopsis"><b>{w.get('headline', '')}</b> — {w.get('detail', '')}</div>
+  <div class="fc-synopsis" style="color:#6b7280;">Next: {w.get('action', '')}</div>
+</div>
+""", unsafe_allow_html=True)
+        with bc2:
+            if rad:
+                st.markdown('<div class="section-hdr">📡 On the Radar</div>', unsafe_allow_html=True)
+                for r_ in rad[:3]:
+                    st.markdown(f"""
+<div class="filing-card">
+  <div class="fc-header">
+    <span class="fc-sym">{r_.get('symbol', '')}</span>
+    <span class="fc-meta">{r_.get('pattern', '')}</span>
+  </div>
+  <div class="fc-synopsis">{r_.get('detail', '')}</div>
+  <div class="fc-synopsis" style="color:#6b7280;">Watch for: {r_.get('watch_for', '')}</div>
+</div>
+""", unsafe_allow_html=True)
+else:
+    st.caption("Today's brief hasn't been generated yet — it arrives with the 6 AM data run.")
 
 # Load all data
 with st.spinner("Loading…"):

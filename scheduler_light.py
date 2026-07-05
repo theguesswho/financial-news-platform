@@ -135,6 +135,20 @@ def _qual_sweep(gems=None):
     eng.dispose()
 
 
+# ── Daily brief (self-healing: no-op if today's brief already exists) ────────
+
+def _ensure_brief():
+    from pipeline.brief import get_or_generate_brief
+    from db.session import get_session
+    s = get_session()
+    try:
+        brief = get_or_generate_brief(s)
+        top = (brief.get("top_signal") or {}).get("title", "")
+        _ok(f"Daily brief ready — top signal: {top}")
+    finally:
+        s.close()
+
+
 # ── Daily 6 AM UTC ───────────────────────────────────────────────────────────
 
 def daily_data_update():
@@ -239,7 +253,13 @@ def daily_data_update():
     except Exception as e:
         _err("Qual sweep failed", e)
 
-    _step(9, "Filing synopses")
+    _step(9, "Daily brief")
+    try:
+        _ensure_brief()
+    except Exception as e:
+        _err("Daily brief failed", e)
+
+    _step(10, "Filing synopses")
     try:
         from pipeline.synopsis import get_or_generate_synopsis
         from pipeline.hidden_gem_scorer import get_engine as _ge
@@ -308,6 +328,12 @@ def midday_refresh():
         _ok(f"Earnings ingestion done: {r}")
     except Exception as e:
         _err("Earnings ingestion failed", e)
+
+    _step(4, "Daily brief (catch-up if 6AM run missed it)")
+    try:
+        _ensure_brief()
+    except Exception as e:
+        _err("Daily brief failed", e)
 
     _banner("MID-DAY REFRESH COMPLETE")
 
@@ -402,6 +428,12 @@ def after_close_refresh():
         _qual_sweep(gems=gems)
     except Exception as e:
         _err("Qual assessment failed", e)
+
+    _step(7, "Daily brief (catch-up if earlier runs missed it)")
+    try:
+        _ensure_brief()
+    except Exception as e:
+        _err("Daily brief failed", e)
 
     _banner("AFTER-CLOSE REFRESH COMPLETE")
 

@@ -47,7 +47,20 @@ def get_engine():
         user = os.getenv("DB_USER", "postgres")
         name = os.getenv("DB_NAME", "postgres")
         url = f"postgresql+psycopg2://{user}:{password}@{host}/{name}"
-    return create_engine(url, pool_pre_ping=True)
+    # keepalives + recycle: Railway's proxy silently kills idle connections;
+    # without these a write to a dead socket hangs forever instead of failing.
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_recycle=120,
+        connect_args={
+            "connect_timeout": 10,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        },
+    )
 
 
 def _margin_bucket(gross_margin):

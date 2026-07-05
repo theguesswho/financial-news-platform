@@ -137,12 +137,21 @@ def apply_qual_tiers(engine) -> int:
     Returns the number of rows updated.
     """
     with engine.connect() as conn:
+        # Only stamp stocks currently on the board; a qual opinion from when a
+        # stock last qualified must not resurrect it after its score drops off.
         result = conn.execute(text("""
             UPDATE leaderboard_history lh
             SET assessed_tier = qa.adjusted_tier
             FROM qual_assessments qa
             WHERE lh.symbol = qa.symbol
+              AND lh.tier IS NOT NULL
               AND lh.date   = (SELECT MAX(date) FROM leaderboard_history)
+        """))
+        conn.execute(text("""
+            UPDATE leaderboard_history
+            SET assessed_tier = NULL
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+              AND tier IS NULL AND assessed_tier IS NOT NULL
         """))
         conn.commit()
     return result.rowcount

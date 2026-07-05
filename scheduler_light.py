@@ -89,6 +89,9 @@ def _qual_sweep(gems=None):
     from pipeline.hidden_gem_scorer import get_engine
     eng = get_engine()
     with eng.connect() as conn:
+        # Tier movers — skip flaps (tier changed on a <0.015 score wiggle at a
+        # boundary) and anything already assessed in the last 18h (the sweep
+        # runs twice a day against the same prior snapshot).
         movers = conn.execute(text("""
             SELECT today.symbol
             FROM leaderboard_history today
@@ -98,15 +101,23 @@ def _qual_sweep(gems=None):
                                  WHERE date < (SELECT MAX(date) FROM leaderboard_history))
             WHERE today.date = (SELECT MAX(date) FROM leaderboard_history)
               AND today.tier IS NOT NULL
-              AND (yest.symbol IS NULL OR yest.tier IS DISTINCT FROM today.tier)
+              AND (yest.symbol IS NULL
+                   OR (yest.tier IS DISTINCT FROM today.tier
+                       AND (yest.gem_score IS NULL
+                            OR ABS(today.gem_score - yest.gem_score) >= 0.015)))
+              AND NOT EXISTS (
+                  SELECT 1 FROM qual_assessments qa
+                  WHERE qa.symbol = today.symbol
+                    AND qa.assessed_at > NOW() - INTERVAL '18 hours')
             ORDER BY today.gem_score DESC
         """)).fetchall()
+        # Any stock on the board (incl. Watch) never assessed — one-time cost per stock
         unassessed = conn.execute(text("""
             SELECT lh.symbol
             FROM leaderboard_history lh
             LEFT JOIN qual_assessments qa ON qa.symbol = lh.symbol
             WHERE lh.date = (SELECT MAX(date) FROM leaderboard_history)
-              AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy')
+              AND lh.tier IS NOT NULL
               AND qa.symbol IS NULL
             ORDER BY lh.gem_score DESC
         """)).fetchall()

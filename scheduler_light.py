@@ -213,6 +213,17 @@ def daily_data_update():
     except Exception as e:
         _err("Scoring failed", e)
 
+    _step("5c", "Theme valuation gaps (Dell detector)")
+    try:
+        from pipeline.theme_valuation_gap import compute_theme_gaps
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        r = compute_theme_gaps(eng)
+        eng.dispose()
+        _ok(f"{r['pairs']} theme-gap pairs across {r['stocks']} stocks")
+    except Exception as e:
+        _err("Theme valuation gaps failed", e)
+
     _step(6, "Backfill missing 8-K classifications")
     try:
         import json, time as _time
@@ -541,6 +552,14 @@ def weekly_deep_refresh():
         _ok(f"Embeddings done: {r}")
     except Exception as e:
         _err("Embeddings failed", e)
+
+    _step("5b", "Meta-theme clustering + stock alignment (the meta-narrative)")
+    try:
+        from pipeline.meta_theme_builder import run_meta_theme_build
+        run_meta_theme_build()
+        _ok("Meta-narrative rebuilt")
+    except Exception as e:
+        _err("Meta-theme build failed", e)
 
     _step(6, "Historical metrics refresh (FMP quarterly)")
     try:

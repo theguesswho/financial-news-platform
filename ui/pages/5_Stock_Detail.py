@@ -774,6 +774,51 @@ if themes:
 </div>
 """, unsafe_allow_html=True)
 
+# Theme-relative valuation gap — the Dell detector
+@st.cache_data(ttl=900)
+def load_theme_gaps(sym: str):
+    eng = get_engine()
+    with eng.connect() as conn:
+        try:
+            return conn.execute(text("""
+                SELECT theme_name, alignment_score, peer_count,
+                       stock_pe_fwd, peer_median_pe, pe_discount,
+                       stock_ev_ebitda, peer_median_ev, ev_discount
+                FROM theme_valuation_gaps
+                WHERE symbol = :s
+                ORDER BY GREATEST(COALESCE(pe_discount, -9), COALESCE(ev_discount, -9)) DESC
+            """), {"s": sym}).fetchall()
+        except Exception:
+            return []
+
+
+gaps = load_theme_gaps(symbol)
+if gaps:
+    st.markdown('<div class="section-hdr">Theme-Relative Valuation (the Dell test)</div>', unsafe_allow_html=True)
+    for g in gaps[:2]:
+        tname, align, peers, pe_s, med_pe, pe_d, ev_s, med_ev, ev_d = g
+        parts = []
+        if pe_d is not None:
+            direction = "discount" if pe_d > 0 else "premium"
+            parts.append(f"<b>{float(pe_s):.1f}x</b> fwd P/E vs theme peers at <b>{float(med_pe):.1f}x</b> "
+                         f"→ <b>{abs(float(pe_d))*100:.0f}% {direction}</b>")
+        if ev_d is not None:
+            direction = "discount" if ev_d > 0 else "premium"
+            parts.append(f"{float(ev_s):.1f}x EV/EBITDA vs {float(med_ev):.1f}x → {abs(float(ev_d))*100:.0f}% {direction}")
+        headline_d = pe_d if pe_d is not None else ev_d
+        border = "#059669" if (headline_d or 0) > 0.25 else ("#f59e0b" if (headline_d or 0) > 0 else "#94a3b8")
+        st.markdown(f"""
+<div class="filing-card" style="border-left: 3px solid {border};">
+  <div class="fc-header">
+    <span class="fc-sym">{tname}</span>
+    <span class="fc-meta">alignment {float(align):.2f} · {peers} theme peers</span>
+  </div>
+  <div class="fc-synopsis">{' &nbsp;·&nbsp; '.join(parts) if parts else 'No comparable multiples available.'}</div>
+</div>
+""", unsafe_allow_html=True)
+    st.caption("The Dell test: is this stock priced like its legacy category while its filings show real exposure to an "
+               "accelerating structural theme? A large discount to theme peers = the market hasn't re-categorised it yet.")
+
 # ────────────────────────────────────────────────────────────────────────────
 # 3. FUNDAMENTALS
 # ────────────────────────────────────────────────────────────────────────────

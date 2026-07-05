@@ -90,28 +90,42 @@ def build_meta_themes(engine, client):
 
     prompt1 = f"""Below are narrative themes extracted from S&P 500 SEC filings across all sectors.
 
-Identify 15–20 canonical meta-themes — the TRUE underlying structural forces that
+Identify 20–30 canonical meta-themes — the TRUE underlying structural forces that
 different companies describe differently. Cluster by meaning, not wording.
 
 Example: "AI-driven cost reduction" (bank) + "AI inventory optimisation" (retailer) +
 "administrative automation" (healthcare) = one meta-theme: "AI Operational Efficiency"
 
-Return ONLY a compact JSON array — name, one-sentence description, momentum, and
-a short list of sectors where this appears:
+The purpose of these themes is to catch mispricings like Dell in 2023: the market
+priced it as a laptop maker while its filings showed genuine AI-server exposure.
+A theme is only useful if it DISCRIMINATES — separates the companies genuinely
+exposed to a structural force from those merely name-dropping it.
+
+Return ONLY a compact JSON array — name, one-sentence description, momentum with
+evidence, and a short list of sectors where this appears:
 
 [
   {{
     "name": "3-5 word canonical name",
     "description": "One sentence on what structural force this represents",
     "momentum": "accelerating | stable | decelerating",
+    "momentum_evidence": "One sentence citing the CONCRETE evidence: backlog growth, guidance raises, capacity commitments, order books, pricing power — not adjective density",
     "sectors_present": ["Technology", "Healthcare", "Financials"]
   }}
 ]
 
 Rules:
 - Cluster by UNDERLYING force, not surface wording
-- Must appear in 10+ companies to qualify
-- Cross-sector = more significant
+- Prefer NARROW, discriminating themes over broad ones. "AI Infrastructure
+  Build-Out" spanning 120 companies is useless; "Data-center power and grid
+  equipment demand" spanning 15 is signal
+- SECTOR-SPECIFIC themes are explicitly welcome where a structural force is
+  concentrated in one industry (e.g. grid electrification for utilities/
+  industrial power, GLP-1 knock-on effects for med-tech, defence re-armament)
+- Momentum labels must be earned by evidence in the themes (order books,
+  backlog, guidance, capacity expansion). When companies merely TALK about a
+  force without numbers, label it "stable". Expect a majority of themes to be
+  stable — accelerating should be the exception, not the default
 - Be specific: "AI Operational Efficiency" not just "AI"
 - Include one "Idiosyncratic / Other" bucket
 
@@ -166,6 +180,7 @@ def store_meta_themes(engine, meta_themes):
                     "raw_themes":           theme.get("constituent_themes", []),
                     "representative_symbols": theme.get("representative_symbols", []),
                     "sectors_present":      theme.get("sectors_present", []),
+                    "momentum_evidence":    theme.get("momentum_evidence", ""),
                 }),
                 "momentum":           theme.get("momentum", "stable"),
             })

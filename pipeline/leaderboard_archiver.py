@@ -136,15 +136,14 @@ def apply_qual_tiers(engine) -> int:
     compares against the final qual-adjusted tier, not the raw gem-score tier.
     Returns the number of rows updated.
     """
-    today = date.today()
     with engine.connect() as conn:
         result = conn.execute(text("""
             UPDATE leaderboard_history lh
             SET assessed_tier = qa.adjusted_tier
             FROM qual_assessments qa
             WHERE lh.symbol = qa.symbol
-              AND lh.date   = :today
-        """), {"today": today})
+              AND lh.date   = (SELECT MAX(date) FROM leaderboard_history)
+        """))
         conn.commit()
     return result.rowcount
 

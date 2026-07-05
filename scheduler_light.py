@@ -76,6 +76,54 @@ def _score_and_archive():
     return engine, gems
 
 
+# ── Qual sweep (shared by daily + after-close jobs) ──────────────────────────
+
+def _qual_sweep(gems=None):
+    """
+    Assess (a) tier movers since the previous snapshot and (b) any Buy/Strong Buy
+    stock never assessed. Uses the latest leaderboard snapshot — not CURRENT_DATE —
+    so missed runs self-heal on the next pass regardless of which day it fires.
+    """
+    from pipeline.qual_assessor import run_qual_assessment
+    from pipeline.leaderboard_archiver import apply_qual_tiers, create_table
+    from pipeline.hidden_gem_scorer import get_engine
+    eng = get_engine()
+    with eng.connect() as conn:
+        movers = conn.execute(text("""
+            SELECT today.symbol
+            FROM leaderboard_history today
+            LEFT JOIN leaderboard_history yest
+                ON yest.symbol = today.symbol
+                AND yest.date = (SELECT MAX(date) FROM leaderboard_history
+                                 WHERE date < (SELECT MAX(date) FROM leaderboard_history))
+            WHERE today.date = (SELECT MAX(date) FROM leaderboard_history)
+              AND today.tier IS NOT NULL
+              AND (yest.symbol IS NULL OR yest.tier IS DISTINCT FROM today.tier)
+            ORDER BY today.gem_score DESC
+        """)).fetchall()
+        unassessed = conn.execute(text("""
+            SELECT lh.symbol
+            FROM leaderboard_history lh
+            LEFT JOIN qual_assessments qa ON qa.symbol = lh.symbol
+            WHERE lh.date = (SELECT MAX(date) FROM leaderboard_history)
+              AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy')
+              AND qa.symbol IS NULL
+            ORDER BY lh.gem_score DESC
+        """)).fetchall()
+
+    to_assess = list(dict.fromkeys([r[0] for r in movers] + [r[0] for r in unassessed]))
+    if to_assess:
+        _ok(f"Assessing {len(to_assess)} stocks: {', '.join(to_assess)}")
+        # gems=None makes the assessor re-score itself; never pass [] (matches nothing)
+        run_qual_assessment(symbols=to_assess, gems=gems if gems else None)
+        create_table(eng)
+        updated = apply_qual_tiers(eng)
+        _ok(f"Qual tiers stamped: {updated} rows")
+    else:
+        _ok("No stocks need qual assessment")
+    eng.dispose()
+
+
 # ── Daily 6 AM UTC ───────────────────────────────────────────────────────────
 
 def daily_data_update():
@@ -170,11 +218,17 @@ def daily_data_update():
     try:
         from pipeline.daily_score_archiver import archive_daily_scores
         r = archive_daily_scores()
-        _ok(f"{r.get('archived', 0)} scores archived")
+        _ok(f"{r.get('stored', 0)} scores archived")
     except Exception as e:
         _err("Daily score archive failed", e)
 
-    _step(7, "Filing synopses")
+    _step(8, "Qual assessment sweep (movers + unassessed Buy/Strong Buy)")
+    try:
+        _qual_sweep(gems=gems)
+    except Exception as e:
+        _err("Qual sweep failed", e)
+
+    _step(9, "Filing synopses")
     try:
         from pipeline.synopsis import get_or_generate_synopsis
         from pipeline.hidden_gem_scorer import get_engine as _ge
@@ -189,6 +243,7 @@ def daily_data_update():
                 FROM filings f
                 JOIN filing_themes ft ON ft.filing_id = f.id
                 WHERE f.filing_date >= :c AND ft.narrative_strength >= 0.60
+                  AND f.filing_type NOT IN ('8-K','8-K/A')
                   AND (f.llm_analysis IS NULL
                        OR (f.llm_analysis::jsonb->>'synopsis') IS NULL)
             """), {"c": cutoff}).fetchall()
@@ -313,6 +368,7 @@ def after_close_refresh():
                 FROM filings f
                 JOIN filing_themes ft ON ft.filing_id = f.id
                 WHERE f.filing_date >= :c AND ft.narrative_strength >= 0.60
+                  AND f.filing_type NOT IN ('8-K','8-K/A')
                   AND (f.llm_analysis IS NULL
                        OR (f.llm_analysis::jsonb->>'synopsis') IS NULL)
             """), {"c": cutoff}).fetchall()
@@ -332,46 +388,7 @@ def after_close_refresh():
 
     _step(6, "Qual assessment (tier movers + unassessed Buy/Strong Buy)")
     try:
-        from pipeline.qual_assessor import run_qual_assessment
-        from pipeline.leaderboard_archiver import apply_qual_tiers, create_table as ct
-        from pipeline.hidden_gem_scorer import get_engine as _ge
-        eng = _ge()
-        with eng.connect() as conn:
-            # Tier movers since yesterday
-            movers = conn.execute(text("""
-                SELECT today.symbol
-                FROM leaderboard_history today
-                LEFT JOIN leaderboard_history yest
-                    ON yest.symbol = today.symbol
-                    AND yest.date = (SELECT MAX(date) FROM leaderboard_history WHERE date < CURRENT_DATE)
-                WHERE today.date = CURRENT_DATE
-                  AND today.tier IS NOT NULL
-                  AND (yest.symbol IS NULL OR yest.tier IS DISTINCT FROM today.tier OR yest.tier IS NULL)
-                ORDER BY today.gem_score DESC
-            """)).fetchall()
-            # Buy/Strong Buy stocks never assessed
-            unassessed = conn.execute(text("""
-                SELECT lh.symbol
-                FROM leaderboard_history lh
-                LEFT JOIN qual_assessments qa ON qa.symbol = lh.symbol
-                WHERE lh.date = CURRENT_DATE
-                  AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy')
-                  AND qa.symbol IS NULL
-                ORDER BY lh.gem_score DESC
-            """)).fetchall()
-
-        to_assess = list(dict.fromkeys(
-            [r[0] for r in movers] + [r[0] for r in unassessed]
-        ))
-        if to_assess:
-            _ok(f"Assessing {len(to_assess)} stocks: {', '.join(to_assess)}")
-            run_qual_assessment(symbols=to_assess, gems=gems or [])
-            ct(eng)
-            updated = apply_qual_tiers(eng)
-            _ok(f"Qual tiers stamped: {updated} rows")
-        else:
-            _ok("No stocks need qual assessment")
-        eng.dispose()
+        _qual_sweep(gems=gems)
     except Exception as e:
         _err("Qual assessment failed", e)
 
@@ -454,6 +471,28 @@ def weekly_deep_refresh():
         _ok(f"Embeddings done: {r}")
     except Exception as e:
         _err("Embeddings failed", e)
+
+    _step(6, "Historical metrics refresh (FMP quarterly)")
+    try:
+        from pipeline.fmp_historical import fetch_historical_metrics
+        from db.session import get_session
+        s = get_session()
+        r = fetch_historical_metrics(s, symbols)
+        s.close()
+        _ok(f"Historical metrics: {r}")
+    except Exception as e:
+        _err("Historical metrics failed", e)
+
+    _step(7, "Fundamentals history refresh (annual + quarterly)")
+    try:
+        from pipeline.fundamentals_history import run_history_backfill
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        run_history_backfill(eng)
+        eng.dispose()
+        _ok("Fundamentals history refreshed")
+    except Exception as e:
+        _err("Fundamentals history failed", e)
 
     _banner("WEEKLY DEEP REFRESH COMPLETE")
 

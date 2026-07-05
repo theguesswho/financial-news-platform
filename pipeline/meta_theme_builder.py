@@ -454,21 +454,25 @@ def score_stock_alignments(engine, client):
             })
 
     stored = len(batch)
-    engine_conn = engine.connect()
-    if batch:
-        engine_conn.execute(text("""
-            INSERT INTO stock_theme_alignment
-                (symbol, meta_theme_id, alignment_score, trajectory, quarter_scores)
-            VALUES
-                (:symbol, :meta_theme_id, :score, :trajectory, :quarter_scores)
-            ON CONFLICT (symbol, meta_theme_id) DO UPDATE SET
-                alignment_score = EXCLUDED.alignment_score,
-                trajectory      = EXCLUDED.trajectory,
-                quarter_scores  = EXCLUDED.quarter_scores,
-                updated_at      = NOW()
-        """), batch)
-    engine_conn.commit()
-    engine_conn.close()
+    upsert = text("""
+        INSERT INTO stock_theme_alignment
+            (symbol, meta_theme_id, alignment_score, trajectory, quarter_scores)
+        VALUES
+            (:symbol, :meta_theme_id, :score, :trajectory, :quarter_scores)
+        ON CONFLICT (symbol, meta_theme_id) DO UPDATE SET
+            alignment_score = EXCLUDED.alignment_score,
+            trajectory      = EXCLUDED.trajectory,
+            quarter_scores  = EXCLUDED.quarter_scores,
+            updated_at      = NOW()
+    """)
+    # Chunked writes: one giant executemany payload (MBs of quarter_scores
+    # JSON) gets killed by the Railway TCP proxy mid-send. 500-row chunks
+    # with per-chunk commits survive and make progress observable.
+    CHUNK = 500
+    for i in range(0, len(batch), CHUNK):
+        with engine.begin() as conn:
+            conn.execute(upsert, batch[i:i + CHUNK])
+        print(f"    stored {min(i + CHUNK, len(batch))}/{len(batch)}", flush=True)
 
     # Update company_count on meta_themes
     with engine.connect() as conn:

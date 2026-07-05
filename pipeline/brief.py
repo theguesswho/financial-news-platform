@@ -103,6 +103,38 @@ def _gather_signals(session: Session) -> dict:
         ORDER BY total_value DESC LIMIT 5
     """), {"cutoff": date.today() - timedelta(days=14)}).fetchall()
 
+    # Meta-narrative evolution: momentum turns and newly emerged themes
+    theme_shifts = []
+    try:
+        theme_shifts = session.execute(text("""
+            WITH ranked AS (
+                SELECT meta_theme_id, theme_name, momentum, momentum_evidence,
+                       snapshot_date,
+                       LAG(momentum) OVER (PARTITION BY meta_theme_id
+                                           ORDER BY snapshot_date) AS prev_momentum
+                FROM theme_history
+            )
+            SELECT theme_name, prev_momentum, momentum, momentum_evidence
+            FROM ranked
+            WHERE snapshot_date >= CURRENT_DATE - 14
+              AND prev_momentum IS NOT NULL
+              AND momentum IS DISTINCT FROM prev_momentum
+        """)).fetchall()
+    except Exception:
+        pass  # theme_history appears after the first evolved build
+
+    emerging = []
+    try:
+        emerging = session.execute(text("""
+            SELECT name, description, constituent_themes->>'momentum_evidence'
+            FROM meta_themes
+            WHERE COALESCE(status, 'active') = 'active'
+              AND first_seen >= NOW() - INTERVAL '21 days'
+              AND name NOT ILIKE '%idiosyncratic%'
+        """)).fetchall()
+    except Exception:
+        pass
+
     return {
         "board": board,
         "tier_moves": tier_moves,
@@ -110,11 +142,27 @@ def _gather_signals(session: Session) -> dict:
         "clusters": clusters,
         "notable_buys": notable_buys,
         "notable_sells": notable_sells,
+        "theme_shifts": theme_shifts,
+        "emerging": emerging,
     }
 
 
 def _build_prompt(signals: dict) -> str:
     lines = []
+
+    if signals.get("theme_shifts"):
+        lines.append("META-NARRATIVE MOMENTUM SHIFTS (a structural theme just turned):")
+        for t in signals["theme_shifts"]:
+            lines.append(f"  {t.theme_name}: {t.prev_momentum} -> {t.momentum}")
+            if t.momentum_evidence:
+                lines.append(f"    Evidence: {t.momentum_evidence}")
+
+    if signals.get("emerging"):
+        lines.append("\nNEWLY EMERGED META-THEMES (first detected within 3 weeks):")
+        for t in signals["emerging"]:
+            lines.append(f"  {t[0]}: {t[1]}")
+            if t[2]:
+                lines.append(f"    Evidence: {t[2]}")
 
     if signals["tier_moves"]:
         lines.append("TIER CHANGES SINCE LAST SNAPSHOT:")
@@ -198,6 +246,8 @@ Write a daily intelligence brief. Return ONLY valid JSON — no markdown fences,
 }}
 
 Rules:
+- Meta-narrative shifts and newly emerged themes are the platform's secret sauce —
+  when present, they belong in the top signal or high on the watch list
 - Lead with tier changes and qual downgrades — the reader cares most about what moved on their board
 - watch_list: 2-4 items max. Prioritise negative signals (bad news travels fast)
 - on_radar: 2-3 items. Focus on convergence — when 2+ signals point to the same stock

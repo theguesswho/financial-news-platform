@@ -36,6 +36,66 @@ def get_engine():
 
 
 # ─────────────────────────────────────────────────────────────
+# THEME PERSISTENCE — themes are entities that evolve, not
+# artifacts recreated from scratch each build
+# ─────────────────────────────────────────────────────────────
+
+def ensure_persistence_schema(engine):
+    """Columns + history table for tracking themes over time."""
+    with engine.begin() as conn:
+        conn.execute(text("""
+            ALTER TABLE meta_themes ADD COLUMN IF NOT EXISTS first_seen TIMESTAMP DEFAULT NOW();
+            ALTER TABLE meta_themes ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+            UPDATE meta_themes SET first_seen = updated_at WHERE first_seen IS NULL;
+            CREATE TABLE IF NOT EXISTS theme_history (
+                id             SERIAL PRIMARY KEY,
+                meta_theme_id  INTEGER NOT NULL,
+                theme_name     VARCHAR(200),
+                snapshot_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+                momentum       VARCHAR(20),
+                momentum_evidence TEXT,
+                company_count  INTEGER,
+                avg_alignment  DOUBLE PRECISION,
+                UNIQUE (meta_theme_id, snapshot_date)
+            );
+        """))
+
+
+def load_existing_themes(engine) -> list[dict]:
+    """Active canonical themes — the accumulated knowledge each build evolves."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT name, description, momentum FROM meta_themes
+            WHERE COALESCE(status, 'active') = 'active'
+            ORDER BY company_count DESC NULLS LAST
+        """)).fetchall()
+    return [{"name": r[0], "description": r[1], "momentum": r[2]} for r in rows]
+
+
+def snapshot_theme_history(engine):
+    """Append today's state of every active theme to theme_history."""
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO theme_history
+                (meta_theme_id, theme_name, snapshot_date, momentum,
+                 momentum_evidence, company_count, avg_alignment)
+            SELECT mt.id, mt.name, CURRENT_DATE, mt.momentum,
+                   mt.constituent_themes->>'momentum_evidence',
+                   mt.company_count,
+                   (SELECT AVG(sta.alignment_score) FROM stock_theme_alignment sta
+                    WHERE sta.meta_theme_id = mt.id AND sta.alignment_score >= 0.55)
+            FROM meta_themes mt
+            WHERE COALESCE(mt.status, 'active') = 'active'
+            ON CONFLICT (meta_theme_id, snapshot_date) DO UPDATE SET
+                momentum          = EXCLUDED.momentum,
+                momentum_evidence = EXCLUDED.momentum_evidence,
+                company_count     = EXCLUDED.company_count,
+                avg_alignment     = EXCLUDED.avg_alignment
+        """))
+    print("  ✓ Theme history snapshot written")
+
+
+# ─────────────────────────────────────────────────────────────
 # PHASE 2: CLUSTER RAW THEMES INTO META-THEMES
 # ─────────────────────────────────────────────────────────────
 
@@ -88,9 +148,31 @@ def build_meta_themes(engine, client):
 
     print("\n🧠 Pass 1: Identifying canonical meta-theme names...")
 
-    prompt1 = f"""Below are narrative themes extracted from S&P 500 SEC filings across all sectors.
+    existing = load_existing_themes(engine)
+    existing_block = ""
+    if existing:
+        listed = "\n".join(f"- {t['name']}: {t['description']} [momentum: {t['momentum']}]"
+                           for t in existing)
+        existing_block = f"""
+ESTABLISHED CANONICAL THEMES (our accumulated knowledge base):
+{listed}
 
-Identify 20–30 canonical meta-themes — the TRUE underlying structural forces that
+Evolution rules — these override everything else:
+1. PRESERVE these theme names EXACTLY. Never rename, merge, or split an
+   established theme. Continuity is how we detect narratives emerging over time.
+2. Map raw themes onto established themes wherever they fit.
+3. UPDATE momentum (with fresh evidence) for established themes when the raw
+   themes show a real change — this is how a theme "turns" in our records.
+4. Propose a NEW theme only for a structural force genuinely NOT covered above.
+   New themes are how we catch the next narrative early — but a new name for
+   an old force pollutes the knowledge base.
+5. If an established theme has essentially vanished from current filings,
+   return it with momentum "fading".
+"""
+
+    prompt1 = f"""Below are narrative themes extracted from S&P 500 SEC filings across all sectors.
+{existing_block}
+Identify the canonical meta-themes — the TRUE underlying structural forces that
 different companies describe differently. Cluster by meaning, not wording.
 
 Example: "AI-driven cost reduction" (bank) + "AI inventory optimisation" (retailer) +
@@ -407,8 +489,10 @@ def run_meta_theme_build():
     engine = get_engine()
     client = Anthropic()
 
+    ensure_persistence_schema(engine)
+
     print("=" * 70)
-    print("PHASE 2 — META-THEME CLUSTERING")
+    print("PHASE 2 — META-THEME CLUSTERING (evolving established themes)")
     print("=" * 70)
 
     meta_themes = build_meta_themes(engine, client)
@@ -417,11 +501,26 @@ def run_meta_theme_build():
 
     store_meta_themes(engine, meta_themes)
 
+    # Themes the build no longer returns are retired from active duty but
+    # kept (with their history) — knowledge is accumulated, never discarded.
+    returned_names = [t["name"] for t in meta_themes]
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE meta_themes SET status = 'inactive'
+            WHERE name != ALL(:names) AND COALESCE(status,'active') = 'active'
+        """), {"names": returned_names})
+        conn.execute(text("""
+            UPDATE meta_themes SET status = 'active'
+            WHERE name = ANY(:names)
+        """), {"names": returned_names})
+
     print("\n" + "=" * 70)
     print("PHASE 3 — STOCK ALIGNMENT SCORING")
     print("=" * 70)
 
     score_stock_alignments(engine, client)
+
+    snapshot_theme_history(engine)
 
     print("\n" + "=" * 70)
     print("✅ META-NARRATIVE BUILD COMPLETE")

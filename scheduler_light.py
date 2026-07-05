@@ -572,6 +572,14 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Narrative exposure scoring failed", e)
 
+    _step("5e", "Narrative lifecycle (candidates, promotions, falsification)")
+    try:
+        from pipeline.narrative_lifecycle import run_lifecycle
+        run_lifecycle()
+        _ok("Lifecycle evaluated")
+    except Exception as e:
+        _err("Narrative lifecycle failed", e)
+
     _step(6, "Historical metrics refresh (FMP quarterly)")
     try:
         from pipeline.fmp_historical import fetch_historical_metrics

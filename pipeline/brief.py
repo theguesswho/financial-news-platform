@@ -103,34 +103,27 @@ def _gather_signals(session: Session) -> dict:
         ORDER BY total_value DESC LIMIT 5
     """), {"cutoff": date.today() - timedelta(days=14)}).fetchall()
 
-    # Meta-narrative evolution: momentum turns and newly emerged themes
+    # Narrative brain lifecycle events: promotions, declines, new candidates
     theme_shifts = []
     try:
         theme_shifts = session.execute(text("""
-            WITH ranked AS (
-                SELECT meta_theme_id, theme_name, momentum, momentum_evidence,
-                       snapshot_date,
-                       LAG(momentum) OVER (PARTITION BY meta_theme_id
-                                           ORDER BY snapshot_date) AS prev_momentum
-                FROM theme_history
-            )
-            SELECT theme_name, prev_momentum, momentum, momentum_evidence
-            FROM ranked
-            WHERE snapshot_date >= CURRENT_DATE - 14
-              AND prev_momentum IS NOT NULL
-              AND momentum IS DISTINCT FROM prev_momentum
+            SELECT nar.name, ev.event_type, ev.from_tier, ev.to_tier, ev.reason
+            FROM narrative_events ev
+            JOIN narratives nar ON nar.id = ev.narrative_id
+            WHERE ev.created_at >= NOW() - INTERVAL '7 days'
+              AND ev.event_type IN ('promoted', 'declining', 'recovered', 'created')
+            ORDER BY ev.created_at DESC LIMIT 10
         """)).fetchall()
     except Exception:
-        pass  # theme_history appears after the first evolved build
+        pass
 
     emerging = []
     try:
         emerging = session.execute(text("""
-            SELECT name, description, constituent_themes->>'momentum_evidence'
-            FROM meta_themes
-            WHERE COALESCE(status, 'active') = 'active'
-              AND first_seen >= NOW() - INTERVAL '21 days'
-              AND name NOT ILIKE '%idiosyncratic%'
+            SELECT name, description, thesis
+            FROM narratives
+            WHERE status = 'active' AND tier IN ('candidate', 'emerging')
+              AND created_at >= NOW() - INTERVAL '21 days'
         """)).fetchall()
     except Exception:
         pass
@@ -151,18 +144,17 @@ def _build_prompt(signals: dict) -> str:
     lines = []
 
     if signals.get("theme_shifts"):
-        lines.append("META-NARRATIVE MOMENTUM SHIFTS (a structural theme just turned):")
+        lines.append("NARRATIVE LIFECYCLE EVENTS (last 7 days — the brain moved):")
         for t in signals["theme_shifts"]:
-            lines.append(f"  {t.theme_name}: {t.prev_momentum} -> {t.momentum}")
-            if t.momentum_evidence:
-                lines.append(f"    Evidence: {t.momentum_evidence}")
+            move = f"{t[2]} -> {t[3]}" if t[2] or t[3] else t[1]
+            lines.append(f"  {t[0]}: {t[1].upper()} ({move})")
+            if t[4]:
+                lines.append(f"    Reason: {str(t[4])[:200]}")
 
     if signals.get("emerging"):
-        lines.append("\nNEWLY EMERGED META-THEMES (first detected within 3 weeks):")
+        lines.append("\nNEW CANDIDATE/EMERGING NARRATIVES (detected within 3 weeks):")
         for t in signals["emerging"]:
-            lines.append(f"  {t[0]}: {t[1]}")
-            if t[2]:
-                lines.append(f"    Evidence: {t[2]}")
+            lines.append(f"  {t[0]}: {t[1] or t[2]}")
 
     if signals["tier_moves"]:
         lines.append("TIER CHANGES SINCE LAST SNAPSHOT:")

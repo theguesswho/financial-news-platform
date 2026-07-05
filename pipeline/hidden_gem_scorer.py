@@ -788,6 +788,19 @@ def score_all_stocks(engine=None) -> list:
     gap       = compute_gap_score(engine)
     call_gap  = compute_call_vs_filing_gap(engine)  # for display in results
 
+    # Valuation vs narrative peers (Dell detector) — per stock, the discount
+    # on its highest-exposure narrative. Positive = cheaper than peers.
+    peer_disc: dict[str, float] = {}
+    with engine.connect() as conn:
+        disc_rows = conn.execute(text("""
+            SELECT DISTINCT ON (symbol) symbol,
+                   COALESCE(pe_discount, ev_discount) AS disc
+            FROM theme_valuation_gaps
+            WHERE COALESCE(pe_discount, ev_discount) IS NOT NULL
+            ORDER BY symbol, alignment_score DESC
+        """)).fetchall()
+        peer_disc = {r[0]: max(-1.0, min(1.0, float(r[1]))) for r in disc_rows}
+
     # Top accelerating themes per stock for display
     with engine.connect() as conn:
         theme_rows = conn.execute(text("""
@@ -871,18 +884,28 @@ def score_all_stocks(engine=None) -> list:
             elif earn_gr < 0 and rev_gr >= 0 and n < 0.40:
                 gem *= 0.75
 
-        # ── Gap multiplier ─────────────────────────────────────────────────────
-        # Rewards stocks where the market hasn't yet priced the narrative.
-        # Penalises stocks that are well-known and fully repriced (e.g. NVDA today).
-        # Base range: ×0.70 (gap=0, fully priced) → ×1.20 (gap=1.0, market is wrong).
-        # Crossover at gap=0.60 → ×1.00 (neutral).
-        # For quality businesses (ROIC>15%, quality>0.65) with extreme repricing
-        # (gap>0.80), extend ceiling to ×1.40 — the dislocation is material.
+        # ── Mispricing gate ────────────────────────────────────────────────────
+        # The thesis is the GAP: a strong narrative alone is not a gem — the
+        # market must not have priced it yet. Two multiplicative components:
+        #
+        # 1. Price-lag gap: ×0.45 (fully priced) → ×1.20 (market clearly lagging).
+        #    A stock the market has already repriced gets nearly halved — a
+        #    super-strong narrative cannot carry a fully-priced stock on board.
         g = gap.get(sym, 0.50)   # default neutral if no gap data
-        gap_mult = 0.70 + 0.50 * g
-        if roic_f > 0.15 and q >= 0.65 and g >= 0.80:
-            gap_mult = min(gap_mult + 0.20, 1.40)
+        gap_mult = 0.45 + 0.75 * g
         gem = min(gem * gap_mult, 1.0)
+
+        # 2. Narrative-peer valuation (the Dell detector, from the brain):
+        #    trading at a premium to the peers exposed to the SAME narrative
+        #    means the market already believes — penalise. A discount means
+        #    the market still prices the legacy category — reward.
+        disc = peer_disc.get(sym)
+        if disc is not None:
+            if disc >= 0:
+                gem *= min(1.0 + 0.30 * disc, 1.25)
+            else:
+                gem *= max(1.0 + 0.60 * disc, 0.55)
+        gem = min(gem, 1.0)
 
         # call_filing_gap: raw normalised gap score for display (0.50 = neutral)
         cfg = call_gap.get(sym, 0.50)

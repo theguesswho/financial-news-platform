@@ -107,24 +107,28 @@ def archive_leaderboard(engine, gems=None) -> dict:
                 "gap_score":       g.get("gap_score"),
             })
 
-    with engine.connect() as conn:
-        conn.execute(text("""
-            INSERT INTO leaderboard_history
-                (date, symbol, gem_score, tier, rank,
-                 narrative_score, value_score, quality_score, gap_score)
-            VALUES
-                (:date, :symbol, :gem_score, :tier, :rank,
-                 :narrative_score, :value_score, :quality_score, :gap_score)
-            ON CONFLICT (date, symbol) DO UPDATE SET
-                gem_score       = EXCLUDED.gem_score,
-                tier            = EXCLUDED.tier,
-                rank            = EXCLUDED.rank,
-                narrative_score = EXCLUDED.narrative_score,
-                value_score     = EXCLUDED.value_score,
-                quality_score   = EXCLUDED.quality_score,
-                gap_score       = EXCLUDED.gap_score
-        """), rows)
-        conn.commit()
+    upsert = text("""
+        INSERT INTO leaderboard_history
+            (date, symbol, gem_score, tier, rank,
+             narrative_score, value_score, quality_score, gap_score)
+        VALUES
+            (:date, :symbol, :gem_score, :tier, :rank,
+             :narrative_score, :value_score, :quality_score, :gap_score)
+        ON CONFLICT (date, symbol) DO UPDATE SET
+            gem_score       = EXCLUDED.gem_score,
+            tier            = EXCLUDED.tier,
+            rank            = EXCLUDED.rank,
+            narrative_score = EXCLUDED.narrative_score,
+            value_score     = EXCLUDED.value_score,
+            quality_score   = EXCLUDED.quality_score,
+            gap_score       = EXCLUDED.gap_score
+    """)
+    # Chunked with per-chunk commits — a single 500-row payload can be killed
+    # mid-send by the Railway proxy when written from outside the datacenter.
+    CHUNK = 100
+    for i in range(0, len(rows), CHUNK):
+        with engine.begin() as conn:
+            conn.execute(upsert, rows[i:i + CHUNK])
 
     return {"archived": len(rows), "on_board": len(on_board)}
 

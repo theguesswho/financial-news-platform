@@ -695,9 +695,9 @@ if px_rows:
         # Gem score vs the tier thresholds — shows distance to upgrade/downgrade
         y_max = max(0.70, float(sc_df["Gem Score"].max()) + 0.05)
         tiers = pd.DataFrame([
-            {"y0": 0.58, "y1": y_max, "tier": "Strong Buy", "color": "#dcfce7"},
-            {"y0": 0.46, "y1": 0.58,  "tier": "Buy",        "color": "#dbeafe"},
-            {"y0": 0.34, "y1": 0.46,  "tier": "Watch",      "color": "#fef9c3"},
+            {"y0": 0.60, "y1": y_max, "tier": "Strong Buy", "color": "#dcfce7"},
+            {"y0": 0.52, "y1": 0.60,  "tier": "Buy",        "color": "#dbeafe"},
+            {"y0": 0.47, "y1": 0.52,  "tier": "Watch",      "color": "#fef9c3"},
         ])
         bands = alt.Chart(tiers).mark_rect(opacity=0.45).encode(
             y="y0:Q", y2="y1:Q",
@@ -711,7 +711,7 @@ if px_rows:
             tooltip=[alt.Tooltip("date:T"), alt.Tooltip("Gem Score:Q", format=".3f")],
         )
         st.altair_chart((bands + score_line).properties(height=220), use_container_width=True)
-        st.caption("Gem score against tier bands (green = Strong Buy ≥0.58, blue = Buy ≥0.46, yellow = Watch ≥0.34). "
+        st.caption("Gem score against tier bands (green = Strong Buy ≥0.60, blue = Buy ≥0.52, yellow = Watch ≥0.47). "
                    "How close is this stock to an upgrade or downgrade?")
 
         with st.expander("What's driving the score? (component history)"):

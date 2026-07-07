@@ -114,7 +114,7 @@ def get_tier(score: float) -> str | None:
     Scores are lower than the old formula by design: you cannot reach
     Strong Buy without a strong secular tailwind narrative (n > ~0.80).
 
-      Strong Buy  > 0.58  — narrative firing + cheap + quality
+      Strong Buy  > 0.60  — narrative firing + cheap + quality
       Buy         0.46–0.58 — two legs strong, narrative present
       Watch       0.34–0.46 — interesting but narrative weak or partial
     Below 0.34 = no narrative signal, do not flag.

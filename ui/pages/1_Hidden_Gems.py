@@ -1,9 +1,9 @@
 """
 Hidden Gem Leaderboard — your daily conviction check.
 
-Tier 1: Strong Buy  (gem > 0.58)
-Tier 2: Buy         (0.46 – 0.58)
-Tier 3: Watch       (0.34 – 0.46)
+Tier 1: Strong Buy  (gem > 0.60)
+Tier 2: Buy         (0.52 – 0.60)
+Tier 3: Watch       (0.47 – 0.52)
 
 Top 25 stocks have been qualitatively assessed by Claude Sonnet
 with specific bull/bear write-ups and tier adjustments.
@@ -296,9 +296,9 @@ with st.spinner("Loading scores…"):
 # ── Helper fns ────────────────────────────────────────────────────────────────
 def tier_for(score):
     if score is None: return None
-    if score > 0.58:  return "Strong Buy"
-    if score > 0.46:  return "Buy"
-    if score > 0.34:  return "Watch"
+    if score > 0.60:  return "Strong Buy"
+    if score > 0.52:  return "Buy"
+    if score > 0.47:  return "Watch"
     return None
 
 def tier_css(tier):

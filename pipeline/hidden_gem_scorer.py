@@ -214,25 +214,21 @@ def compute_narrative_score(engine) -> dict:
                 w = 0.60
             per_stock.setdefault(sym, []).append(float(exposure) * w)
 
-        # Dominant exposure + small kicker for a genuine second narrative.
-        # Then percentile-rank across exposed stocks: ~90% of large caps have
-        # SOME narrative exposure, so absolute values alone don't discriminate —
-        # the gate must separate "the business IS the narrative" (DELL, 0.78
-        # with a cited 51B backlog) from "meaningful contributor" (0.35).
+        # Dominant exposure + small kicker for a genuine second narrative,
+        # then min-max normalised across the universe — same normalisation the
+        # original methodology applied to its theme signal. The narrative brain
+        # only changes WHAT n measures (cited exposure, not cosine mush), not
+        # how it enters the formula.
         raw = {}
         for sym, weighted in per_stock.items():
             ws = sorted(weighted, reverse=True)
             raw[sym] = min(1.0, ws[0] + (0.15 * ws[1] if len(ws) > 1 else 0.0))
 
-        ranked = sorted(raw, key=raw.get)
-        n_exposed = len(ranked)
-        for i, sym in enumerate(ranked):
-            pct = (i + 1) / n_exposed
-            # Blend absolute exposure (60%) with percentile (40%): absolute
-            # keeps cited-evidence meaning, percentile restores discrimination.
-            theme_scores[sym] = 0.60 * raw[sym] + 0.40 * pct
+        min_val, max_val = min(raw.values()), max(raw.values())
+        spread = (max_val - min_val) or 1.0
+        theme_scores = {s: (v - min_val) / spread for s, v in raw.items()}
 
-    # Blend in call-vs-filing gap (15% weight)
+    # Blend in call-vs-filing gap (20% weight — original methodology)
     call_gap = compute_call_vs_filing_gap(engine)
 
     all_syms = set(theme_scores) | set(call_gap)
@@ -240,7 +236,7 @@ def compute_narrative_score(engine) -> dict:
     for sym in all_syms:
         t = theme_scores.get(sym, 0.0)
         g = call_gap.get(sym, 0.50)   # 0.50 = neutral when no gap data
-        blended[sym] = round(0.85 * t + 0.15 * g, 4)
+        blended[sym] = round(0.80 * t + 0.20 * g, 4)
 
     return blended
 
@@ -884,28 +880,20 @@ def score_all_stocks(engine=None) -> list:
             elif earn_gr < 0 and rev_gr >= 0 and n < 0.40:
                 gem *= 0.75
 
-        # ── Mispricing gate ────────────────────────────────────────────────────
-        # The thesis is the GAP: a strong narrative alone is not a gem — the
-        # market must not have priced it yet. Two multiplicative components:
-        #
-        # 1. Price-lag gap: ×0.45 (fully priced) → ×1.20 (market clearly lagging).
-        #    A stock the market has already repriced gets nearly halved — a
-        #    super-strong narrative cannot carry a fully-priced stock on board.
+        # ── Gap multiplier (original methodology) ─────────────────────────────
+        # Rewards stocks where the market hasn't yet priced the narrative.
+        # Penalises stocks that are well-known and fully repriced.
+        # Base range: ×0.70 (gap=0, fully priced) → ×1.20 (gap=1.0, market wrong).
+        # For quality businesses (ROIC>15%, quality>0.65) with extreme repricing
+        # (gap>0.80), extend ceiling to ×1.40 — the dislocation is material.
+        # The narrative-peer discount (Dell detector) is NOT a score multiplier:
+        # it is display + qual-assessor input. Next evolution folds narrative
+        # and mispricing into a single narrative-gap component.
         g = gap.get(sym, 0.50)   # default neutral if no gap data
-        gap_mult = 0.45 + 0.75 * g
+        gap_mult = 0.70 + 0.50 * g
+        if roic_f > 0.15 and q >= 0.65 and g >= 0.80:
+            gap_mult = min(gap_mult + 0.20, 1.40)
         gem = min(gem * gap_mult, 1.0)
-
-        # 2. Narrative-peer valuation (the Dell detector, from the brain):
-        #    trading at a premium to the peers exposed to the SAME narrative
-        #    means the market already believes — penalise. A discount means
-        #    the market still prices the legacy category — reward.
-        disc = peer_disc.get(sym)
-        if disc is not None:
-            if disc >= 0:
-                gem *= min(1.0 + 0.30 * disc, 1.25)
-            else:
-                gem *= max(1.0 + 0.60 * disc, 0.55)
-        gem = min(gem, 1.0)
 
         # call_filing_gap: raw normalised gap score for display (0.50 = neutral)
         cfg = call_gap.get(sym, 0.50)

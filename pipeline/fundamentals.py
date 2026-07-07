@@ -283,6 +283,7 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.price_vs_52w_high   = p_vs_hi
             row.sector              = info.get("sector") or None
             row.industry            = info.get("industry") or None
+            row.company_name        = info.get("shortName") or info.get("longName") or None
             row.analyst_rating      = info.get("recommendationKey") or None
             row.analyst_target_price = _safe(info.get("targetMeanPrice"))
             row.analysts_count      = info.get("numberOfAnalystOpinions") or None

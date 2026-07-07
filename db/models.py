@@ -81,6 +81,7 @@ class Fundamentals(Base):
     # ── Sector & Industry ──────────────────────────────────
     sector              = Column(String(100))
     industry            = Column(String(200))
+    company_name        = Column(String(200))
 
     # ── Market sentiment ───────────────────────────────────
     short_percent_float = Column(Numeric(10, 4))   # % of float shorted

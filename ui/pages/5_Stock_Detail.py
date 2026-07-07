@@ -218,7 +218,7 @@ def load_gem_scores():
 def load_company_names():
     engine = get_engine()
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT symbol, company_name FROM screener_results")).fetchall()
+        rows = conn.execute(text("SELECT symbol, company_name FROM fundamentals WHERE company_name IS NOT NULL")).fetchall()
     return {r[0]: r[1] for r in rows if r[1]}
 
 @st.cache_resource

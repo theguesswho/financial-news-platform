@@ -548,9 +548,9 @@ if qa:
     assessed_at  = qa[7]
 else:
     score = gem_score or 0
-    display_tier = ("Strong Buy" if score > 0.58 else
-                    "Buy" if score > 0.46 else
-                    "Watch" if score > 0.34 else None)
+    display_tier = ("Strong Buy" if score > 0.60 else
+                    "Buy" if score > 0.52 else
+                    "Watch" if score > 0.47 else None)
     direction    = "hold"
     rationale    = None
     key_bull     = None

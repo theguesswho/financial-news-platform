@@ -66,9 +66,12 @@ def archive_leaderboard(engine, gems=None) -> dict:
 
     def tier_for(s):
         if s is None: return None
-        if s > 0.58: return "Strong Buy"
-        if s > 0.46: return "Buy"
-        if s > 0.34: return "Watch"
+        # Recalibrated 2026-07-07 to the narrative-brain score distribution —
+        # the old 0.58/0.46/0.34 cutoffs were tuned to the legacy theme signal
+        # and let 130+ stocks on the board.
+        if s > 0.60: return "Strong Buy"
+        if s > 0.52: return "Buy"
+        if s > 0.47: return "Watch"
         return None
 
     TIER_ORDER = {"Strong Buy": 0, "Buy": 1, "Watch": 2}

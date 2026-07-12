@@ -40,7 +40,10 @@ def create_table(engine):
         """))
 
 
-BENCHMARKS = ("SPY", "MDY")   # large caps pair vs SPY; S&P 400 mid-caps vs MDY
+BENCHMARKS = ("SPY",)   # user decision 2026-07-12: SPY is THE benchmark for every lot,
+                        # mid-caps included — the bar is "would my money have done
+                        # better in the index I actually hold". (benchmark column and
+                        # multi-benchmark plumbing retained but inactive.)
 
 
 def _midcap_symbols() -> set:
@@ -121,7 +124,6 @@ def open_weekly_lots(engine) -> dict:
             bench_px = {b: _close_on_or_after(conn, b, wd) for b in BENCHMARKS}
             if bench_px["SPY"] is None:
                 continue
-            midcaps = _midcap_symbols()
             # Entry lot = symbol was not Strong Buy on any earlier snapshot
             prior_sb = {r[0] for r in conn.execute(text("""
                 SELECT DISTINCT symbol FROM leaderboard_history
@@ -131,8 +133,8 @@ def open_weekly_lots(engine) -> dict:
             rows = []
             for sym, t, score in picks:
                 px = _close_on_or_after(conn, sym, wd)
-                bmk = "MDY" if sym in midcaps else "SPY"
-                b_px = bench_px.get(bmk) or bench_px["SPY"]
+                bmk = "SPY"
+                b_px = bench_px["SPY"]
                 if px is None or b_px is None:
                     continue
                 rows.append({"d": wd, "s": sym, "t": t, "g": float(score),

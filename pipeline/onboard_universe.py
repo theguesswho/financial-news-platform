@@ -78,13 +78,24 @@ def phase_prices(engine, symbols: list[str], days: int = 230):
                              "o": float(r["Open"]), "h": float(r["High"]),
                              "l": float(r["Low"]), "c": float(r["Close"]),
                              "v": int(r["Volume"] or 0)})
-        for j in range(0, len(rows), 500):
-            with engine.begin() as conn:
-                conn.execute(text("""
-                    INSERT INTO eod_prices (symbol, date, open, high, low, close, volume)
-                    VALUES (:s, :d, :o, :h, :l, :c, :v)
-                    ON CONFLICT (symbol, date) DO NOTHING
-                """), rows[j:j + 500])
+        # Small chunks + retry: writes cross the Railway proxy from outside
+        # the datacenter and occasionally time out mid-send.
+        for j in range(0, len(rows), 150):
+            piece = rows[j:j + 150]
+            for attempt in range(3):
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text("""
+                            INSERT INTO eod_prices (symbol, date, open, high, low, close, volume)
+                            VALUES (:s, :d, :o, :h, :l, :c, :v)
+                            ON CONFLICT (symbol, date) DO NOTHING
+                        """), piece)
+                    break
+                except Exception as exc:
+                    if attempt == 2:
+                        raise
+                    print(f"    write retry {attempt+1} ({exc})", flush=True)
+                    time.sleep(5)
         total += len(rows)
         print(f"    prices: {min(i+25, len(symbols))}/{len(symbols)} tickers, {total} rows", flush=True)
         time.sleep(1)

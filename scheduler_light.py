@@ -272,6 +272,17 @@ def daily_data_update():
     except Exception as e:
         _err("Qual sweep failed", e)
 
+    _step("8b", "Track record — open weekly lots (no-op unless new week)")
+    try:
+        from pipeline.track_record import open_weekly_lots
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        r = open_weekly_lots(eng)
+        eng.dispose()
+        _ok(f"Track record: {r}")
+    except Exception as e:
+        _err("Track record failed", e)
+
     _step(9, "Daily brief")
     try:
         _ensure_brief()

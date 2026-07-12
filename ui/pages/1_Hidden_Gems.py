@@ -445,6 +445,48 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ── Track record: weekly $1,000 Strong Buy lots vs paired SPY twins ──────────
+@st.cache_data(ttl=900)
+def load_scorecard():
+    try:
+        from pipeline.track_record import get_scorecard
+        return get_scorecard(get_engine())
+    except Exception:
+        return None
+
+_sc = load_scorecard()
+if _sc and _sc["n_lots"]:
+    _pdelta = _sc["portfolio_return_pct"] - _sc["spy_return_pct"]
+    _pcol = "#16a34a" if _pdelta >= 0 else "#dc2626"
+    st.markdown(f"""
+<div class="stats-bar" style="margin-top:0.5rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+  <div class="stat-item">
+    <div class="stat-num" style="color:{_pcol}">{_sc['portfolio_return_pct']:+.1f}%</div>
+    <div class="stat-lbl">📈 Strong Buy portfolio</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">{_sc['spy_return_pct']:+.1f}%</div>
+    <div class="stat-lbl">S&P 500 (paired)</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num" style="color:{_pcol}">{_pdelta:+.1f}pp</div>
+    <div class="stat-lbl">Edge vs index</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">{_sc['lots_beating_spy']}/{_sc['n_lots']}</div>
+    <div class="stat-lbl">Lots beating SPY</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">{_sc['entry_lots_beating']}/{_sc['n_entry_lots']}</div>
+    <div class="stat-lbl">Entry signals beating</div>
+  </div>
+</div>
+<div style="font-size:0.72rem; color:#94a3b8; margin:0.3rem 0 1rem;">
+Track record: USD 1,000 into every Strong Buy each week, each lot paired with a same-day
+USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed. Started
+{_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f} deployed.
+</div>""", unsafe_allow_html=True)
+
 # ── Render stock cards ────────────────────────────────────────────────────────
 display_stocks = filtered if show_all else [g for g in filtered if g["display_tier"] is not None]
 

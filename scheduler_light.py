@@ -707,6 +707,13 @@ def start_scheduler():
 
 if __name__ == "__main__":
     scheduler = start_scheduler()
+
+    # Drain the onboarding queue at startup too — a deploy shouldn't make a
+    # pending chunk wait for the next cron slot. Separate thread so scheduled
+    # jobs fire on time regardless. status='running' guard prevents overlap.
+    import threading
+    threading.Thread(target=_process_onboarding_queue, name="onboarding").start()
+
     import time
     try:
         while True:

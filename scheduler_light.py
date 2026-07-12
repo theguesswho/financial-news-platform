@@ -135,6 +135,46 @@ def _qual_sweep(gems=None):
     eng.dispose()
 
 
+# ── Universe onboarding queue ─────────────────────────────────────────────────
+# Heavy backfills must run HERE, next to the DB — never from a laptop through
+# the proxy. Enqueue a chunk by inserting into onboarding_queue; the next
+# scheduled run picks it up (one per run) and stores the readiness report.
+
+def _process_onboarding_queue():
+    import json as _json
+    from pipeline.hidden_gem_scorer import get_engine
+    eng = get_engine()
+    with eng.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, chunk_path FROM onboarding_queue
+            WHERE status = 'pending' ORDER BY id LIMIT 1
+        """)).fetchone()
+    if not row:
+        eng.dispose()
+        return
+    qid, chunk = row
+    _banner(f"ONBOARDING QUEUE — {chunk}")
+    with eng.begin() as conn:
+        conn.execute(text("UPDATE onboarding_queue SET status='running' WHERE id=:i"), {"i": qid})
+    try:
+        from pipeline.onboard_universe import onboard
+        rep = onboard(chunk, apply=False)
+        with eng.begin() as conn:
+            conn.execute(text("""
+                UPDATE onboarding_queue SET status='done', finished_at=NOW(),
+                    report=:r WHERE id=:i
+            """), {"r": _json.dumps({"ready": rep["ready"], "partial": rep["partial"],
+                                      "exposed": rep["exposed_count"]}), "i": qid})
+        _ok(f"Onboarding done: {len(rep['ready'])} ready, {len(rep['partial'])} partial")
+    except Exception as e:
+        _err("Onboarding failed", e)
+        with eng.begin() as conn:
+            conn.execute(text(
+                "UPDATE onboarding_queue SET status='failed', finished_at=NOW() WHERE id=:i"),
+                {"i": qid})
+    eng.dispose()
+
+
 # ── Daily brief (self-healing: no-op if today's brief already exists) ────────
 
 def _ensure_brief():
@@ -321,6 +361,11 @@ def daily_data_update():
         _ok(f"{generated} synopses generated")
     except Exception as e:
         _err("Synopsis generation failed", e)
+
+    try:
+        _process_onboarding_queue()
+    except Exception as e:
+        _err("Onboarding queue failed", e)
 
     if engine:
         engine.dispose()
@@ -612,6 +657,11 @@ def weekly_deep_refresh():
         _ok("Fundamentals history refreshed")
     except Exception as e:
         _err("Fundamentals history failed", e)
+
+    try:
+        _process_onboarding_queue()
+    except Exception as e:
+        _err("Onboarding queue failed", e)
 
     _banner("WEEKLY DEEP REFRESH COMPLETE")
 

@@ -487,6 +487,40 @@ USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed. S
 {_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f} deployed.
 </div>""", unsafe_allow_html=True)
 
+    with st.expander("📊 Holdings breakdown — every lot vs its SPY twin"):
+        _by_sym = {}
+        for l in _sc["lots"]:
+            b = _by_sym.setdefault(l["symbol"], {"lots": 0, "inv": 0.0, "val": 0.0, "spy": 0.0})
+            b["lots"] += 1
+            b["inv"] += l["invested"]
+            b["val"] += l["stock_value"]
+            b["spy"] += l["spy_value"]
+
+        _names = load_company_names()
+        _hold = pd.DataFrame([{
+            "Stock": f"{s} — {_names.get(s, '')}"[:44],
+            "Weeks bought": b["lots"],
+            "Invested": b["inv"],
+            "Value now": round(b["val"], 0),
+            "Return %": round((b["val"] / b["inv"] - 1) * 100, 1),
+            "vs SPY (pp)": round((b["val"] - b["spy"]) / b["inv"] * 100, 1),
+        } for s, b in _by_sym.items()]).sort_values("Invested", ascending=False)
+        st.markdown("**By stock** — weekly buys accumulate while a stock stays Strong Buy; "
+                    "buying stops when it drops out, holdings are kept.")
+        st.dataframe(_hold, use_container_width=True, hide_index=True)
+
+        _lotdf = pd.DataFrame([{
+            "Week": l["lot_date"].strftime("%b %d"),
+            "Stock": l["symbol"],
+            "Entry signal": "★" if l["is_entry"] else "",
+            "Value now": l["stock_value"],
+            "SPY twin": l["spy_value"],
+            "vs SPY %": l["vs_spy_pct"],
+            "Beating": "✓" if l["beat"] else "✗",
+        } for l in _sc["lots"]])
+        st.markdown("**Every lot** (USD 1,000 each) vs its same-day SPY twin. ★ = week the stock first became Strong Buy.")
+        st.dataframe(_lotdf, use_container_width=True, hide_index=True)
+
 # ── Render stock cards ────────────────────────────────────────────────────────
 display_stocks = filtered if show_all else [g for g in filtered if g["display_tier"] is not None]
 

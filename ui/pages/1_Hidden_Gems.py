@@ -502,8 +502,9 @@ USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed. S
             "Weeks bought": b["lots"],
             "Invested": b["inv"],
             "Value now": round(b["val"], 0),
-            "Return %": round((b["val"] / b["inv"] - 1) * 100, 1),
-            "vs SPY (pp)": round((b["val"] - b["spy"]) / b["inv"] * 100, 1),
+            "Our return %": round((b["val"] / b["inv"] - 1) * 100, 1),
+            "Same $ in S&P %": round((b["spy"] / b["inv"] - 1) * 100, 1),
+            "Pick's edge (pp)": round((b["val"] - b["spy"]) / b["inv"] * 100, 1),
         } for s, b in _by_sym.items()]).sort_values("Invested", ascending=False)
         st.markdown("**By stock** — weekly buys accumulate while a stock stays Strong Buy; "
                     "buying stops when it drops out, holdings are kept.")
@@ -513,12 +514,13 @@ USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed. S
             "Week": l["lot_date"].strftime("%b %d"),
             "Stock": l["symbol"],
             "Entry signal": "★" if l["is_entry"] else "",
-            "Value now": l["stock_value"],
-            "SPY twin": l["spy_value"],
-            "vs SPY %": l["vs_spy_pct"],
+            "Stock value": l["stock_value"],
+            "S&P twin value": l["spy_value"],
+            "Edge (pp)": l["vs_spy_pct"],
             "Beating": "✓" if l["beat"] else "✗",
         } for l in _sc["lots"]])
-        st.markdown("**Every lot** (USD 1,000 each) vs its same-day SPY twin. ★ = week the stock first became Strong Buy.")
+        st.markdown("**Every lot**: USD 1,000 in the stock and USD 1,000 in the S&P, bought the same day. "
+                    "'Edge' = stock value minus twin value, as % of the 1,000. ★ = week the stock first became Strong Buy.")
         st.dataframe(_lotdf, use_container_width=True, hide_index=True)
 
 # ── Render stock cards ────────────────────────────────────────────────────────

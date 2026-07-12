@@ -33,33 +33,48 @@ def create_table(engine):
                 is_entry     BOOLEAN DEFAULT FALSE,  -- first time this stock hit Strong Buy
                 entry_price  NUMERIC(12,4),
                 spy_price    NUMERIC(12,4),
+                benchmark    VARCHAR(10) DEFAULT 'SPY',
                 amount       NUMERIC(10,2) DEFAULT 1000,
                 UNIQUE (lot_date, symbol)
             )
         """))
 
 
-def _ensure_spy_prices(engine):
-    """SPY closes into eod_prices — needed for twins and valuation."""
+BENCHMARKS = ("SPY", "MDY")   # large caps pair vs SPY; S&P 400 mid-caps vs MDY
+
+
+def _midcap_symbols() -> set:
+    """Union of the midcap chunk files — these lots benchmark against MDY."""
+    from pathlib import Path
+    out = set()
+    cfg = Path(__file__).parent.parent / "config"
+    for p in cfg.glob("midcap_chunk*.txt"):
+        out |= {l.strip().upper() for l in open(p) if l.strip()}
+    return out
+
+
+def _ensure_benchmark_prices(engine):
+    """SPY + MDY closes into eod_prices — needed for twins and valuation."""
     import yfinance as yf
-    with engine.connect() as conn:
-        last = conn.execute(text(
-            "SELECT MAX(date) FROM eod_prices WHERE symbol='SPY'")).scalar()
-    start = (last + timedelta(days=1)) if last else date(2026, 6, 1)
-    if start > date.today():
-        return
-    hist = yf.Ticker("SPY").history(start=str(start), auto_adjust=True)
-    if hist.empty:
-        return
-    rows = [{"d": idx.date(), "o": float(r["Open"]), "h": float(r["High"]),
-             "l": float(r["Low"]), "c": float(r["Close"]), "v": int(r["Volume"])}
-            for idx, r in hist.iterrows()]
-    with engine.begin() as conn:
-        conn.execute(text("""
-            INSERT INTO eod_prices (symbol, date, open, high, low, close, volume)
-            VALUES ('SPY', :d, :o, :h, :l, :c, :v)
-            ON CONFLICT (symbol, date) DO NOTHING
-        """), rows)
+    for etf in BENCHMARKS:
+        with engine.connect() as conn:
+            last = conn.execute(text(
+                "SELECT MAX(date) FROM eod_prices WHERE symbol=:s"), {"s": etf}).scalar()
+        start = (last + timedelta(days=1)) if last else date(2026, 6, 1)
+        if start > date.today():
+            continue
+        hist = yf.Ticker(etf).history(start=str(start), auto_adjust=True)
+        if hist.empty:
+            continue
+        rows = [{"s": etf, "d": idx.date(), "o": float(r["Open"]), "h": float(r["High"]),
+                 "l": float(r["Low"]), "c": float(r["Close"]), "v": int(r["Volume"])}
+                for idx, r in hist.iterrows()]
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO eod_prices (symbol, date, open, high, low, close, volume)
+                VALUES (:s, :d, :o, :h, :l, :c, :v)
+                ON CONFLICT (symbol, date) DO NOTHING
+            """), rows)
 
 
 def _close_on_or_after(conn, symbol: str, d: date):
@@ -76,7 +91,10 @@ def open_weekly_lots(engine) -> dict:
     Idempotent — safe to call every day.
     """
     create_table(engine)
-    _ensure_spy_prices(engine)
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS benchmark VARCHAR(10) DEFAULT 'SPY'"))
+    _ensure_benchmark_prices(engine)
 
     with engine.connect() as conn:
         # First snapshot date of each ISO week in the archive
@@ -100,9 +118,10 @@ def open_weekly_lots(engine) -> dict:
             """), {"d": wd}).fetchall()
             if not picks:
                 continue
-            spy = _close_on_or_after(conn, "SPY", wd)
-            if spy is None:
+            bench_px = {b: _close_on_or_after(conn, b, wd) for b in BENCHMARKS}
+            if bench_px["SPY"] is None:
                 continue
+            midcaps = _midcap_symbols()
             # Entry lot = symbol was not Strong Buy on any earlier snapshot
             prior_sb = {r[0] for r in conn.execute(text("""
                 SELECT DISTINCT symbol FROM leaderboard_history
@@ -112,17 +131,19 @@ def open_weekly_lots(engine) -> dict:
             rows = []
             for sym, t, score in picks:
                 px = _close_on_or_after(conn, sym, wd)
-                if px is None:
+                bmk = "MDY" if sym in midcaps else "SPY"
+                b_px = bench_px.get(bmk) or bench_px["SPY"]
+                if px is None or b_px is None:
                     continue
                 rows.append({"d": wd, "s": sym, "t": t, "g": float(score),
-                             "e": sym not in prior_sb,
-                             "px": float(px), "spy": float(spy)})
+                             "e": sym not in prior_sb, "b": bmk,
+                             "px": float(px), "spy": float(b_px)})
         if rows:
             with engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO track_lots
-                        (lot_date, symbol, tier, gem_score, is_entry, entry_price, spy_price)
-                    VALUES (:d, :s, :t, :g, :e, :px, :spy)
+                        (lot_date, symbol, tier, gem_score, is_entry, entry_price, spy_price, benchmark)
+                    VALUES (:d, :s, :t, :g, :e, :px, :spy, :b)
                     ON CONFLICT (lot_date, symbol) DO NOTHING
                 """), rows)
             opened += len(rows)
@@ -134,7 +155,7 @@ def open_weekly_lots(engine) -> dict:
 
 def get_scorecard(engine) -> dict:
     """Mark-to-market every lot against its SPY twin."""
-    _ensure_spy_prices(engine)
+    _ensure_benchmark_prices(engine)
     with engine.connect() as conn:
         rows = conn.execute(text("""
             WITH latest AS (
@@ -147,7 +168,7 @@ def get_scorecard(engine) -> dict:
                    tl.spy_price,  lspy.close AS spy_now
             FROM track_lots tl
             JOIN latest ls   ON ls.symbol = tl.symbol AND ls.rn = 1
-            JOIN latest lspy ON lspy.symbol = 'SPY'   AND lspy.rn = 1
+            JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY') AND lspy.rn = 1
             ORDER BY tl.lot_date, tl.symbol
         """)).fetchall()
 

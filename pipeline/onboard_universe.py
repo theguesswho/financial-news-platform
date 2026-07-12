@@ -33,7 +33,10 @@ from sqlalchemy import text
 
 
 def _load_chunk(path: str) -> list[str]:
-    return [l.strip().upper() for l in open(path) if l.strip()]
+    p = Path(path)
+    if not p.exists():
+        p = root / path   # queue stores repo-relative paths; cwd may differ on Railway
+    return [l.strip().upper() for l in open(p) if l.strip()]
 
 
 def phase_validate(symbols: list[str]) -> tuple[list[str], list[str]]:

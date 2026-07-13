@@ -62,3 +62,13 @@ advocate.
 ### 10. Exposure re-scoring cadence (2026-07-11)
 Exposures refresh weekly; a transformative 8-K (major acquisition, segment
 sale) should trigger same-day re-judgement of that stock's exposures.
+
+### 11. New-entrant flag must persist all day (2026-07-12, user)
+The ★ New Entrant marker on the Hidden Gems page disappears on refresh — it is
+computed against the previous snapshot, so once a NEWER intraday snapshot
+exists (3 rescores/day), "new" evaporates within hours. User requirement: a
+stock that entered the board today keeps its flag for the ENTIRE day (arguably
+until the next trading day), so a refresh can't hide it. Fix: derive "new"
+from first-appearance date (e.g. earliest board date == today) rather than
+snapshot-over-snapshot diff. Note: pure UI/display logic — freeze-safe, could
+ship before v2 if wanted.

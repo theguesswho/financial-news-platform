@@ -72,3 +72,23 @@ until the next trading day), so a refresh can't hide it. Fix: derive "new"
 from first-appearance date (e.g. earliest board date == today) rather than
 snapshot-over-snapshot diff. Note: pure UI/display logic — freeze-safe, could
 ship before v2 if wanted.
+
+### 12. Portfolio integration (2026-07-14, user — tackle after mid-cap rollout settles)
+Merge the standalone portfolio-tracker (React+Firebase, ~/Desktop/portfolio-tracker —
+DO NOT MODIFY) into the platform. Survey done 2026-07-14:
+- Data: Firestore project my-portfolio-tracker-7270a (holdings, portfolio,
+  realized_gains), seeded from trades.csv — 720 trades since Aug 2022,
+  multi-currency incl. LSE/GBX positions. serviceAccountKey.json in folder.
+- Port the DATA (one-time copy into portfolio_holdings + new trades table,
+  currency-aware; original untouched) and the CONCEPTS (holdings P&L page,
+  benchmark comparison via existing twin mechanics, portfolio news — superseded
+  by our filings/qual pipeline). Drop React UI, Firebase functions, movers table.
+- PARK CashflowForecast (2,100-line retirement planner — different domain).
+- Main lift: multi-currency/FX (FMP fx endpoint; same vendor). Non-US tickers
+  get price/P&L only (no EDGAR/earnings coverage) — label honestly.
+- Brief personalization: holdings-first signals in daily brief. The user's
+  Claude scheduled-task "Daily market briefing" stays AS-IS (additive news
+  flash, not replaced).
+- Then: Home UI redesign last, informed by usage.
+- Housekeeping: rotate the FMP key hardcoded in the tracker frontend when it
+  eventually retires.

@@ -211,7 +211,7 @@ def load_leaderboard_moves():
                    COALESCE(assessed_tier, tier) AS tier,
                    gem_score, rank
             FROM leaderboard_history
-            WHERE date = :d AND COALESCE(assessed_tier, tier) IS NOT NULL
+            WHERE date = :d AND COALESCE(assessed_tier, tier) IN ('Strong Buy','Buy','Watch')
         """), {"d": today_d}).fetchall()
 
         prev_rows = conn.execute(text("""
@@ -219,7 +219,7 @@ def load_leaderboard_moves():
                    COALESCE(assessed_tier, tier) AS tier,
                    gem_score, rank
             FROM leaderboard_history
-            WHERE date = :d AND COALESCE(assessed_tier, tier) IS NOT NULL
+            WHERE date = :d AND COALESCE(assessed_tier, tier) IN ('Strong Buy','Buy','Watch')
         """), {"d": prev_d}).fetchall()
 
     today = {r[0]: {"tier": r[1], "score": float(r[2]), "rank": r[3]} for r in today_rows}

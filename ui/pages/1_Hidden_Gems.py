@@ -328,7 +328,8 @@ for g in gems:
     if q and raw_tier:
         # Use Claude's adjusted tier, but only if raw score still clears the Watch floor.
         # Prevents a stale qual assessment keeping a stock visible after its score dropped.
-        g["display_tier"]  = q["adjusted_tier"]
+        # Assessor can return the string 'None' = "not even Watch" — off board
+        g["display_tier"]  = q["adjusted_tier"] if q["adjusted_tier"] in ("Strong Buy", "Buy", "Watch") else None
         g["direction"]     = q["direction"]
         g["rationale"]     = q["rationale"]
         g["key_bull"]      = q["key_bull"]

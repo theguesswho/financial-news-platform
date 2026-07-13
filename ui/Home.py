@@ -202,18 +202,24 @@ def load_leaderboard_moves():
 
         today_d, prev_d = dates[0][0], dates[1][0]
 
+        # Board members only (tier set) — every symbol in the universe gets a
+        # score row daily, and a newly SCORED stock is not a new ENTRANT.
+        # (Bug 2026-07-12: freshly onboarded mid-caps below the Watch cutoff
+        # showed as "new entrants" with tier None.)
         today_rows = conn.execute(text("""
             SELECT symbol,
                    COALESCE(assessed_tier, tier) AS tier,
                    gem_score, rank
-            FROM leaderboard_history WHERE date = :d
+            FROM leaderboard_history
+            WHERE date = :d AND COALESCE(assessed_tier, tier) IS NOT NULL
         """), {"d": today_d}).fetchall()
 
         prev_rows = conn.execute(text("""
             SELECT symbol,
                    COALESCE(assessed_tier, tier) AS tier,
                    gem_score, rank
-            FROM leaderboard_history WHERE date = :d
+            FROM leaderboard_history
+            WHERE date = :d AND COALESCE(assessed_tier, tier) IS NOT NULL
         """), {"d": prev_d}).fetchall()
 
     today = {r[0]: {"tier": r[1], "score": float(r[2]), "rank": r[3]} for r in today_rows}

@@ -669,7 +669,9 @@ for g in display_stocks:
                 f'{html_lib.escape(g["key_bear"])}</div>',
                 unsafe_allow_html=True
             )
-        if g.get("rationale") and direction != "hold":
+        # Show the assessor's reasoning for EVERY assessed stock — a "hold"
+        # rationale is the why-we-agree note (user request 2026-07-14)
+        if g.get("rationale"):
             st.markdown(
                 f'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;'
                 f'padding:0.5rem 0.8rem;font-size:0.78rem;color:#92400e;line-height:1.45;'

@@ -27,6 +27,26 @@ from pipeline.ingestion import (
 THIN_CONTENT_THRESHOLD = 5000  # chars — below this, try to fetch EX-99 exhibit
 
 
+def _has_figures(text_: str) -> bool:
+    """
+    A real earnings summary cites FINANCIAL figures — percentages, dollar
+    magnitudes, per-share numbers. Bare digits don't count: dates ("July 14,
+    2026") appear in vacuous cover-page summaries too.
+    """
+    import re
+    return bool(re.search(
+        r"\d+(\.\d+)?\s*(%|percent|billion|million|bn\b|mm\b|[BMK]\b)"
+        r"|[$€£]\s?\d"
+        r"|\d+(\.\d+)?\s*(per share|eps)"
+        r"|\d+(\.\d+)?x\b",
+        text_ or "", re.IGNORECASE))
+
+
+def _is_earnings(classification: dict, items: str) -> bool:
+    """Earnings by LLM classification or by SEC item 2.02 (results of operations)."""
+    return classification.get("event_type") == "EARNINGS" or "2.02" in (items or "")
+
+
 def _fetch_exhibit_content(filing_url: str) -> str:
     """Fetch the EX-99 exhibit for cover-only 8-Ks that reference an attached press release."""
     try:
@@ -187,6 +207,18 @@ def run_events(session: Session, tickers: list[str]) -> dict:
                     print(f"scrape failed ({exc}), ", end="")
 
                 classification = _classify_8k(symbol, content, f.get("items", ""))
+
+                # Semantic exhibit trigger: an earnings 8-K whose summary has
+                # no figures means we summarised a cover page (IBM 2026-07-14:
+                # cover was 5,455 chars — over the size threshold — and the
+                # real numbers sat in EX-99). Character count is a bad proxy
+                # for "contains the news"; absence of digits is the tell.
+                if (_is_earnings(classification, f.get("items", ""))
+                        and not _has_figures(classification.get("summary", ""))):
+                    exhibit = _fetch_exhibit_content(f["url"])
+                    if exhibit and len(exhibit) > len(content):
+                        content = exhibit
+                        classification = _classify_8k(symbol, content, f.get("items", ""))
 
                 session.add(Filing(
                     symbol=symbol,

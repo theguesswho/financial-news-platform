@@ -165,10 +165,19 @@ def _build_prompt(signals: dict) -> str:
     if signals["board"]:
         lines.append("\nCURRENT HIDDEN GEMS BOARD (top 10 by gem score, with qual view):")
         for b in signals["board"][:10]:
-            qual = f" | qual: {b.direction}" if b.direction else ""
+            # Translate internal vocabulary before it reaches the writer:
+            # direction='hold' means the qual review CONFIRMED the tier — fed
+            # raw, Haiku once read it as a Hold rating and fabricated a
+            # quant-vs-qual divergence story about CRM (2026-07-15).
+            if b.direction == "hold":
+                qual = f" | qual review confirmed {b.tier}"
+            elif b.direction in ("upgrade", "downgrade"):
+                qual = f" | qual review {b.direction}d it to {b.tier}"
+            else:
+                qual = ""
             lines.append(f"  {b.symbol}: {b.tier}, score {float(b.gem_score):.3f}{qual}")
             if b.rationale:
-                lines.append(f"    {str(b.rationale)[:220]}")
+                lines.append(f"    Qual rationale (quote or paraphrase THIS; do not invent): {str(b.rationale)[:220]}")
 
     if signals["recent_events"]:
         lines.append("\nRECENT 8-K MATERIAL EVENTS:")
@@ -238,6 +247,10 @@ Write a daily intelligence brief. Return ONLY valid JSON — no markdown fences,
 }}
 
 Rules:
+- NEVER speculate about why an assessment or score was given. Every claim about
+  the qual review must come from its quoted rationale; if no rationale is
+  provided, describe only the tier and score. Do not invent disagreements,
+  concerns, or 'what the team may be seeing' — if quant and qual agree, say so
 - Meta-narrative shifts and newly emerged themes are the platform's secret sauce —
   when present, they belong in the top signal or high on the watch list
 - Lead with tier changes and qual downgrades — the reader cares most about what moved on their board

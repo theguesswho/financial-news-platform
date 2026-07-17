@@ -765,8 +765,14 @@ if key_bull and key_bear:
 </div>
 """, unsafe_allow_html=True)
 
-    if rationale and direction != "hold":
-        label = "Why Claude upgraded" if direction == "upgrade" else "Why Claude downgraded"
+    if rationale:
+        # Label must match what actually happened — BR's UPGRADE note once
+        # rendered under "Why Claude downgraded" because everything non-upgrade
+        # fell into the else branch (2026-07-17).
+        label = {"upgrade":   "Why Claude upgraded",
+                 "downgrade": "Why Claude downgraded",
+                 "hold":      "Why Claude agrees with the score"}.get(
+                    direction, "Claude's assessment at the time (historical)")
         st.markdown(f"""
 <div class="rationale-box">
   <div class="rationale-label">{label}</div>

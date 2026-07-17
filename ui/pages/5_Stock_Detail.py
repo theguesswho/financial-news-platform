@@ -538,10 +538,23 @@ themes  = data["themes"]
 company = companies.get(symbol, symbol)
 gem_score = gem.get("hidden_gem_score")
 
-# Determine display tier (use qual assessment if available)
-if qa:
-    display_tier = qa[2]  # adjusted_tier
+# Determine display tier. A qual verdict is only CURRENT while the raw score
+# still qualifies for the board — NFLX kept showing "Buy (assessed Jun 24)"
+# next to a 0.197 score after falling off. Stale verdicts become dated
+# historical context, not a live tier.
+_score_now = gem_score or 0
+_on_board  = _score_now > 0.47
+if qa and _on_board:
+    display_tier = qa[2] if qa[2] in ("Strong Buy", "Buy", "Watch") else None
     direction    = qa[3]
+    rationale    = qa[4]
+    key_bull     = qa[5]
+    key_bear     = qa[6]
+    assessed_at  = qa[7]
+elif qa:
+    # Off the board: show raw state; keep the old assessment as history only
+    display_tier = None
+    direction    = None
     rationale    = qa[4]
     key_bull     = qa[5]
     key_bear     = qa[6]
@@ -572,8 +585,14 @@ dir_text = {"upgrade": "↑ Claude upgraded this stock",
             "hold": "Tier confirmed by Claude"}.get(direction or "hold", "")
 dir_css  = {"upgrade": "dir-upgrade", "downgrade": "dir-downgrade",
             "hold": "dir-hold"}.get(direction or "hold", "dir-hold")
-assessed_str = (f'Assessed {assessed_at.strftime("%b %d, %Y") if assessed_at else ""}'
-                if qa else "Raw quant score — not yet Claude-assessed")
+if qa and _on_board:
+    assessed_str = f'Assessed {assessed_at.strftime("%b %d, %Y") if assessed_at else ""}'
+elif qa:
+    assessed_str = (f'Below board threshold — last assessed '
+                    f'{assessed_at.strftime("%b %d, %Y") if assessed_at else ""} '
+                    f'({qa[2]} at the time; historical, not a current call)')
+else:
+    assessed_str = "Raw quant score — not yet Claude-assessed"
 
 col_left, col_right = st.columns([2, 1])
 with col_left:

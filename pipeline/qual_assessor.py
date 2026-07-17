@@ -54,7 +54,19 @@ Your job is NOT to validate the score — it's to catch what the numbers miss. L
 - Management credibility red flags (cautious tone vs confident filing language)
 - Sector headwinds the theme alignment can't see
 
-TIERS: Strong Buy (gem > 0.58) | Buy (0.46–0.58) | Watch (0.34–0.46) | None (< 0.34)
+TIERS: Strong Buy (gem > 0.60) | Buy (0.52–0.60) | Watch (0.47–0.52) | None (< 0.47)
+
+COMPONENT DEFINITIONS — read carefully; do not guess semantics:
+- Narrative (0–1): LLM-judged exposure to accelerating structural narratives,
+  cited from the company's own filings. High = genuine, material exposure.
+- Value (0–1): PERCENTILE RANK vs margin-peer group (PEG-weighted). 1.00 means
+  "cheapest in its peer group on the blend", NOT infinitely cheap — and it can
+  be inflated by distorted growth inputs (spin-offs, one-off comps).
+- Quality (0–1): ROIC, margins, growth trajectory strength.
+- Gap (0–1): degree to which the market has NOT yet priced the narrative.
+  HIGH gap = story present, price lagging = THE OPPORTUNITY this platform
+  hunts. LOW gap = market has already repriced it. Never read a high gap as
+  "the market has discovered this" — it means the opposite.
 
 QUANTITATIVE SCORES:
   Symbol: {symbol}

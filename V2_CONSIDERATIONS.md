@@ -92,3 +92,22 @@ DO NOT MODIFY) into the platform. Survey done 2026-07-14:
 - Then: Home UI redesign last, informed by usage.
 - Housekeeping: rotate the FMP key hardcoded in the tracker frontend when it
   eventually retires.
+
+### 13. Score-impact explanations on earnings & narrative events (2026-07-17, user)
+Earnings releases and narrative changes are the two highest-priority event
+types. When one lands for a tracked stock, the platform should surface not
+just the event but WHAT IT DID TO OUR GRADE AND WHY — unprompted. Canonical
+example (NFLX Q2 2026): 8-K captured, fundamentals refreshed, score recomputed
+— and the correct answer was "unchanged at 0.197: quality 1.00 and gap 0.78,
+but narrative 0.39 is the binding constraint; a revenue beat can't move the
+gate; watch Sunday's exposure re-judgement of the new transcript."
+Design sketch:
+- After each earnings 8-K (or narrative lifecycle event) for a tracked stock,
+  generate a short "grade impact note": component deltas, the binding
+  constraint, and what pending update could still change the grade.
+- Surface attached to the event card (Home feed, Events page) and on Stock
+  Detail; earnings + narrative events ranked above other event types.
+- Pairs with #10 (two-stage narrative reaction) — stage 1's same-day pass
+  produces exactly the inputs this note needs.
+- Honors the anti-speculation rule: the note derives from actual component
+  arithmetic, never LLM guesses about why the score moved.

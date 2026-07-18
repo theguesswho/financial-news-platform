@@ -323,6 +323,20 @@ def daily_data_update():
     except Exception as e:
         _err("Track record failed", e)
 
+    _step("8c", "Data freshness sentinel")
+    try:
+        from pipeline.freshness_sentinel import run_sentinel
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        v = run_sentinel(eng)
+        eng.dispose()
+        if v:
+            _err("FRESHNESS VIOLATIONS", v)
+        else:
+            _ok("All sources fresh")
+    except Exception as e:
+        _err("Freshness sentinel failed", e)
+
     _step(9, "Daily brief")
     try:
         _ensure_brief()
@@ -708,60 +722,10 @@ def start_scheduler():
 if __name__ == "__main__":
     scheduler = start_scheduler()
 
-    # Startup diagnostic: exercise FMP from THIS environment and record the raw
-    # result in the DB — transcripts silently flatlined for 3 weeks because
-    # every FMP failure path is a bare except. Never trust; record.
-    def _fmp_diagnostic():
-        import os, requests, json as _json
-        from pipeline.hidden_gem_scorer import get_engine
-        key = os.getenv("FMP_API_KEY", "")
-        out = {"key_present": bool(key), "key_len": len(key)}
-        try:
-            r = requests.get(
-                "https://financialmodelingprep.com/api/v4/earning_call_transcript",
-                params={"symbol": "AAPL", "apikey": key}, timeout=15)
-            out["status"] = r.status_code
-            out["body_head"] = r.text[:300]
-        except Exception as exc:
-            out["error"] = str(exc)[:300]
-        eng = get_engine()
-        with eng.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS env_diagnostics (
-                    id SERIAL PRIMARY KEY, source VARCHAR(30),
-                    result JSONB, created_at TIMESTAMP DEFAULT NOW());
-            """))
-            conn.execute(text(
-                "INSERT INTO env_diagnostics (source, result) VALUES ('fmp', :r)"),
-                {"r": _json.dumps(out)})
-        eng.dispose()
-        logger.info(f"FMP diagnostic recorded: status={out.get('status')}")
-
-        # Phase 2: run the REAL transcript ingestion here and record the
-        # outcome — it works locally and FMP answers from Railway, yet
-        # scheduled runs have produced zero transcripts for 3 weeks. Let the
-        # deployed environment show us its counters or its traceback.
-        out2 = {}
-        try:
-            from pipeline.earnings_ingestion import run_earnings_ingestion
-            r = run_earnings_ingestion(quarters=1, force=False)
-            out2["result"] = str(r)[:300]
-        except Exception:
-            import traceback
-            out2["traceback"] = traceback.format_exc()[-1500:]
-        eng = get_engine()
-        with eng.begin() as conn:
-            conn.execute(text(
-                "INSERT INTO env_diagnostics (source, result) VALUES ('earnings_probe', :r)"),
-                {"r": _json.dumps(out2)})
-        eng.dispose()
-        logger.info("Earnings probe recorded")
-
     # Drain the onboarding queue at startup too — a deploy shouldn't make a
     # pending chunk wait for the next cron slot. Separate thread so scheduled
     # jobs fire on time regardless. status='running' guard prevents overlap.
     import threading
-    threading.Thread(target=_fmp_diagnostic, name="fmp-diag").start()
     threading.Thread(target=_process_onboarding_queue, name="onboarding").start()
 
     import time

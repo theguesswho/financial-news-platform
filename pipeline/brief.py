@@ -128,8 +128,21 @@ def _gather_signals(session: Session) -> dict:
     except Exception:
         pass
 
+    # System health: latest freshness-sentinel violations (if any)
+    health = []
+    try:
+        row = session.execute(text("""
+            SELECT result FROM env_diagnostics WHERE source='freshness'
+            ORDER BY id DESC LIMIT 1
+        """)).scalar()
+        if row:
+            health = row if isinstance(row, list) else json.loads(row)
+    except Exception:
+        pass
+
     return {
         "board": board,
+        "health": health,
         "tier_moves": tier_moves,
         "recent_events": recent_events,
         "clusters": clusters,
@@ -142,6 +155,12 @@ def _gather_signals(session: Session) -> dict:
 
 def _build_prompt(signals: dict) -> str:
     lines = []
+
+    if signals.get("health"):
+        lines.append("SYSTEM HEALTH WARNINGS (data pipelines stale — surface these prominently):")
+        for h in signals["health"]:
+            lines.append(f"  {h.get('source')}: latest {h.get('latest')} "
+                         f"(age {h.get('age_days')}d, allowed {h.get('max_days')}d)")
 
     if signals.get("theme_shifts"):
         lines.append("NARRATIVE LIFECYCLE EVENTS (last 7 days — the brain moved):")

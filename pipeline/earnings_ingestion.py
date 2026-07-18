@@ -79,8 +79,9 @@ def get_available_quarters(symbol: str) -> list[dict]:
             data = r.json()
             if isinstance(data, list):
                 return [{"quarter": d[0], "year": d[1], "date": d[2]} for d in data]
-    except Exception:
-        pass
+        print(f"  [FMP] {symbol} quarter-list HTTP {r.status_code}: {r.text[:120]}", flush=True)
+    except Exception as exc:
+        print(f"  [FMP] {symbol} quarter-list failed: {exc}", flush=True)
     return []
 
 

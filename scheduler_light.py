@@ -737,6 +737,26 @@ if __name__ == "__main__":
         eng.dispose()
         logger.info(f"FMP diagnostic recorded: status={out.get('status')}")
 
+        # Phase 2: run the REAL transcript ingestion here and record the
+        # outcome — it works locally and FMP answers from Railway, yet
+        # scheduled runs have produced zero transcripts for 3 weeks. Let the
+        # deployed environment show us its counters or its traceback.
+        out2 = {}
+        try:
+            from pipeline.earnings_ingestion import run_earnings_ingestion
+            r = run_earnings_ingestion(quarters=1, force=False)
+            out2["result"] = str(r)[:300]
+        except Exception:
+            import traceback
+            out2["traceback"] = traceback.format_exc()[-1500:]
+        eng = get_engine()
+        with eng.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO env_diagnostics (source, result) VALUES ('earnings_probe', :r)"),
+                {"r": _json.dumps(out2)})
+        eng.dispose()
+        logger.info("Earnings probe recorded")
+
     # Drain the onboarding queue at startup too — a deploy shouldn't make a
     # pending chunk wait for the next cron slot. Separate thread so scheduled
     # jobs fire on time regardless. status='running' guard prevents overlap.

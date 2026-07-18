@@ -157,19 +157,27 @@ Return ONLY valid JSON — no markdown:
 
     response = _get_client().messages.create(
         model=HAIKU,
-        max_tokens=200,
+        max_tokens=450,   # 200 truncated figure-rich summaries mid-JSON (FITB 2026-07-17)
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip().strip("`").lstrip("json").strip()
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
+        return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+    except (json.JSONDecodeError, ValueError):
+        # Truncated/malformed JSON: salvage fields individually so a partial
+        # response degrades to partial data — NEVER store raw JSON as the
+        # summary (311 filings displayed brace soup before this).
+        import re
+        def grab(field, default=""):
+            m = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)', raw)
+            return m.group(1).rstrip("\\") if m else default
+        score_m = re.search(r'"score"\s*:\s*(-?\d+)', raw)
         return {
-            "event_type": "OTHER",
-            "headline": "8-K filing",
-            "summary": raw[:300],
-            "impact": "NEUTRAL",
-            "score": 0,
+            "event_type": grab("event_type", "OTHER") or "OTHER",
+            "headline":   grab("headline", "8-K filing") or "8-K filing",
+            "summary":    grab("summary", ""),
+            "impact":     grab("impact", "NEUTRAL") or "NEUTRAL",
+            "score":      int(score_m.group(1)) if score_m else 0,
         }
 
 

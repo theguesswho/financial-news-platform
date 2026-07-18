@@ -708,10 +708,40 @@ def start_scheduler():
 if __name__ == "__main__":
     scheduler = start_scheduler()
 
+    # Startup diagnostic: exercise FMP from THIS environment and record the raw
+    # result in the DB — transcripts silently flatlined for 3 weeks because
+    # every FMP failure path is a bare except. Never trust; record.
+    def _fmp_diagnostic():
+        import os, requests, json as _json
+        from pipeline.hidden_gem_scorer import get_engine
+        key = os.getenv("FMP_API_KEY", "")
+        out = {"key_present": bool(key), "key_len": len(key)}
+        try:
+            r = requests.get(
+                "https://financialmodelingprep.com/api/v4/earning_call_transcript",
+                params={"symbol": "AAPL", "apikey": key}, timeout=15)
+            out["status"] = r.status_code
+            out["body_head"] = r.text[:300]
+        except Exception as exc:
+            out["error"] = str(exc)[:300]
+        eng = get_engine()
+        with eng.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS env_diagnostics (
+                    id SERIAL PRIMARY KEY, source VARCHAR(30),
+                    result JSONB, created_at TIMESTAMP DEFAULT NOW());
+            """))
+            conn.execute(text(
+                "INSERT INTO env_diagnostics (source, result) VALUES ('fmp', :r)"),
+                {"r": _json.dumps(out)})
+        eng.dispose()
+        logger.info(f"FMP diagnostic recorded: status={out.get('status')}")
+
     # Drain the onboarding queue at startup too — a deploy shouldn't make a
     # pending chunk wait for the next cron slot. Separate thread so scheduled
     # jobs fire on time regardless. status='running' guard prevents overlap.
     import threading
+    threading.Thread(target=_fmp_diagnostic, name="fmp-diag").start()
     threading.Thread(target=_process_onboarding_queue, name="onboarding").start()
 
     import time

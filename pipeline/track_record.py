@@ -171,6 +171,7 @@ def get_scorecard(engine) -> dict:
             FROM track_lots tl
             JOIN latest ls   ON ls.symbol = tl.symbol AND ls.rn = 1
             JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY') AND lspy.rn = 1
+            WHERE NOT COALESCE(tl.voided, FALSE)
             ORDER BY tl.lot_date, tl.symbol
         """)).fetchall()
 

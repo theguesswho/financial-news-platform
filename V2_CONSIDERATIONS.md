@@ -111,3 +111,27 @@ Design sketch:
   produces exactly the inputs this note needs.
 - Honors the anti-speculation rule: the note derives from actual component
   arithmetic, never LLM guesses about why the score moved.
+
+### 14. Narrative velocity + sign-aware gap (2026-07-19, user — rank alongside #3 at top of scoring group)
+Deceleration is as important as identification. The formula's structural blind
+spot: during a deceleration-driven de-rating (e.g. a hypothetical AVGO going
+60x -> 20x), gap WIDENS, value RISES (peer-cheapness), quality HOLDS (trailing
+financials lag the story) — three components improve while the thesis dies,
+and the system would relabel a falling knife "Strong Buy". A wide gap has two
+opposite causes wearing the same number: neglect (story ahead of price = the
+Dell setup) vs de-rating (price ahead of the narrative layer = value trap).
+Design:
+- Per-stock NARRATIVE VELOCITY from data already collected: exposure deltas
+  across re-judgements, consecutive call-trajectory readings ("decelerating"
+  twice = scream), guidance revisions from earnings 8-Ks, analyst estimate
+  direction.
+- Sign-aware gap decomposition: multiplier rewards only story-led widening;
+  price-led widening with negative velocity caps at neutral or inverts.
+- "Strong but decelerating" as a first-class board flag, surfaced BEFORE
+  falsification triggers — not a sell signal (buy-and-hold), but the evidence
+  stream that informs the art of selling.
+Existing partial defenses and why insufficient: narrative-level momentum
+labels (weekly, theme-coarse), falsification checks (death not deceleration),
+gap's 20% narrative-momentum component (price_lag 50% dominates in a crash).
+Complements #3: level done right + derivative done at all. NFLX's corrected
+assessment ("model lag") is the same gap from the opposite direction.

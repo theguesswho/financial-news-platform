@@ -218,6 +218,17 @@ def daily_data_update():
     except Exception as e:
         _err("Fundamentals failed", e)
 
+    _step("2b", "PEG normalization (sustainable-growth denominator)")
+    try:
+        from pipeline.peg_normalizer import recompute_pegs
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        r = recompute_pegs(eng)
+        eng.dispose()
+        _ok(f"PEG: {r}")
+    except Exception as e:
+        _err("PEG normalization failed", e)
+
     _step(3, "Insider trades (SEC Form 4)")
     try:
         from db.session import get_session
@@ -563,6 +574,17 @@ def weekly_deep_refresh():
         _ok(f"{r.get('updated', 0)} updated")
     except Exception as e:
         _err("Fundamentals failed", e)
+
+    _step("2b", "PEG normalization (sustainable-growth denominator)")
+    try:
+        from pipeline.peg_normalizer import recompute_pegs
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        r = recompute_pegs(eng)
+        eng.dispose()
+        _ok(f"PEG: {r}")
+    except Exception as e:
+        _err("PEG normalization failed", e)
 
     _step(2, "Re-score + archive leaderboard")
     gems = None

@@ -135,3 +135,18 @@ labels (weekly, theme-coarse), falsification checks (death not deceleration),
 gap's 20% narrative-momentum component (price_lag 50% dominates in a crash).
 Complements #3: level done right + derivative done at all. NFLX's corrected
 assessment ("model lag") is the same gap from the opposite direction.
+
+### 15. Management credibility scoring (2026-07-19, user)
+Track what management PROMISED on calls vs what the company DELIVERED — own
+results only; the share price and market expectations are irrelevant. Raw
+material already exists: earnings_claims (~30k extracted forward-looking
+claims) was built for this and never closed into a loop (the empty
+narrative_believability table is its stillborn placeholder). Design:
+- Quarterly verification pass: match claims made 1-4 quarters ago against
+  delivered fundamentals + subsequent call statements (Haiku, cheap).
+- Per-management ledger: promise-keeping rate, over/under-delivery bias,
+  claim specificity. Accumulates like the narrative evidence ledger.
+- USE: weights the call-tone signal — confident calls from proven deliverers
+  are the Dell signal; from serial overpromisers, noise. Feeds the qual
+  assessor as cited input. Complements the 2026-07-19 tone-baseline prompt
+  fix (which stops naive tone-flagging) and #14 (velocity).

@@ -46,12 +46,18 @@ def create_table(engine):
 
 
 def _latest_filing_date(engine, symbol: str):
-    """Return the most recent filing date in the DB for this symbol."""
+    """Return the most recent filing DATE for this symbol.
+
+    filings.filing_date is a DateTime column; deep_dives.last_filing_date is
+    DATE. Normalise here so both consumers compare date-to-date — comparing
+    datetime to date raises TypeError (LDOS, 2026-07-19)."""
+    from datetime import datetime as _dt
     with engine.connect() as conn:
         row = conn.execute(text("""
             SELECT MAX(filing_date) FROM filings WHERE symbol = :s
         """), {"s": symbol}).fetchone()
-    return row[0] if row else None
+    val = row[0] if row else None
+    return val.date() if isinstance(val, _dt) else val
 
 
 def get_cached(engine, symbol: str) -> dict | None:

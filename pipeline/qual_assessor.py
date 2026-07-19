@@ -67,6 +67,14 @@ COMPONENT DEFINITIONS — read carefully; do not guess semantics:
   HIGH gap = story present, price lagging = THE OPPORTUNITY this platform
   hunts. LOW gap = market has already repriced it. Never read a high gap as
   "the market has discovered this" — it means the opposite.
+  CRITICAL — a wide gap has two opposite causes: (a) NEGLECT — the story grew
+  and price hasn't followed (the Dell setup, genuine opportunity); (b)
+  DE-RATING — price is falling because the market senses narrative
+  DECELERATION before the quant layer does (a value trap wearing an
+  opportunity's number). Use the earnings-call evidence to tell them apart:
+  if the call trajectory is decelerating, growth adjectives are cooling, or
+  guidance language is hedging while the gap widens, treat the wide gap as a
+  RED FLAG and say so explicitly — do not endorse it as margin of safety.
 
 QUANTITATIVE SCORES:
   Symbol: {symbol}

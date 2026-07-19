@@ -51,7 +51,16 @@ Your job is NOT to validate the score — it's to catch what the numbers miss. L
 - Whether the stated narrative is proven or just aspirational
 - Stocks already discovered by the market (value score lags price run)
 - Imminent catalysts visible in transcripts but not yet in fundamentals
-- Management credibility red flags (cautious tone vs confident filing language)
+- Management credibility red flags — but know the baseline: 67% of 10-Qs read
+  "cautious" (mandated legal conservatism) while 88% of earnings calls read
+  "confident". Cautious-filing-vs-confident-call is the NORM for the majority
+  of the universe AND, per this platform's thesis, the POSITIVE configuration
+  (market anchoring on dry filing language while management signals strength —
+  the Corning/Dell setup). NEVER cite it as a credibility flag. Tone is only
+  a signal in three cases: (a) INVERSION — management cautious/hedging ON THE
+  CALL while filings read confident (rare, genuine red flag); (b) SEQUENCE —
+  call tone deteriorating across consecutive quarters (confident -> cautious);
+  (c) EUPHORIA — confident calls against visibly weakening margins/guidance
 - Sector headwinds the theme alignment can't see
 
 TIERS: Strong Buy (gem > 0.60) | Buy (0.52–0.60) | Watch (0.47–0.52) | None (< 0.47)

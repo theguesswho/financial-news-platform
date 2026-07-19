@@ -224,8 +224,21 @@ def get_db():
 _UID = 3  # single-user app
 
 def get_watchlist():
+    # Cached session outlives its DB connection (Railway proxy idle-kills it);
+    # a failed query then poisons the transaction and every rerun raises
+    # PendingRollbackError. Rollback first (no-op when clean), retry once.
     session = get_db()
-    return {w.symbol for w in session.query(WatchlistEntry).filter_by(user_id=_UID).all()}
+    for attempt in range(2):
+        try:
+            session.rollback()
+            return {w.symbol for w in session.query(WatchlistEntry).filter_by(user_id=_UID).all()}
+        except Exception:
+            if attempt == 1:
+                return set()   # degrade gracefully — page renders without watchlist stars
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
 def go_to_stock(symbol):
     st.session_state["detail_symbol"] = symbol

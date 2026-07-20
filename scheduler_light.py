@@ -623,17 +623,21 @@ def weekly_deep_refresh():
         with eng.connect() as conn:
             rows = conn.execute(text("""
                 SELECT symbol FROM leaderboard_history
-                WHERE date = CURRENT_DATE AND tier IN ('Strong Buy', 'Buy')
+                WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+                  AND COALESCE(assessed_tier, tier) IN ('Strong Buy', 'Buy')
                 ORDER BY gem_score DESC LIMIT 20
             """)).fetchall()
         top_symbols = [r[0] for r in rows]
-        eng.dispose()
         for sym in top_symbols:
             try:
-                generate_deep_dive(sym, force=False)
+                # BUG until 2026-07-20: called generate_deep_dive(sym, ...) —
+                # ticker passed AS the engine; every weekly dive crashed
+                # silently. All existing memos came from on-page generation.
+                generate_deep_dive(eng, sym, force=False)
                 _ok(f"Deep dive: {sym}")
             except Exception as ex:
                 _err(f"Deep dive {sym}", ex)
+        eng.dispose()
     except Exception as e:
         _err("Deep dives failed", e)
 

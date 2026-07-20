@@ -150,3 +150,12 @@ narrative_believability table is its stillborn placeholder). Design:
   are the Dell signal; from serial overpromisers, noise. Feeds the qual
   assessor as cited input. Complements the 2026-07-19 tone-baseline prompt
   fix (which stops naive tone-flagging) and #14 (velocity).
+
+### 16. Deploy-eats-cron: startup catch-up for missed job slots (2026-07-20)
+Twice now (Jul 7, Jul 20) a git push near a cron slot restarted the Railway
+service mid-trigger and APScheduler silently skipped the run (no persistence
+across restarts). Fix: on scheduler startup, check whether a slot fired
+within the last ~30 min without producing its expected artifact (e.g. no
+snapshot update since the slot) and run the job once. Freeze-safe ops
+hardening; could ship before v2. Interim discipline: avoid pushing within
+~10 min of :00 UTC slots (06/13/18/21).

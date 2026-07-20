@@ -1,101 +1,118 @@
 """
-Sustainable-growth PEG — fixes a flattered core input.
+Consensus PEG — forward-looking growth denominator (user-specified 2026-07-21).
 
-Yahoo's pegRatio divides PE by RECENT trailing earnings growth, so a one-off
-spike produces a fantasy PEG: HWM 2026-07 showed PEG 0.8 (forward PE 45 ÷ a
-69% cyclical-recovery year) while the defensible number was ~2 (÷ ~20%
-durable growth). Jacobs showed PEG 0.4 off spin-off-distorted comps. PEG is
-50% of the value blend — these distortions moved the board.
+History of this file: Yahoo's vendor pegRatio divides by recent GAAP trailing
+growth (HWM: 69% recovery spike -> PEG 0.8 vs a defensible ~2). A first fix
+using trailing internal data failed differently (PODD: +157% GAAP artifact
+with no history -> PEG 0.13 while the honest number was ~1.5). Lesson:
+ANY trailing-GAAP denominator is unfixable. Analyst consensus EPS is
+adjusted (one-offs stripped), forward-anchored, and covered 12/12 in testing
+including 1-analyst mid-caps.
 
-Fix, using only data we already store:
-    sustainable_growth = MIN( trailing 1y earnings growth,
-                              3y earnings CAGR from fundamentals_history )
-    peg_ratio          = pe_forward / (sustainable_growth * 100)
+Formula (exact user spec):
+    g0  = current-year consensus EPS vs year-ago ACTUAL EPS
+    g1  = next-year consensus EPS  vs current-year consensus
+    growth    = average(g0, g1)          [fall back to whichever exists]
+    peg_ratio = pe_forward / (growth * 100),  NULL if growth <= 0
 
-The MIN mechanically kills one-off spikes and dirty comps: they inflate the
-1y number but not the multi-year CAGR. Annual earnings are derived as
-revenue × net_margin from fundamentals_history (period_type 'A').
+Source: yfinance earnings_estimate table ('growth' column of the 0y / +1y
+rows). Analyst count stored in peg_analysts — a 2-analyst PEG deserves less
+trust than a 25-analyst one. Vendor value kept in peg_vendor for audit.
+On fetch failure the existing stored PEG is KEPT, never nulled by transience.
 
-Vendor PEG is preserved in peg_vendor for audit. Runs after every
-fundamentals refresh; NULL when no defensible growth exists (unchanged
-behaviour — the value blend already handles missing PEG).
+Validation examples at build time:
+    PODD (20.4 fwd PE): (30.3 + 24.3)/2 = 27.3%  -> 0.75   (was 0.13)
+    HWM  (45.0 fwd PE): (~25 + 19.5)/2  ~ 22%    -> ~2.0   (matches public)
 """
+import time
+
 from sqlalchemy import text
 
 
-def _cagr(first: float, last: float, years: float):
-    if first is None or last is None or first <= 0 or last <= 0 or years <= 0:
-        return None
-    return (last / first) ** (1.0 / years) - 1.0
+def _consensus_growth(symbol: str):
+    """Return (avg_growth, n_analysts) from Yahoo's estimate table, or (None, None)."""
+    import yfinance as yf
+    try:
+        ee = yf.Ticker(symbol).earnings_estimate
+        if ee is None or ee.empty:
+            return None, None
+        legs = []
+        n = None
+        for period in ("0y", "+1y"):
+            if period in ee.index:
+                g = ee.loc[period, "growth"]
+                if g is not None and g == g:          # not NaN
+                    legs.append(float(g))
+                na = ee.loc[period, "numberOfAnalysts"]
+                if na == na and (n is None or na < n):
+                    n = int(na)
+        if not legs:
+            return None, n
+        return sum(legs) / len(legs), n
+    except Exception:
+        return None, None
 
 
-def recompute_pegs(engine) -> dict:
+def recompute_pegs(engine, max_age_days: int = 3) -> dict:
+    """
+    Recompute consensus PEG for symbols whose PEG data is stale.
+    Estimates barely move intraday — refreshing every ~3 days is plenty and
+    keeps the scheduled-run cost to the symbols that actually need it.
+    """
     with engine.begin() as conn:
         conn.execute(text(
             "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_vendor NUMERIC(12,2)"))
+        conn.execute(text(
+            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_analysts INTEGER"))
+        conn.execute(text(
+            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_updated TIMESTAMP"))
 
     with engine.connect() as conn:
         funds = conn.execute(text("""
-            SELECT symbol, pe_forward, earnings_growth_yoy, peg_ratio, peg_vendor
+            SELECT symbol, pe_forward, peg_ratio, peg_vendor
             FROM fundamentals
-        """)).fetchall()
-        hist = conn.execute(text("""
-            SELECT symbol, period_end, revenue, net_margin
-            FROM fundamentals_history
-            WHERE period_type = 'A' AND revenue IS NOT NULL AND net_margin IS NOT NULL
-            ORDER BY symbol, period_end
-        """)).fetchall()
+            WHERE peg_updated IS NULL OR peg_updated < NOW() - (:d || ' days')::interval
+            ORDER BY symbol
+        """), {"d": max_age_days}).fetchall()
 
-    earnings_by_sym: dict[str, list] = {}
-    for sym, pend, rev, nm in hist:
-        e = float(rev) * float(nm)
-        earnings_by_sym.setdefault(sym, []).append((pend, e))
+    stats = {"updated": 0, "nulled": 0, "fetch_failed": 0}
+    batch = []
+    for sym, pe_fwd, peg_now, vendor_stored in funds:
+        vendor = vendor_stored if vendor_stored is not None else peg_now
+        growth, n_analysts = _consensus_growth(sym)
+        time.sleep(0.3)   # polite to Yahoo
 
-    updates, stats = [], {"normalized": 0, "capped_by_cagr": 0, "nulled": 0, "no_history": 0}
-    for sym, pe_fwd, g1, peg_now, peg_vendor_stored in funds:
-        # keep the vendor's number for audit (first run captures current value)
-        vendor = peg_vendor_stored if peg_vendor_stored is not None else peg_now
-
-        g1 = float(g1) if g1 is not None else None
-        series = earnings_by_sym.get(sym, [])
-
-        g3 = None
-        if len(series) >= 3:
-            # last 3–4 annual points; positive endpoints required
-            pts = series[-4:]
-            years = (pts[-1][0] - pts[0][0]).days / 365.25
-            g3 = _cagr(pts[0][1], pts[-1][1], years)
-
-        # Current growth must itself be positive — a shrinking company gets no
-        # PEG resurrection from its happier multi-year past (LDOS: -9.6% now,
-        # 28% 3y CAGR, first draft emitted a flattering 0.29).
-        if g1 is not None and g1 > 0 and g3 is not None and g3 > 0:
-            growth = min(g1, g3)
-            stats["capped_by_cagr" if g3 < g1 else "normalized"] += 1
-        elif g1 is not None and g1 > 0 and g3 is None:
-            growth = g1               # no history — status quo behaviour
-            stats["no_history"] += 1
-        else:
-            growth = None
-            stats["nulled"] += 1
+        if growth is None and n_analysts is None:
+            stats["fetch_failed"] += 1     # transient/no data — keep existing PEG
+            batch.append({"s": sym, "peg": peg_now, "vendor": vendor, "n": None})
+            continue
 
         peg = None
-        if growth and pe_fwd and float(pe_fwd) > 0:
+        if growth and growth > 0 and pe_fwd and float(pe_fwd) > 0:
             peg = round(float(pe_fwd) / (growth * 100), 2)
             if peg < 0 or peg > 99:
                 peg = None
-        updates.append({"s": sym, "peg": peg, "vendor": vendor})
+        stats["updated" if peg is not None else "nulled"] += 1
+        batch.append({"s": sym, "peg": peg, "vendor": vendor, "n": n_analysts})
 
-    CHUNK = 150
-    for i in range(0, len(updates), CHUNK):
-        with engine.begin() as conn:
-            conn.execute(text("""
-                UPDATE fundamentals SET peg_ratio = :peg, peg_vendor = :vendor
-                WHERE symbol = :s
-            """), updates[i:i + CHUNK])
+        if len(batch) >= 100:
+            _flush(engine, batch)
+            batch = []
+    if batch:
+        _flush(engine, batch)
 
-    print(f"PEG normalization: {stats}")
+    print(f"Consensus PEG: {stats} ({len(funds)} symbols due)")
     return stats
+
+
+def _flush(engine, batch):
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE fundamentals
+            SET peg_ratio = :peg, peg_vendor = :vendor, peg_analysts = :n,
+                peg_updated = NOW()
+            WHERE symbol = :s
+        """), batch)
 
 
 if __name__ == "__main__":
@@ -105,4 +122,4 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent / ".env", override=True)
     from pipeline.hidden_gem_scorer import get_engine
-    recompute_pegs(get_engine())
+    recompute_pegs(get_engine(), max_age_days=0)   # CLI: force full refresh

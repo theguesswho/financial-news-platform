@@ -118,7 +118,9 @@ Respond in valid JSON only:
 Rules:
 - Only upgrade/downgrade when there is a SPECIFIC, ARTICULABLE reason
 - Most stocks should be "hold" — do not adjust just to seem thorough
-- Adjusted tier must be adjacent (one step up or down), never leap two tiers
+- Multi-tier jumps are PERMITTED when the evidence genuinely merits it, but
+  they are exceptional: a leap of more than one tier requires the rationale to
+  explicitly state why one step is insufficient
 - Never upgrade to Strong Buy unless narrative is genuinely differentiated AND cheap AND quality
 - Return ONLY valid JSON, no markdown"""
 

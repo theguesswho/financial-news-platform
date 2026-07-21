@@ -154,11 +154,14 @@ def apply_qual_tiers(engine) -> int:
               AND lh.tier IS NOT NULL
               AND lh.date   = (SELECT MAX(date) FROM leaderboard_history)
         """))
+        # qual_promoted rows legitimately carry assessed_tier with tier NULL
+        # (narrative-override promotions) — never wipe those here.
         conn.execute(text("""
             UPDATE leaderboard_history
             SET assessed_tier = NULL
             WHERE date = (SELECT MAX(date) FROM leaderboard_history)
               AND tier IS NULL AND assessed_tier IS NOT NULL
+              AND NOT COALESCE(qual_promoted, FALSE)
         """))
         conn.commit()
     return result.rowcount

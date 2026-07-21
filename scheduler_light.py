@@ -132,6 +132,17 @@ def _qual_sweep(gems=None):
         _ok(f"Qual tiers stamped: {updated} rows")
     else:
         _ok("No stocks need qual assessment")
+
+    # Narrative-blind override sweep (user-approved 2026-07-21): quant-qualified
+    # stocks the 19-narrative library can't see get a bounded qual promotion.
+    # Runs AFTER apply_qual_tiers so its stamps are never overwritten this cycle.
+    # LLM calls only for new/stale candidates (7-day reuse) — cheap daily.
+    try:
+        from pipeline.narrative_override import run_narrative_override
+        r = run_narrative_override(eng, gems=gems if gems else None)
+        _ok(f"Narrative override: {r}")
+    except Exception as e:
+        logger.error(f"    ✗  Narrative override failed: {e}")
     eng.dispose()
 
 

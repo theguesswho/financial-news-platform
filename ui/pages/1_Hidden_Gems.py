@@ -154,7 +154,8 @@ def load_gem_scores():
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT symbol, gem_score,
-                   narrative_score, value_score, quality_score, gap_score
+                   narrative_score, value_score, quality_score, gap_score,
+                   COALESCE(qual_promoted, FALSE), gem_adjusted, assessed_tier
             FROM leaderboard_history
             WHERE date = (SELECT MAX(date) FROM leaderboard_history)
         """)).fetchall()
@@ -166,9 +167,32 @@ def load_gem_scores():
             "value_score":      float(r[3]) if r[3] is not None else 0.0,
             "quality_score":    float(r[4]) if r[4] is not None else 0.0,
             "gap_score":        float(r[5]) if r[5] is not None else 0.0,
+            "qual_promoted":    bool(r[6]),
+            "gem_adjusted":     float(r[7]) if r[7] is not None else None,
+            "promoted_tier":    r[8],
         }
         for r in rows
     ]
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_overrides():
+    """Narrative-override details (rationale/evidence) for qual-promoted stocks."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT symbol, narrative_raw, narrative_adjusted, rationale,
+                   evidence, key_bull, key_bear, assessed_at
+            FROM narrative_overrides WHERE promoted
+        """)).fetchall()
+    return {r[0]: {
+        "narrative_raw":      float(r[1]) if r[1] is not None else None,
+        "narrative_adjusted": float(r[2]) if r[2] is not None else None,
+        "rationale":          r[3],
+        "evidence":           r[4],
+        "key_bull":           r[5],
+        "key_bear":           r[6],
+        "assessed_at":        r[7],
+    } for r in rows}
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_buffett_tiers():
@@ -305,6 +329,7 @@ with st.spinner("Loading scores…"):
     watchlist     = get_watchlist()
     prev_rank_map = load_prev_leaderboard()
     buffett_tiers = load_buffett_tiers()
+    overrides     = load_overrides()
 
 # ── Helper fns ────────────────────────────────────────────────────────────────
 def tier_for(score):
@@ -338,7 +363,20 @@ def bar_html(val, color="#3b82f6"):
 for g in gems:
     q = qual.get(g["symbol"])
     raw_tier = tier_for(g["hidden_gem_score"])
-    if q and raw_tier:
+    ov = overrides.get(g["symbol"]) if g.get("qual_promoted") else None
+    g["display_score"] = g["hidden_gem_score"]
+    if ov and g.get("promoted_tier") in ("Strong Buy", "Buy", "Watch"):
+        # Narrative-override promotion: quant-qualified stock whose company-level
+        # narrative the macro/sector library can't see. Adjusted score drives
+        # display; raw score stays visible on the card.
+        g["display_tier"]   = g["promoted_tier"]
+        g["display_score"]  = g["gem_adjusted"] or g["hidden_gem_score"]
+        g["direction"]      = "promoted"
+        g["rationale"]      = ov["rationale"]
+        g["key_bull"]       = ov["key_bull"]
+        g["key_bear"]       = ov["key_bear"]
+        g["assessed"]       = True
+    elif q and raw_tier:
         # Use Claude's adjusted tier, but only if raw score still clears the Watch floor.
         # Prevents a stale qual assessment keeping a stock visible after its score dropped.
         # Assessor can return the string 'None' = "not even Watch" — off board
@@ -371,7 +409,7 @@ prev_on_board = set(prev_rank_map.keys())
 # Current ranked list (display_tier != None), in display order
 current_ranked = sorted(
     [g for g in gems if g["display_tier"] is not None],
-    key=lambda g: (TIER_ORDER.get(g["display_tier"], 3), -g["hidden_gem_score"])
+    key=lambda g: (TIER_ORDER.get(g["display_tier"], 3), -g["display_score"])
 )
 current_rank_map = {g["symbol"]: i + 1 for i, g in enumerate(current_ranked)}
 
@@ -397,7 +435,7 @@ for g in gems:
 # Apply tier filter
 filtered = sorted(gems, key=lambda g: (
     TIER_ORDER.get(g["display_tier"], 3),
-    -g["hidden_gem_score"]
+    -g["display_score"]
 ))
 filtered = [g for g in filtered if g["display_tier"] in _tier_set]
 if _only_assessed:
@@ -548,7 +586,7 @@ rank = 0
 
 for g in display_stocks:
     tier  = g["display_tier"]
-    score = g["hidden_gem_score"]
+    score = g["display_score"]
 
     # Tier section header
     if tier != current_tier:
@@ -603,7 +641,16 @@ for g in display_stocks:
     with c_info:
         # Symbol + badges
         dir_badge = ""
-        if direction == "upgrade":
+        if direction == "promoted":
+            _ovr = overrides.get(sym, {})
+            _tip = html_lib.escape(_ovr.get("evidence") or "")
+            _nr, _na = _ovr.get("narrative_raw"), _ovr.get("narrative_adjusted")
+            _ntxt = f" n {_nr:.2f}→{_na:.2f}" if _nr is not None and _na is not None else ""
+            dir_badge = (f' <span title="{_tip}" style="background:#f3e8ff;color:#6b21a8;'
+                         f'font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;'
+                         f'border-radius:3px;vertical-align:middle;border:1px solid #d8b4fe">'
+                         f'⭐ QUAL-PROMOTED{_ntxt} · raw {g["hidden_gem_score"]:.3f}</span>')
+        elif direction == "upgrade":
             dir_badge = ' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↑ UPGRADED</span>'
         elif direction == "downgrade":
             dir_badge = ' <span style="background:#fee2e2;color:#991b1b;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↓ DOWNGRADED</span>'

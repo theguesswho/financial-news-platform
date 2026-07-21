@@ -97,6 +97,8 @@ def open_weekly_lots(engine) -> dict:
     with engine.begin() as conn:
         conn.execute(text(
             "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS benchmark VARCHAR(10) DEFAULT 'SPY'"))
+        conn.execute(text(
+            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS qual_promoted BOOLEAN DEFAULT FALSE"))
     _ensure_benchmark_prices(engine)
 
     with engine.connect() as conn:
@@ -115,7 +117,9 @@ def open_weekly_lots(engine) -> dict:
             continue
         with engine.connect() as conn:
             picks = conn.execute(text("""
-                SELECT symbol, COALESCE(assessed_tier, tier) AS t, gem_score
+                SELECT symbol, COALESCE(assessed_tier, tier) AS t,
+                       COALESCE(gem_adjusted, gem_score),
+                       COALESCE(qual_promoted, FALSE)
                 FROM leaderboard_history
                 WHERE date = :d AND COALESCE(assessed_tier, tier) = 'Strong Buy'
             """), {"d": wd}).fetchall()
@@ -131,21 +135,22 @@ def open_weekly_lots(engine) -> dict:
             """), {"d": wd}).fetchall()}
 
             rows = []
-            for sym, t, score in picks:
+            for sym, t, score, qual_promoted in picks:
                 px = _close_on_or_after(conn, sym, wd)
                 bmk = "SPY"
                 b_px = bench_px["SPY"]
                 if px is None or b_px is None:
                     continue
                 rows.append({"d": wd, "s": sym, "t": t, "g": float(score),
-                             "e": sym not in prior_sb, "b": bmk,
+                             "e": sym not in prior_sb, "b": bmk, "qp": bool(qual_promoted),
                              "px": float(px), "spy": float(b_px)})
         if rows:
             with engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO track_lots
-                        (lot_date, symbol, tier, gem_score, is_entry, entry_price, spy_price, benchmark)
-                    VALUES (:d, :s, :t, :g, :e, :px, :spy, :b)
+                        (lot_date, symbol, tier, gem_score, is_entry, entry_price,
+                         spy_price, benchmark, qual_promoted)
+                    VALUES (:d, :s, :t, :g, :e, :px, :spy, :b, :qp)
                     ON CONFLICT (lot_date, symbol) DO NOTHING
                 """), rows)
             opened += len(rows)

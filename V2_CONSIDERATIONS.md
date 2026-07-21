@@ -151,6 +151,19 @@ narrative_believability table is its stillborn placeholder). Design:
   assessor as cited input. Complements the 2026-07-19 tone-baseline prompt
   fix (which stops naive tone-flagging) and #14 (velocity).
 
+### 17. SHIPPED-INTERIM 2026-07-21: Qual narrative-override (company-narrative stopgap)
+User-approved deliberate amendment (not piecemeal drift): the qual assessor may
+raise the narrative input by at most +0.40 for stocks passing the
+"narrative-blind" screen (quality>=0.75, gap>=0.60, value>=0.40,
+narrative<0.50, off-board) — genuine company-level narratives the 19-narrative
+macro/sector library structurally cannot see (canonical case: BR — SEC
+digital-default catalyst, tokenization/DLR leadership; gem 0.16 despite
+quality 1.00). Upward-only, evidence-mandatory, raw scores stored untouched;
+promotions flagged qual_promoted on board + track lots ($1,000 lots per user
+decision, measurable separately vs SPY). Every decision (incl. declines) is
+stored in narrative_overrides — the labeled dataset for the proper v2
+company-narrative layer (#3/#14). Module: pipeline/narrative_override.py.
+
 ### 16. Deploy-eats-cron: startup catch-up for missed job slots (2026-07-20)
 Twice now (Jul 7, Jul 20) a git push near a cron slot restarted the Railway
 service mid-trigger and APScheduler silently skipped the run (no persistence

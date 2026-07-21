@@ -254,7 +254,10 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.fetched_at          = datetime.utcnow()
             row.pe_trailing         = _safe(info.get("trailingPE"))
             row.pe_forward          = _safe(info.get("forwardPE"))
-            row.peg_ratio           = _safe(info.get("pegRatio"))
+            # Vendor PEG goes to peg_vendor ONLY — peg_ratio is owned by the
+            # consensus recomputer (peg_normalizer). This line used to clobber
+            # it back to vendor on every refresh (PTC 3.69 -> 1.02, 2026-07-21).
+            row.peg_vendor          = _safe(info.get("pegRatio"))
             row.price_to_book       = _safe(info.get("priceToBook"))
             row.price_to_fcf        = price_to_fcf
             row.ev_to_ebitda        = _safe(info.get("enterpriseToEbitda"))

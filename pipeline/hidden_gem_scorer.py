@@ -812,15 +812,20 @@ def score_all_stocks(engine=None) -> list:
         """)).fetchall()
         peer_disc = {r[0]: max(-1.0, min(1.0, float(r[1]))) for r in disc_rows}
 
-    # Top accelerating themes per stock for display
+    # Top narrative exposures per stock for display — from the narrative brain
+    # (signed, evidence-cited). The legacy stock_theme_alignment table carried
+    # cross-contaminated matches (HII showing cruise themes in qual prompts,
+    # caught by the v2 qual pass 2026-07-22) and is no longer displayed.
     with engine.connect() as conn:
         theme_rows = conn.execute(text("""
-            SELECT sta.symbol, mt.name, sta.alignment_score
-            FROM stock_theme_alignment sta
-            JOIN meta_themes mt ON mt.id = sta.meta_theme_id
-            WHERE mt.momentum = 'accelerating'
-              AND sta.alignment_score > 0.005
-            ORDER BY sta.symbol, sta.alignment_score DESC
+            SELECT ne.symbol,
+                   n.name || ' [' || COALESCE(ne.direction,'unsigned') || '/' ||
+                   COALESCE(ne.linkage,'?') || ']',
+                   ne.exposure
+            FROM narrative_exposures ne
+            JOIN narratives n ON n.id = ne.narrative_id
+            WHERE n.status = 'active'
+            ORDER BY ne.symbol, ne.exposure DESC
         """)).fetchall()
 
         fund_rows = conn.execute(text("""

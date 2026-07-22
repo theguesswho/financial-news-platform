@@ -674,8 +674,13 @@ def weekly_deep_refresh():
         from pipeline.hidden_gem_scorer import get_engine as _ge
         eng = _ge()
         r = run_exposure_scoring(eng)
-        eng.dispose()
         _ok(f"Exposures: {r}")
+        # Sonnet signing pass (v2): direction + linkage are AUTHORITATIVE from
+        # this pass — Haiku's inline values are provisional (60% agreement).
+        from pipeline.narrative_exposure import sign_exposures
+        rs = sign_exposures(eng)   # only_unsigned: fresh re-judged rows
+        eng.dispose()
+        _ok(f"Signed: {rs}")
     except Exception as e:
         _err("Narrative exposure scoring failed", e)
 

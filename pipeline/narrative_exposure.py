@@ -82,9 +82,17 @@ Rules:
 - Most companies have 0-2 genuine exposures. Returning an empty list is a good answer.
 - exposure: 0.25-0.5 = meaningful contributor; 0.5-0.75 = major driver; >0.75 = the business IS the narrative.
 - evidence must cite specifics FROM THE COMPANY'S OWN evidence above (segment, product, backlog, growth figure).
+- direction — judge who the narrative serves, strictly:
+  "beneficiary" = the narrative GROWS this company's profits;
+  "adapting" = the narrative THREATENS its existing business and it is defensively repositioning (adaptation dressed as strategy is "adapting", NOT "beneficiary");
+  "threatened" = the narrative erodes the business with no credible adaptation shown.
+- linkage — how directly the narrative reaches this company's P&L:
+  "direct" = narrative demand flows straight to its revenue (sells the picks and shovels);
+  "secondary" = supplies, services, or prices the direct players;
+  "incidental" = broad drift only (investment portfolio income, generic cost effects).
 
 Return ONLY valid JSON array (empty [] if none):
-[{{"narrative_id": <int>, "exposure": <0.25-1.0>, "evidence": "<one sentence citing specifics>"}}]"""
+[{{"narrative_id": <int>, "exposure": <0.25-1.0>, "direction": "beneficiary|adapting|threatened", "linkage": "direct|secondary|incidental", "evidence": "<one sentence citing specifics>"}}]"""
 
     resp = client.messages.create(model=HAIKU, max_tokens=600,
                                   messages=[{"role": "user", "content": prompt}])
@@ -136,9 +144,17 @@ def run_exposure_scoring(engine, symbols: list[str] | None = None) -> dict:
                 continue
             rows.append({"symbol": sym, "nid": int(e["narrative_id"]),
                          "exp": round(float(e["exposure"]), 3),
+                         "dir": e.get("direction") if e.get("direction") in
+                                ("beneficiary", "adapting", "threatened") else "beneficiary",
+                         "lnk": e.get("linkage") if e.get("linkage") in
+                                ("direct", "secondary", "incidental") else "secondary",
                          "ev": str(e.get("evidence", ""))[:600]})
 
     with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS direction VARCHAR(12)"))
+        conn.execute(text(
+            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS linkage VARCHAR(12)"))
         if symbols:
             conn.execute(text("DELETE FROM narrative_exposures WHERE symbol = ANY(:s)"),
                          {"s": symbols})
@@ -146,10 +162,12 @@ def run_exposure_scoring(engine, symbols: list[str] | None = None) -> dict:
             conn.execute(text("DELETE FROM narrative_exposures"))
         CHUNK = 500
         upsert = text("""
-            INSERT INTO narrative_exposures (symbol, narrative_id, exposure, evidence, updated_at)
-            VALUES (:symbol, :nid, :exp, :ev, NOW())
+            INSERT INTO narrative_exposures
+                (symbol, narrative_id, exposure, direction, linkage, evidence, updated_at)
+            VALUES (:symbol, :nid, :exp, :dir, :lnk, :ev, NOW())
             ON CONFLICT (symbol, narrative_id) DO UPDATE SET
-                exposure = EXCLUDED.exposure, evidence = EXCLUDED.evidence, updated_at = NOW()
+                exposure = EXCLUDED.exposure, direction = EXCLUDED.direction,
+                linkage = EXCLUDED.linkage, evidence = EXCLUDED.evidence, updated_at = NOW()
         """)
         for i in range(0, len(rows), CHUNK):
             conn.execute(upsert, rows[i:i + CHUNK])
@@ -158,6 +176,125 @@ def run_exposure_scoring(engine, symbols: list[str] | None = None) -> dict:
     print(f"✅ {len(rows)} exposures across {n_exposed} stocks "
           f"({len(ctx) - n_exposed} stocks with none — that's healthy)")
     return {"scored": len(ctx), "exposures": len(rows), "stocks_exposed": n_exposed}
+
+
+SONNET = "claude-sonnet-4-6"
+
+SIGN_PROMPT = """For each narrative exposure below for {sym}, judge two things from the cited evidence:
+1. direction: "beneficiary" (the narrative grows this company's profits), "adapting" (company is defensively repositioning because the narrative THREATENS its existing business), or "threatened" (narrative erodes its business, no credible adaptation shown).
+2. linkage: "direct" (narrative demand flows straight to its P&L - sells the picks/shovels), "secondary" (supplies/services/prices the direct players), or "incidental" (broad drift, e.g. investment portfolio income, generic cost tailwinds).
+Judge ONLY from the evidence text. Be strict: adaptation dressed as strategy is "adapting", not "beneficiary".
+
+EXPOSURES:
+{blocks}
+
+Respond ONLY with a JSON array, one object per exposure in order:
+[{{"nid": <id>, "direction": "...", "linkage": "..."}}]"""
+
+
+def sign_exposures(engine, symbols: list[str] | None = None, only_unsigned: bool = True) -> dict:
+    """
+    Sonnet signing pass over stored exposures: judges direction + linkage.
+    Haiku's inline values are provisional (pilot 2026-07-22: only 60% direction
+    agreement, systematically credulous — labels 'adapting' as 'beneficiary');
+    this pass is authoritative. only_unsigned=True signs new rows cheaply each
+    week; False re-signs everything.
+    """
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS direction VARCHAR(12)"))
+        conn.execute(text(
+            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS linkage VARCHAR(12)"))
+        conn.execute(text(
+            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP"))
+
+    where = ["1=1"]
+    if only_unsigned:
+        where.append("ne.signed_at IS NULL")
+    params = {}
+    if symbols:
+        where.append("ne.symbol = ANY(:syms)")
+        params["syms"] = symbols
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT ne.symbol, n.id, n.name, ne.exposure, ne.evidence
+            FROM narrative_exposures ne JOIN narratives n ON n.id = ne.narrative_id
+            WHERE {' AND '.join(where)} ORDER BY ne.symbol
+        """), params).fetchall()
+
+    by_sym: dict[str, list] = {}
+    for sym, nid, name, exp, ev in rows:
+        by_sym.setdefault(sym, []).append(
+            {"nid": nid, "name": name, "exp": float(exp), "ev": ev or ""})
+    if not by_sym:
+        print("sign_exposures: nothing to sign")
+        return {"signed": 0}
+
+    print(f"Signing exposures for {len(by_sym)} stocks ({len(rows)} rows) with {SONNET}...")
+    lock = Lock()
+    signed = failed = 0
+
+    def work(sym):
+        client = Anthropic()
+        exps = by_sym[sym]
+        blocks = "\n".join(
+            f'- nid {e["nid"]}: "{e["name"]}" (exposure {e["exp"]:.2f})\n  evidence: {e["ev"][:400]}'
+            for e in exps)
+        for attempt in range(3):
+            try:
+                resp = client.messages.create(
+                    model=SONNET, max_tokens=500, timeout=45,
+                    messages=[{"role": "user",
+                               "content": SIGN_PROMPT.format(sym=sym, blocks=blocks)}])
+                raw = resp.content[0].text.strip()
+                if raw.startswith("```"):
+                    raw = raw.split("```")[1].removeprefix("json").rsplit("```", 1)[0]
+                return sym, json.loads(raw)
+            except Exception:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+        return sym, None
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(work, s) for s in by_sym]
+        for fut in as_completed(futures):
+            sym, result = fut.result()
+            with lock:
+                if result is None:
+                    failed += 1
+                    continue
+                valid = [r for r in result if isinstance(r, dict)
+                         and r.get("direction") in ("beneficiary", "adapting", "threatened")
+                         and r.get("linkage") in ("direct", "secondary", "incidental")]
+                if not valid:
+                    failed += 1
+                    continue
+                # Per-symbol write with retry — the Railway proxy kills idle
+                # connections mid-run; one dropped write must not abort the pass.
+                for w_attempt in range(3):
+                    try:
+                        with engine.begin() as conn:
+                            conn.execute(text("""
+                                UPDATE narrative_exposures
+                                SET direction = :d, linkage = :l, signed_at = NOW()
+                                WHERE symbol = :s AND narrative_id = :n
+                            """), [{"s": sym, "n": int(r["nid"]),
+                                    "d": r["direction"], "l": r["linkage"]} for r in valid])
+                        break
+                    except Exception:
+                        if w_attempt == 2:
+                            failed += 1
+                            valid = []
+                        else:
+                            time.sleep(2)
+                if not valid:
+                    continue
+                signed += len(valid)
+                if (signed // 50) != ((signed - len(valid)) // 50):
+                    print(f"  {signed} signed...", flush=True)
+
+    print(f"✅ signed {signed} exposures ({failed} symbols failed)")
+    return {"signed": signed, "failed_symbols": failed}
 
 
 if __name__ == "__main__":

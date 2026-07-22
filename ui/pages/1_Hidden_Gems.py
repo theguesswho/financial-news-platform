@@ -332,12 +332,7 @@ with st.spinner("Loading scores…"):
     overrides     = load_overrides()
 
 # ── Helper fns ────────────────────────────────────────────────────────────────
-def tier_for(score):
-    if score is None: return None
-    if score > 0.60:  return "Strong Buy"
-    if score > 0.52:  return "Buy"
-    if score > 0.47:  return "Watch"
-    return None
+from pipeline.tiers import tier_for
 
 def tier_css(tier):
     return {"Strong Buy": "strong-buy", "Buy": "buy", "Watch": "watch"}.get(tier, "")
@@ -534,9 +529,10 @@ if _sc and _sc["n_lots"]:
   </div>
 </div>
 <div style="font-size:0.72rem; color:#94a3b8; margin:0.3rem 0 1rem;">
-Track record: USD 1,000 into every Strong Buy each week, each lot paired with a same-day
-USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed. Started
-{_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f} deployed.
+Track record (v2 era): USD 1,000 into every Strong Buy each week, each lot paired with a
+same-day USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed.
+Started {_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f}
+deployed. The v1-era record (Jun 22 – Jul 21, 2026) is archived, not deleted.
 </div>""", unsafe_allow_html=True)
 
     with st.expander("📊 Holdings breakdown — every lot vs its SPY twin"):
@@ -694,9 +690,9 @@ for g in display_stocks:
 
         # Score bars using st.progress
         for label, val, color in [
-            ("Narrative", n_score, "#6366f1"),
-            ("Value",     v_score, "#0ea5e9"),
-            ("Quality",   q_score, "#10b981"),
+            ("Exposure", n_score, "#6366f1"),   # signed narrative exposure (v2)
+            ("Value",    v_score, "#0ea5e9"),   # standalone ex-growth value (v2)
+            ("Quality",  q_score, "#10b981"),
         ]:
             bcol1, bcol2, bcol3 = st.columns([1, 4, 0.7])
             bcol1.markdown(f'<span style="font-size:0.68rem;color:#94a3b8;font-weight:600">{label}</span>', unsafe_allow_html=True)

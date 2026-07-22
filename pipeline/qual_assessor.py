@@ -34,14 +34,14 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from pipeline.hidden_gem_scorer import get_engine, score_all_stocks
-from ui.app import get_tier
+from pipeline.tiers import tier_for as get_tier, WATCH
 
 load_dotenv(override=True)
 
 MODEL       = "claude-sonnet-4-6"
 MAX_WORKERS = 4   # Sonnet is more expensive — keep parallel calls low
 TOP_N       = 20   # kept for backwards compat but no longer caps assessment
-MIN_SCORE   = 0.34 # assess everything at Watch tier or above (matches Home page threshold)
+MIN_SCORE   = WATCH  # assess everything at Watch tier or above (single-source: pipeline/tiers.py)
 
 
 ASSESSMENT_PROMPT = """You are a senior fundamental equity analyst performing a qualitative review of a stock flagged by a quantitative scoring system.
@@ -63,33 +63,47 @@ Your job is NOT to validate the score — it's to catch what the numbers miss. L
   (c) EUPHORIA — confident calls against visibly weakening margins/guidance
 - Sector headwinds the theme alignment can't see
 
-TIERS: Strong Buy (gem > 0.60) | Buy (0.52–0.60) | Watch (0.47–0.52) | None (< 0.47)
+TIERS: Strong Buy (gem > {tier_sb}) | Buy ({tier_buy}–{tier_sb}) | Watch ({tier_watch}–{tier_buy}) | None (< {tier_watch})
 
-COMPONENT DEFINITIONS — read carefully; do not guess semantics:
-- Narrative (0–1): LLM-judged exposure to accelerating structural narratives,
-  cited from the company's own filings. High = genuine, material exposure.
-- Value (0–1): PERCENTILE RANK vs margin-peer group (PEG-weighted). 1.00 means
-  "cheapest in its peer group on the blend", NOT infinitely cheap — and it can
-  be inflated by distorted growth inputs (spin-offs, one-off comps).
+THE EVALUATION FRAME — the Dell test. This platform hunts one specific trade:
+a decent boring business, priced as a decent boring business, where genuine
+narrative exposure comes FREE (Dell pre-AI-rerating: a fairly-priced PC maker
+with the AI-server option at zero). Every upgrade rationale must answer:
+"would the buyer be PAYING for the narrative, or getting it free on top of a
+fairly-priced business?" If the narrative is in the price, it is not a hidden
+gem no matter how strong the story.
+
+COMPONENT DEFINITIONS (v2 formula: gem = sqrt(Value x Quality) x NG^0.75):
+- Exposure E (0–1): SIGNED narrative exposure, cited from the company's own
+  filings. Only BENEFICIARY exposure counts fully — a company defensively
+  adapting to a narrative that threatens it gets a fraction; incidental
+  linkage (portfolio income, cost drift) is near-zero. Interrogate the top
+  exposures: is "beneficiary/direct" credible from the evidence?
+- Value (0–1): STANDALONE ex-growth cheapness — percentile vs margin-peer
+  group on fwd PE / EV/EBITDA / P/FCF. NO growth adjustment, by design: the
+  narrative option must be free, not paid for via expected growth. PEG is
+  provided as a sanity stat only.
 - Quality (0–1): ROIC, margins, growth trajectory strength.
-- Gap (0–1): degree to which the market has NOT yet priced the narrative.
-  HIGH gap = story present, price lagging = THE OPPORTUNITY this platform
-  hunts. LOW gap = market has already repriced it. Never read a high gap as
-  "the market has discovered this" — it means the opposite.
-  CRITICAL — a wide gap has two opposite causes: (a) NEGLECT — the story grew
-  and price hasn't followed (the Dell setup, genuine opportunity); (b)
-  DE-RATING — price is falling because the market senses narrative
-  DECELERATION before the quant layer does (a value trap wearing an
-  opportunity's number). Use the earnings-call evidence to tell them apart:
-  if the call trajectory is decelerating, growth adjectives are cooling, or
-  guidance language is hedging while the gap widens, treat the wide gap as a
-  RED FLAG and say so explicitly — do not endorse it as margin of safety.
+- Priced-in P (0–1): how much the market ALREADY pays for the story (price
+  action, distance to 52w high, analyst crowding). HIGH P (> ~0.55) is
+  near-disqualifying regardless of story strength — treat any upgrade of a
+  high-P stock as extraordinary. At-the-high stocks: the repricing already
+  happened; "room to run" is a momentum thesis and not ours.
+- NG (0–1): E x (1 − P) — THE core signal: genuine exposure the market has
+  not priced. A strong narrative fully priced scores near-zero, correctly.
+  CRITICAL — unpriced exposure has two opposite causes: (a) NEGLECT — the
+  story grew and price hasn't followed (the Dell setup); (b) DE-RATING —
+  price falling because the market senses narrative deceleration first (a
+  value trap wearing an opportunity's number). If call trajectory is
+  decelerating, growth adjectives cooling, or guidance hedging while NG is
+  high, treat it as a RED FLAG and say so — do not endorse it as margin of
+  safety.
 
 QUANTITATIVE SCORES:
   Symbol: {symbol}
   Gem score: {gem_score} → Raw tier: {raw_tier}
-  Narrative: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Gap: {gap_score}
-  PEG: {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC: {roic}
+  Exposure E: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Priced-in P: {priced_in} | NG: {ng_score}
+  PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC: {roic}
 
 TOP THEMES (from filings + earnings calls):
 {themes}
@@ -244,6 +258,7 @@ def build_prompt(gem: dict, ctx: dict) -> str:
     else:
         fundamental_trend = "  (no multi-year history available)"
 
+    from pipeline.tiers import STRONG_BUY, BUY, WATCH
     return ASSESSMENT_PROMPT.format(
         symbol               = gem["symbol"],
         gem_score            = fmt(gem["hidden_gem_score"]),
@@ -251,7 +266,11 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         narrative_score      = fmt(gem["narrative_score"]),
         value_score          = fmt(gem["value_score"]),
         quality_score        = fmt(gem["quality_score"]),
-        gap_score            = fmt(gem.get("gap_score", 0)),
+        priced_in            = fmt(gem.get("priced_in", 0.5)),
+        ng_score             = fmt(gem.get("ng_score", 0)),
+        tier_sb              = f"{STRONG_BUY:.2f}",
+        tier_buy             = f"{BUY:.2f}",
+        tier_watch           = f"{WATCH:.2f}",
         peg                  = fmt(fund[0] if fund else None),
         fwd_pe               = fmt(fund[1] if fund else None),
         rev_growth           = fmt(fund[2] if fund else None, pct=True),

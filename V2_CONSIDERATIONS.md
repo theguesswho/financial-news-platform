@@ -1,9 +1,15 @@
 # V2 Considerations
 
-Deferred scoring/system changes. The v1 methodology is FROZEN (2026-07-07) so the
-track record stays untampered — nothing here ships until a deliberate v2 revision,
-informed by the accumulated record. Log every candidate here with date, origin,
-and rationale. Do not implement piecemeal.
+STATUS 2026-07-22: **v2 SHIPPED** (see V2_SPEC.md). The v1 freeze ended with a
+deliberate, user-approved cutover: gap-centric scoring (NG = signed E x (1-P)),
+standalone value, priced-in hiddenness, velocity guard, qual realignment, fresh
+track-record era (v1 lots archived). Items #3, #4, #5, #6, #14 (velocity guard
+portion), and #17 (override, recalibrated to v2) shipped in that cut. Remaining
+items below stay open for v2.x iterations — same discipline: log first, ship
+deliberately.
+
+Historical preamble (v1 freeze, 2026-07-07 – 2026-07-22): deferred
+scoring/system changes; nothing shipped piecemeal while the v1 track record ran.
 
 ## Scoring
 

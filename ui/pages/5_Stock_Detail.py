@@ -542,8 +542,9 @@ gem_score = gem.get("hidden_gem_score")
 # still qualifies for the board — NFLX kept showing "Buy (assessed Jun 24)"
 # next to a 0.197 score after falling off. Stale verdicts become dated
 # historical context, not a live tier.
+from pipeline.tiers import tier_for as _tier_for, WATCH as _WATCH, BUY as _BUY, STRONG_BUY as _SB
 _score_now = gem_score or 0
-_on_board  = _score_now > 0.47
+_on_board  = _score_now > _WATCH
 if qa and _on_board:
     display_tier = qa[2] if qa[2] in ("Strong Buy", "Buy", "Watch") else None
     direction    = qa[3]
@@ -561,9 +562,7 @@ elif qa:
     assessed_at  = qa[7]
 else:
     score = gem_score or 0
-    display_tier = ("Strong Buy" if score > 0.60 else
-                    "Buy" if score > 0.52 else
-                    "Watch" if score > 0.47 else None)
+    display_tier = _tier_for(score)
     direction    = "hold"
     rationale    = None
     key_bull     = None
@@ -714,9 +713,9 @@ if px_rows:
         # Gem score vs the tier thresholds — shows distance to upgrade/downgrade
         y_max = max(0.70, float(sc_df["Gem Score"].max()) + 0.05)
         tiers = pd.DataFrame([
-            {"y0": 0.60, "y1": y_max, "tier": "Strong Buy", "color": "#dcfce7"},
-            {"y0": 0.52, "y1": 0.60,  "tier": "Buy",        "color": "#dbeafe"},
-            {"y0": 0.47, "y1": 0.52,  "tier": "Watch",      "color": "#fef9c3"},
+            {"y0": _SB,    "y1": y_max, "tier": "Strong Buy", "color": "#dcfce7"},
+            {"y0": _BUY,   "y1": _SB,   "tier": "Buy",        "color": "#dbeafe"},
+            {"y0": _WATCH, "y1": _BUY,  "tier": "Watch",      "color": "#fef9c3"},
         ])
         bands = alt.Chart(tiers).mark_rect(opacity=0.45).encode(
             y="y0:Q", y2="y1:Q",
@@ -730,7 +729,8 @@ if px_rows:
             tooltip=[alt.Tooltip("date:T"), alt.Tooltip("Gem Score:Q", format=".3f")],
         )
         st.altair_chart((bands + score_line).properties(height=220), use_container_width=True)
-        st.caption("Gem score against tier bands (green = Strong Buy ≥0.60, blue = Buy ≥0.52, yellow = Watch ≥0.47). "
+        st.caption(f"Gem score against tier bands (green = Strong Buy >{_SB}, blue = Buy >{_BUY}, "
+                   f"yellow = Watch >{_WATCH}). Scores before the 2026-07-22 v2 cutover are on the v1 scale. "
                    "How close is this stock to an upgrade or downgrade?")
 
         with st.expander("What's driving the score? (component history)"):

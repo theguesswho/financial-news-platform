@@ -45,6 +45,8 @@ def create_table(engine):
             ("value_score",     "NUMERIC(10,4)"),
             ("quality_score",   "NUMERIC(10,4)"),
             ("gap_score",       "NUMERIC(10,4)"),
+            ("priced_in",       "NUMERIC(10,4)"),
+            ("ng_score",        "NUMERIC(10,4)"),
         ]:
             conn.execute(text(
                 f"ALTER TABLE leaderboard_history ADD COLUMN IF NOT EXISTS {col} {defn}"
@@ -64,15 +66,7 @@ def archive_leaderboard(engine, gems=None) -> dict:
 
     today = date.today()
 
-    def tier_for(s):
-        if s is None: return None
-        # Recalibrated 2026-07-07 to the narrative-brain score distribution —
-        # the old 0.58/0.46/0.34 cutoffs were tuned to the legacy theme signal
-        # and let 130+ stocks on the board.
-        if s > 0.60: return "Strong Buy"
-        if s > 0.52: return "Buy"
-        if s > 0.47: return "Watch"
-        return None
+    from pipeline.tiers import tier_for
 
     TIER_ORDER = {"Strong Buy": 0, "Buy": 1, "Watch": 2}
 
@@ -93,6 +87,8 @@ def archive_leaderboard(engine, gems=None) -> dict:
             "value_score":     g.get("value_score"),
             "quality_score":   g.get("quality_score"),
             "gap_score":       g.get("gap_score"),
+            "priced_in":       g.get("priced_in"),
+            "ng_score":        g.get("ng_score"),
         })
 
     on_board_syms = {r["symbol"] for r in rows}
@@ -108,15 +104,19 @@ def archive_leaderboard(engine, gems=None) -> dict:
                 "value_score":     g.get("value_score"),
                 "quality_score":   g.get("quality_score"),
                 "gap_score":       g.get("gap_score"),
+                "priced_in":       g.get("priced_in"),
+                "ng_score":        g.get("ng_score"),
             })
 
     upsert = text("""
         INSERT INTO leaderboard_history
             (date, symbol, gem_score, tier, rank,
-             narrative_score, value_score, quality_score, gap_score)
+             narrative_score, value_score, quality_score, gap_score,
+             priced_in, ng_score)
         VALUES
             (:date, :symbol, :gem_score, :tier, :rank,
-             :narrative_score, :value_score, :quality_score, :gap_score)
+             :narrative_score, :value_score, :quality_score, :gap_score,
+             :priced_in, :ng_score)
         ON CONFLICT (date, symbol) DO UPDATE SET
             gem_score       = EXCLUDED.gem_score,
             tier            = EXCLUDED.tier,
@@ -124,7 +124,9 @@ def archive_leaderboard(engine, gems=None) -> dict:
             narrative_score = EXCLUDED.narrative_score,
             value_score     = EXCLUDED.value_score,
             quality_score   = EXCLUDED.quality_score,
-            gap_score       = EXCLUDED.gap_score
+            gap_score       = EXCLUDED.gap_score,
+            priced_in       = EXCLUDED.priced_in,
+            ng_score        = EXCLUDED.ng_score
     """)
     # Chunked with per-chunk commits — a single 500-row payload can be killed
     # mid-send by the Railway proxy when written from outside the datacenter.

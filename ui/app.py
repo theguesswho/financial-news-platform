@@ -109,23 +109,9 @@ def gem_badge(score) -> str:
 
 
 def get_tier(score: float) -> str | None:
-    """
-    Conviction tier — narrative is a gate, not just a component.
-    Scores are lower than the old formula by design: you cannot reach
-    Strong Buy without a strong secular tailwind narrative (n > ~0.80).
-
-      Strong Buy  > 0.60  — narrative firing + cheap + quality
-      Buy         0.46–0.58 — two legs strong, narrative present
-      Watch       0.34–0.46 — interesting but narrative weak or partial
-    Below 0.34 = no narrative signal, do not flag.
-    """
-    if score >= 0.58:
-        return "Strong Buy"
-    if score >= 0.46:
-        return "Buy"
-    if score >= 0.34:
-        return "Watch"
-    return None
+    """Conviction tier — single source of truth in pipeline/tiers.py (V2 #6)."""
+    from pipeline.tiers import tier_for
+    return tier_for(score)
 
 
 def tier_badge(score: float) -> str:

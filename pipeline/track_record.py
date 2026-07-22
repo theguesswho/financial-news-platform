@@ -40,6 +40,12 @@ def create_table(engine):
         """))
 
 
+# v2 era cutover (user decision 2026-07-22): the v1 lots are ARCHIVED — never
+# deleted, excluded from the active scorecard — and a fresh heads-up table
+# starts with the first v2-scored snapshot. Same honesty rules.
+V2_START = date(2026, 7, 23)
+ERA = "v2"
+
 BENCHMARKS = ("SPY",)   # user decision 2026-07-12: SPY is THE benchmark for every lot,
                         # mid-caps included — the bar is "would my money have done
                         # better in the index I actually hold". (benchmark column and
@@ -99,15 +105,23 @@ def open_weekly_lots(engine) -> dict:
             "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS benchmark VARCHAR(10) DEFAULT 'SPY'"))
         conn.execute(text(
             "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS qual_promoted BOOLEAN DEFAULT FALSE"))
+        conn.execute(text(
+            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS era VARCHAR(4) DEFAULT 'v1'"))
+        # One-time: anything opened before the v2 cutover belongs to the v1 era
+        conn.execute(text(
+            "UPDATE track_lots SET era = 'v1' WHERE era IS NULL OR lot_date < :d"),
+            {"d": V2_START})
     _ensure_benchmark_prices(engine)
 
     with engine.connect() as conn:
         # First snapshot date of each ISO week in the archive
+        # v2 era: lots open only from v2-scored snapshots
         week_dates = [r[0] for r in conn.execute(text("""
             SELECT MIN(date) FROM leaderboard_history
+            WHERE date >= :v2
             GROUP BY EXTRACT(ISOYEAR FROM date), EXTRACT(WEEK FROM date)
             ORDER BY 1
-        """)).fetchall()]
+        """), {"v2": V2_START}).fetchall()]
         have_lots = {r[0] for r in conn.execute(text(
             "SELECT DISTINCT lot_date FROM track_lots")).fetchall()}
 
@@ -131,8 +145,9 @@ def open_weekly_lots(engine) -> dict:
             # Entry lot = symbol was not Strong Buy on any earlier snapshot
             prior_sb = {r[0] for r in conn.execute(text("""
                 SELECT DISTINCT symbol FROM leaderboard_history
-                WHERE date < :d AND COALESCE(assessed_tier, tier) = 'Strong Buy'
-            """), {"d": wd}).fetchall()}
+                WHERE date < :d AND date >= :v2
+                  AND COALESCE(assessed_tier, tier) = 'Strong Buy'
+            """), {"d": wd, "v2": V2_START}).fetchall()}
 
             rows = []
             for sym, t, score, qual_promoted in picks:
@@ -149,10 +164,10 @@ def open_weekly_lots(engine) -> dict:
                 conn.execute(text("""
                     INSERT INTO track_lots
                         (lot_date, symbol, tier, gem_score, is_entry, entry_price,
-                         spy_price, benchmark, qual_promoted)
-                    VALUES (:d, :s, :t, :g, :e, :px, :spy, :b, :qp)
+                         spy_price, benchmark, qual_promoted, era)
+                    VALUES (:d, :s, :t, :g, :e, :px, :spy, :b, :qp, '%s')
                     ON CONFLICT (lot_date, symbol) DO NOTHING
-                """), rows)
+                """ %  ERA), rows)
             opened += len(rows)
 
     if opened:
@@ -160,8 +175,9 @@ def open_weekly_lots(engine) -> dict:
     return {"opened": opened}
 
 
-def get_scorecard(engine) -> dict:
-    """Mark-to-market every lot against its SPY twin."""
+def get_scorecard(engine, era: str = ERA) -> dict:
+    """Mark-to-market every lot of the given era against its SPY twin.
+    Default is the active v2 era; pass era='v1' to read the archived record."""
     _ensure_benchmark_prices(engine)
     with engine.connect() as conn:
         rows = conn.execute(text("""
@@ -177,8 +193,9 @@ def get_scorecard(engine) -> dict:
             JOIN latest ls   ON ls.symbol = tl.symbol AND ls.rn = 1
             JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY') AND lspy.rn = 1
             WHERE NOT COALESCE(tl.voided, FALSE)
+              AND COALESCE(tl.era, 'v1') = :era
             ORDER BY tl.lot_date, tl.symbol
-        """)).fetchall()
+        """), {"era": era}).fetchall()
 
     lots = []
     for d, sym, is_entry, amt, e_px, n_px, e_spy, n_spy in rows:

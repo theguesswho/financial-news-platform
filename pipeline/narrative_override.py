@@ -26,11 +26,12 @@ import time
 
 from sqlalchemy import text
 
-# value floor 0.35 (not 0.40): value is a daily-moving percentile — the 2026-07-21
-# universe-wide PEG recompute alone moved BR 0.41 -> 0.36. The floor gates who
-# gets JUDGED; promotion still requires the adjusted gem to clear the Watch line.
-SCREEN = {"quality": 0.75, "gap": 0.60, "value": 0.35,
-          "narrative_below": 0.50, "gem_below": 0.47}
+# v2 screen (2026-07-22): quant-qualified but exposure-blind — standalone
+# cheap, quality, NOT crowded (priced_in low), yet low signed E keeps it off
+# the board. The floor gates who gets JUDGED; promotion still requires the
+# adjusted gem to clear the Watch line (single-source: pipeline/tiers.py).
+SCREEN = {"quality": 0.75, "priced_in_max": 0.50, "value": 0.35,
+          "narrative_below": 0.50}
 MAX_BOOST = 0.40
 REUSE_DAYS = 7   # LLM re-judges weekly; daily runs re-stamp from stored boost
 
@@ -106,11 +107,14 @@ def create_table(engine):
 
 
 def recompute_gem(g: dict, n_adj: float) -> float:
-    """Frozen v1 composition with the adjusted narrative input.
-    Mirrors hidden_gem_scorer.score_all_stocks (screen guarantees v >= 0.40,
-    so the low-value floor branch never applies)."""
+    """v2 composition (V2_SPEC) with the adjusted E input.
+    Mirrors hidden_gem_scorer.score_all_stocks."""
     v, q = g["value_score"], g["quality_score"]
-    gem = (v * q) ** 0.5 * (n_adj ** 1.5) if (v > 0 and q > 0) else 0.0
+    unpriced = 1 - g.get("priced_in", 0.5)
+    if g.get("neg_velocity"):
+        unpriced = min(unpriced, 0.5)
+    ng = n_adj * unpriced
+    gem = (v * q) ** 0.5 * (ng ** 0.75) if (v > 0 and q > 0 and ng > 0) else 0.0
 
     rev_gr  = g.get("revenue_growth") or 0.0
     earn_gr = g.get("earnings_growth") or 0.0
@@ -118,28 +122,22 @@ def recompute_gem(g: dict, n_adj: float) -> float:
         gem *= 0.5
     elif earn_gr < 0 and rev_gr >= 0 and n_adj < 0.40:
         gem *= 0.75
-
-    gp = g["gap_score"]
-    gap_mult = 0.70 + 0.50 * gp
-    if (g.get("roic") or 0) > 0.15 and q >= 0.65 and gp >= 0.80:
-        gap_mult = min(gap_mult + 0.20, 1.40)
-    return round(min(gem * gap_mult, 1.0), 4)
+    return round(min(gem, 1.0), 4)
 
 
 def _tier(score):
-    if score > 0.60: return "Strong Buy"
-    if score > 0.52: return "Buy"
-    if score > 0.47: return "Watch"
-    return None
+    from pipeline.tiers import tier_for
+    return tier_for(score)
 
 
 def _screen(gems: list) -> list:
+    from pipeline.tiers import WATCH
     return [g for g in gems
             if g["quality_score"]  >= SCREEN["quality"]
-            and g["gap_score"]     >= SCREEN["gap"]
+            and g.get("priced_in", 1.0) <= SCREEN["priced_in_max"]
             and g["value_score"]   >= SCREEN["value"]
             and g["narrative_score"] < SCREEN["narrative_below"]
-            and g["hidden_gem_score"] <= SCREEN["gem_below"]]
+            and g["hidden_gem_score"] <= WATCH]
 
 
 def _assess(client, engine, g: dict) -> dict:

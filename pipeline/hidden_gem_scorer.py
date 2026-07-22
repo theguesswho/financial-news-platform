@@ -196,22 +196,33 @@ def compute_narrative_score(engine) -> dict:
     """
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT ne.symbol, ne.exposure, nar.momentum, nar.status
+            SELECT ne.symbol, ne.exposure, nar.momentum, nar.status,
+                   ne.direction, ne.linkage
             FROM narrative_exposures ne
             JOIN narratives nar ON nar.id = ne.narrative_id
             WHERE nar.status IN ('active', 'declining')
         """)).fetchall()
 
+    # v2 signed exposure (V2_SPEC 2026-07-22): only beneficiary exposure counts
+    # at full weight — adaptation-under-threat is not upside, incidental linkage
+    # is not a business. Unsigned rows (signing pass pending) get 0.7.
+    DIR_W = {"beneficiary": 1.0, "adapting": 0.25, "threatened": 0.0}
+    LNK_W = {"direct": 1.0, "secondary": 0.6, "incidental": 0.2}
+
     theme_scores: dict[str, float] = {}
     if rows:
         per_stock: dict[str, list[float]] = {}
-        for sym, exposure, momentum, status in rows:
+        for sym, exposure, momentum, status, direction, linkage in rows:
             if status == "declining":
                 w = 0.20
             elif momentum == "accelerating":
                 w = 1.00
             else:
                 w = 0.60
+            if direction in DIR_W and linkage in LNK_W:
+                w *= DIR_W[direction] * LNK_W[linkage]
+            else:
+                w *= 0.7
             per_stock.setdefault(sym, []).append(float(exposure) * w)
 
         # Dominant exposure + small kicker for a genuine second narrative,
@@ -245,14 +256,15 @@ PFCF_CEILING = 200.0  # above this P/FCF is meaningless for ranking
 
 def compute_value_score(engine) -> dict:
     """
-    Value score — four signals blended within gross-margin peer group.
+    v2 STANDALONE value (V2_SPEC 2026-07-22) — ex-growth multiples only,
+    blended within margin-peer group. NO PEG anywhere: growth-adjusted
+    cheapness is consensus belief wearing a value costume; the narrative
+    option must be free, not paid for via expected growth.
 
-    PEG rank   (50% weight) — growth-adjusted cheapness, primary signal.
-    PE rank    (30% weight) — preference for reasonable absolute price.
-    P/FCF rank (20% weight) — cash generation cheapness.
-      → Low PEG + low PE + low P/FCF scores highest.
+    Fwd PE rank     (45%) — cheap for what it already earns.
+    EV/EBITDA rank  (35%) — capital-structure-honest cheapness.
+    P/FCF rank      (20%) — cash generation cheapness.
         Hard PE ceiling (75×) zeros the PE component only.
-        Hard PEG ceiling (6×) zeros the PEG component.
         Negative P/FCF (negative FCF) or >200× treated as null.
 
     P/Sales rank — backstop for the "Dell pattern" where earnings are temporarily
@@ -264,7 +276,7 @@ def compute_value_score(engine) -> dict:
     """
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT f.symbol, f.peg_ratio, f.pe_forward, f.pe_trailing,
+            SELECT f.symbol, f.ev_to_ebitda, f.pe_forward, f.pe_trailing,
                    f.revenue_growth_yoy, f.gross_margin, f.operating_margin,
                    f.market_cap, f.price_to_fcf, f.sector, f.industry, hm.revenue_ttm
             FROM fundamentals f
@@ -290,18 +302,20 @@ def compute_value_score(engine) -> dict:
     all_buckets = (list(set(_SECTOR_BUCKET.values()))
                    + list({row[10] for row in rows if row[10]})
                    + ["high", "mid", "low"])
-    peg_groups  = {b: [] for b in all_buckets}
+    ev_groups   = {b: [] for b in all_buckets}
     pe_groups   = {b: [] for b in all_buckets}
     pfcf_groups = {b: [] for b in all_buckets}
     ps_groups   = {b: [] for b in all_buckets}
 
+    EV_EBITDA_CEILING = 100.0   # beyond this the ratio is noise, not a price
+
     for row in rows:
-        sym, peg, pe_fwd, pe_trail, rev_gr, gm, om, mcap, pfcf, sector, industry, revenue = row
+        sym, ev_eb, pe_fwd, pe_trail, rev_gr, gm, om, mcap, pfcf, sector, industry, revenue = row
         bucket = _peer_bucket(sector, industry, gm, industry_counts)
 
         pe_fwd_f  = float(pe_fwd)   if pe_fwd   and float(pe_fwd)  > 0 else None
         pe_trl_f  = float(pe_trail)  if pe_trail  and float(pe_trail) > 0 else None
-        peg_f     = float(peg)      if peg      and float(peg)     > 0 else None
+        ev_f      = float(ev_eb)    if ev_eb and 0 < float(ev_eb) <= EV_EBITDA_CEILING else None
         pfcf_f    = float(pfcf)     if pfcf     and float(pfcf) > 0 and float(pfcf) <= PFCF_CEILING else None
         om_f      = float(om)    if om    else None
         mcap_f    = float(mcap)  if mcap  else None
@@ -309,9 +323,8 @@ def compute_value_score(engine) -> dict:
 
         pe_val     = pe_fwd_f or pe_trl_f
         pe_capped  = bool(pe_val  and pe_val  > PE_CEILING)
-        peg_capped = bool(peg_f   and peg_f   > PEG_CEILING)
 
-        peg_groups[bucket].append((sym, None if peg_capped else peg_f))
+        ev_groups[bucket].append((sym, ev_f))
         pe_groups[bucket].append((sym, None if pe_capped else pe_val))
         pfcf_groups[bucket].append((sym, pfcf_f))
 
@@ -320,7 +333,7 @@ def compute_value_score(engine) -> dict:
         else:
             ps_groups[bucket].append((sym, mcap_f / rev_f))
 
-    peg_rank  = _rank_within_group(peg_groups,  ascending=False)
+    ev_rank   = _rank_within_group(ev_groups,   ascending=False)
     pe_rank   = _rank_within_group(pe_groups,   ascending=False)
     pfcf_rank = _rank_within_group(pfcf_groups, ascending=False)
     ps_rank   = _rank_within_group(ps_groups,   ascending=False)
@@ -358,19 +371,21 @@ def compute_value_score(engine) -> dict:
         sym, _peg, _pef, _pet, _rg, gm, _om, _mc, _pfcf, sector, industry, _rev = row
         sym_bucket[sym] = _peer_bucket(sector, industry, float(gm) if gm else None, industry_counts)
 
-    all_syms = set(peg_rank) | set(pe_rank) | set(pfcf_rank) | set(ps_rank)
+    all_syms = set(ev_rank) | set(pe_rank) | set(pfcf_rank) | set(ps_rank)
     combined = {}
     for sym in all_syms:
-        peg_v  = peg_rank.get(sym,  0.0)
+        ev_v   = ev_rank.get(sym)
         pe_v   = pe_rank.get(sym,   0.0)
         pfcf_v = pfcf_rank.get(sym)
         ps_v   = ps_rank.get(sym)
 
-        # Weighted blend — P/FCF distributes its 20% to PEG/PE when unavailable
-        if pfcf_v is not None:
-            blend = 0.50 * peg_v + 0.30 * pe_v + 0.20 * pfcf_v
-        else:
-            blend = 0.625 * peg_v + 0.375 * pe_v  # renormalise to 1.0
+        # v2 blend: 45% fwd PE, 35% EV/EBITDA, 20% P/FCF — missing components
+        # redistribute proportionally.
+        parts = [(pe_v, 0.45)]
+        if ev_v is not None:   parts.append((ev_v, 0.35))
+        if pfcf_v is not None: parts.append((pfcf_v, 0.20))
+        wsum = sum(w for _, w in parts)
+        blend = sum(v * w for v, w in parts) / wsum
 
         if ps_v is not None:
             if sym in ps_raw:
@@ -811,9 +826,26 @@ def score_all_stocks(engine=None) -> list:
         fund_rows = conn.execute(text("""
             SELECT symbol, peg_ratio, pe_forward, pe_trailing,
                    revenue_growth_yoy, gross_margin, roic, sector,
-                   earnings_growth_yoy, fcf_growth_yoy
+                   earnings_growth_yoy, fcf_growth_yoy,
+                   price_vs_52w_high, analysts_count
             FROM fundamentals
         """)).fetchall()
+
+        # Velocity guard input: last two earnings-call trajectories per stock.
+        # Two consecutive 'decelerating' readings = negative narrative velocity.
+        vel_rows = conn.execute(text("""
+            SELECT symbol, ARRAY_AGG(trajectory ORDER BY filing_date DESC) AS trajs
+            FROM (
+                SELECT ft.symbol, ft.trajectory, f.filing_date,
+                       ROW_NUMBER() OVER (PARTITION BY ft.symbol
+                                          ORDER BY f.filing_date DESC) rn
+                FROM filing_themes ft
+                JOIN filings f ON f.id = ft.filing_id
+                WHERE f.filing_type = 'EARN_CALL' AND ft.trajectory IS NOT NULL
+            ) t WHERE rn <= 2 GROUP BY symbol
+        """)).fetchall()
+    neg_velocity = {r[0] for r in vel_rows
+                    if len(r[1]) == 2 and all(t == "decelerating" for t in r[1])}
 
     stock_themes = {}
     for sym, theme, score in theme_rows:
@@ -822,56 +854,44 @@ def score_all_stocks(engine=None) -> list:
     fund_map = {r[0]: r for r in fund_rows}
     all_symbols = set(narrative) | set(value) | set(quality)
 
+    # Percentile helper for the priced-in analyst-crowding term
+    import bisect
+    an_sorted = sorted(float(r[11]) for r in fund_rows if r[11] is not None)
+    def _an_pctl(v):
+        if v is None or not an_sorted:
+            return 0.5
+        return bisect.bisect_left(an_sorted, float(v)) / max(1, len(an_sorted) - 1)
+
     results = []
     for sym in all_symbols:
         if sym in EXCLUDED_SYMBOLS:
             continue
-        n = narrative.get(sym, 0.0)
-        v = value.get(sym, 0.0)
+        n = narrative.get(sym, 0.0)   # E: signed narrative exposure
+        v = value.get(sym, 0.0)       # V_s: standalone ex-growth value
         q = quality.get(sym, 0.0)
 
         f = fund_map.get(sym)
 
-        # ── Signal 1: Narrative value floor ───────────────────────────────────
-        # If PE > ceiling zeroed the value component but PEG is genuinely low
-        # AND the narrative is very strong, the high PE is almost certainly an
-        # earnings distortion (trough, one-time charge, heavy investment phase)
-        # rather than true overvaluation. PEG already adjusts for growth — a
-        # low PEG with high PE means earnings are recovering fast.
-        # Give a partial value floor so the gem score isn't killed entirely.
-        # Floor = 0.25 × narrative (max ~0.25) — surfaces but doesn't inflate.
-        if f and n > 0.65 and v < 0.15:
-            peg_f  = float(f[1]) if f[1] and float(f[1]) > 0 else None
-            pe_fwd = float(f[2]) if f[2] and float(f[2]) > 0 else None
-            pe_trl = float(f[3]) if f[3] and float(f[3]) > 0 else None
-            pe_val = pe_fwd or pe_trl
-            if pe_val and pe_val > PE_CEILING and peg_f and peg_f < 2.5:
-                v = max(v, 0.25 * n)
+        # ── v2 composition (V2_SPEC 2026-07-22) ──────────────────────────────
+        # gem = sqrt(V_s x Q) x NG^0.75, NG = E x (1 - P).
+        # The Dell test in arithmetic: a decent boring business at a decent
+        # boring price (sqrt core) whose narrative exposure the market has NOT
+        # priced (NG). A 0.9 exposure that is 0.9 priced-in scores near-zero.
+        g = gap.get(sym, 0.50)   # v1 gap components: price-lag/inertia/momentum
+        p52 = float(f[10]) if f and f[10] is not None else 0.7
+        an_pct = _an_pctl(f[11] if f else None)
+        priced_in = 0.40 * (1 - g) + 0.30 * p52 + 0.30 * an_pct
 
-        # ── Narrative gate (core thesis) ───────────────────────────────────────
-        # Narrative is not one equal vote — it's the prerequisite.
-        # A stock riding a genuine secular tailwind with an accelerating story
-        # gets amplified. One with weak or absent narrative gets heavily penalised
-        # regardless of how cheap or high-quality the business is.
-        #
-        # narrative_gate = n^1.5 (steep curve):
-        #   n=0.90 → gate=0.854  (strong amplifier)
-        #   n=0.70 → gate=0.592  (meaningful drag)
-        #   n=0.50 → gate=0.354  (heavy penalty — halves the score)
-        #   n=0.30 → gate=0.164  (near-zero — never makes the cut)
-        #
-        # No exceptions to the narrative gate: a stock earns its place on the
-        # board through genuine exposure to a live narrative, or not at all.
-        # (The old "value unlock" bypass let FSLR rank #3 with narrative 0.14.)
-        narrative_gate = n ** 1.5 if n > 0 else 0.0
-        roic_f = float(f[6]) if f and f[6] else 0
-        gem = (v * q) ** 0.5 * narrative_gate if (v > 0 and q > 0) else 0.0
+        # Velocity guard (V2 #14): two consecutive decelerating calls means a
+        # widening gap is a de-rating, not neglect — cap the unpriced credit.
+        unpriced = 1 - priced_in
+        if sym in neg_velocity:
+            unpriced = min(unpriced, 0.5)
 
-        # ── Fundamental momentum gate ──────────────────────────────────────────
-        # Core thesis: "cheap AND improving." Both revenue AND earnings declining
-        # = potential value trap. One declining is acceptable.
-        # Option C: earnings dip alone (revenue still growing) with weak narrative
-        # gets a lighter penalty — no story to justify looking through the dip.
+        ng = n * unpriced
+        gem = (v * q) ** 0.5 * (ng ** 0.75) if (v > 0 and q > 0 and ng > 0) else 0.0
+
+        # ── Fundamental momentum gate (unchanged from v1) ────────────────────
         if f:
             rev_gr  = float(f[4]) if f[4] is not None else 0.0
             earn_gr = float(f[8]) if f[8] is not None else 0.0
@@ -879,21 +899,7 @@ def score_all_stocks(engine=None) -> list:
                 gem *= 0.5
             elif earn_gr < 0 and rev_gr >= 0 and n < 0.40:
                 gem *= 0.75
-
-        # ── Gap multiplier (original methodology) ─────────────────────────────
-        # Rewards stocks where the market hasn't yet priced the narrative.
-        # Penalises stocks that are well-known and fully repriced.
-        # Base range: ×0.70 (gap=0, fully priced) → ×1.20 (gap=1.0, market wrong).
-        # For quality businesses (ROIC>15%, quality>0.65) with extreme repricing
-        # (gap>0.80), extend ceiling to ×1.40 — the dislocation is material.
-        # The narrative-peer discount (Dell detector) is NOT a score multiplier:
-        # it is display + qual-assessor input. Next evolution folds narrative
-        # and mispricing into a single narrative-gap component.
-        g = gap.get(sym, 0.50)   # default neutral if no gap data
-        gap_mult = 0.70 + 0.50 * g
-        if roic_f > 0.15 and q >= 0.65 and g >= 0.80:
-            gap_mult = min(gap_mult + 0.20, 1.40)
-        gem = min(gem * gap_mult, 1.0)
+        gem = min(gem, 1.0)
 
         # call_filing_gap: raw normalised gap score for display (0.50 = neutral)
         cfg = call_gap.get(sym, 0.50)
@@ -905,6 +911,9 @@ def score_all_stocks(engine=None) -> list:
             "value_score":       round(v, 4),
             "quality_score":     round(q, 4),
             "gap_score":         round(g, 4),
+            "priced_in":         round(priced_in, 4),
+            "ng_score":          round(ng, 4),
+            "neg_velocity":      sym in neg_velocity,
             "call_filing_gap":   round(cfg, 4),   # >0.50 = calls more bullish than filings
             "peg_ratio":         float(f[1]) if f and f[1] else None,
             "pe_forward":        float(f[2]) if f and f[2] else None,

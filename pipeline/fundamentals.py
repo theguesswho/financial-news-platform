@@ -254,10 +254,15 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.fetched_at          = datetime.utcnow()
             row.pe_trailing         = _safe(info.get("trailingPE"))
             row.pe_forward          = _safe(info.get("forwardPE"))
-            # Vendor PEG goes to peg_vendor ONLY — peg_ratio is owned by the
-            # consensus recomputer (peg_normalizer). This line used to clobber
-            # it back to vendor on every refresh (PTC 3.69 -> 1.02, 2026-07-21).
-            row.peg_vendor          = _safe(info.get("pegRatio"))
+            # PEG policy (user decision 2026-07-22): Yahoo's vendor PEG
+            # (5-yr expected) is PRIMARY; when Yahoo publishes none, the
+            # consensus two-leg fallback in peg_normalizer fills peg_ratio.
+            _vendor_peg = _safe(info.get("pegRatio"))
+            row.peg_vendor = _vendor_peg
+            if _vendor_peg is not None and 0 < _vendor_peg < 99:
+                row.peg_ratio  = _vendor_peg
+                row.peg_source = "vendor"
+            # else: leave peg_ratio for the consensus fallback — never null it here
             row.price_to_book       = _safe(info.get("priceToBook"))
             row.price_to_fcf        = price_to_fcf
             row.ev_to_ebitda        = _safe(info.get("enterpriseToEbitda"))

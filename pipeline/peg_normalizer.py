@@ -55,9 +55,10 @@ def _consensus_growth(symbol: str):
 
 def recompute_pegs(engine, max_age_days: int = 3) -> dict:
     """
-    Recompute consensus PEG for symbols whose PEG data is stale.
-    Estimates barely move intraday — refreshing every ~3 days is plenty and
-    keeps the scheduled-run cost to the symbols that actually need it.
+    Fill consensus PEG for symbols where Yahoo publishes NO vendor PEG
+    (user decision 2026-07-22: vendor primary, consensus two-leg fallback).
+    Symbols with a vendor PEG get peg_ratio directly from the fundamentals
+    fetch and are skipped here.
     """
     with engine.begin() as conn:
         conn.execute(text(
@@ -66,12 +67,15 @@ def recompute_pegs(engine, max_age_days: int = 3) -> dict:
             "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_analysts INTEGER"))
         conn.execute(text(
             "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_updated TIMESTAMP"))
+        conn.execute(text(
+            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_source VARCHAR(10)"))
 
     with engine.connect() as conn:
         funds = conn.execute(text("""
             SELECT symbol, pe_forward, peg_ratio, peg_vendor
             FROM fundamentals
-            WHERE peg_updated IS NULL OR peg_updated < NOW() - (:d || ' days')::interval
+            WHERE (peg_vendor IS NULL OR peg_vendor <= 0 OR peg_vendor >= 99)
+              AND (peg_updated IS NULL OR peg_updated < NOW() - (:d || ' days')::interval)
             ORDER BY symbol
         """), {"d": max_age_days}).fetchall()
 
@@ -110,7 +114,8 @@ def _flush(engine, batch):
         conn.execute(text("""
             UPDATE fundamentals
             SET peg_ratio = :peg, peg_vendor = :vendor, peg_analysts = :n,
-                peg_updated = NOW()
+                peg_updated = NOW(),
+                peg_source = CASE WHEN :peg IS NULL THEN NULL ELSE 'consensus' END
             WHERE symbol = :s
         """), batch)
 

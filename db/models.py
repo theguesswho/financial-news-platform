@@ -43,7 +43,8 @@ class Fundamentals(Base):
     pe_trailing         = Column(Numeric(12, 2))
     pe_forward          = Column(Numeric(12, 2))
     peg_ratio           = Column(Numeric(12, 2))   # consensus (peg_normalizer owns)
-    peg_vendor          = Column(Numeric(12, 2))   # Yahoo's raw pegRatio, audit only
+    peg_vendor          = Column(Numeric(12, 2))   # Yahoo's raw pegRatio (5-yr expected)
+    peg_source          = Column(String(10))       # 'vendor' (primary) | 'consensus' (fallback)
     price_to_book       = Column(Numeric(12, 2))
     price_to_fcf        = Column(Numeric(12, 2))
     ev_to_ebitda        = Column(Numeric(12, 2))

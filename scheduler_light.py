@@ -80,53 +80,76 @@ def _score_and_archive():
 
 def _qual_sweep(gems=None):
     """
-    Assess (a) tier movers since the previous snapshot and (b) any Buy/Strong Buy
-    stock never assessed. Uses the latest leaderboard snapshot — not CURRENT_DATE —
-    so missed runs self-heal on the next pass regardless of which day it fires.
+    Trigger-based, UNIVERSE-WIDE qual sweep (user design 2026-07-25): a new
+    assessment is warranted only when new information lands. Triggers, each
+    vs the stock's LAST assessment (18h cooldown applies to all):
+      earnings  — new earnings call / earnings 8-K since assessed_at (always)
+      score     — |gem_now − gem_at_assessment| >= 0.05 (half a tier band)
+      narrative — |E_now − E_at_assessment| >= 0.10
+      new       — on-board stock never assessed (baseline covers the rest)
+    The assessor is told WHY it's being asked and must open its rationale by
+    saying whether the event changes the thesis or is noise.
     """
     from pipeline.qual_assessor import run_qual_assessment
     from pipeline.leaderboard_archiver import apply_qual_tiers, create_table
     from pipeline.hidden_gem_scorer import get_engine
     eng = get_engine()
+    with eng.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS narrative_score NUMERIC(10,4)"))
     with eng.connect() as conn:
-        # Tier movers — skip flaps (tier changed on a <0.015 score wiggle at a
-        # boundary) and anything already assessed in the last 18h (the sweep
-        # runs twice a day against the same prior snapshot).
-        movers = conn.execute(text("""
-            SELECT today.symbol
-            FROM leaderboard_history today
-            LEFT JOIN leaderboard_history yest
-                ON yest.symbol = today.symbol
-                AND yest.date = (SELECT MAX(date) FROM leaderboard_history
-                                 WHERE date < (SELECT MAX(date) FROM leaderboard_history))
-            WHERE today.date = (SELECT MAX(date) FROM leaderboard_history)
-              AND today.tier IS NOT NULL
-              AND (yest.symbol IS NULL
-                   OR (yest.tier IS DISTINCT FROM today.tier
-                       AND (yest.gem_score IS NULL
-                            OR ABS(today.gem_score - yest.gem_score) >= 0.015)))
-              AND NOT EXISTS (
-                  SELECT 1 FROM qual_assessments qa
-                  WHERE qa.symbol = today.symbol
-                    AND qa.assessed_at > NOW() - INTERVAL '18 hours')
-            ORDER BY today.gem_score DESC
-        """)).fetchall()
-        # Any stock on the board (incl. Watch) never assessed — one-time cost per stock
-        unassessed = conn.execute(text("""
-            SELECT lh.symbol
-            FROM leaderboard_history lh
-            LEFT JOIN qual_assessments qa ON qa.symbol = lh.symbol
-            WHERE lh.date = (SELECT MAX(date) FROM leaderboard_history)
-              AND lh.tier IS NOT NULL
-              AND qa.symbol IS NULL
-            ORDER BY lh.gem_score DESC
+        rows = conn.execute(text("""
+            WITH latest AS (
+                SELECT * FROM leaderboard_history
+                WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+            )
+            SELECT l.symbol,
+                   CASE
+                     WHEN qa.symbol IS NULL THEN 'first assessment: new to the board'
+                     WHEN ef.fdate IS NOT NULL THEN
+                       'new earnings data (' || ef.ftype || ' filed ' || ef.fdate ||
+                       ') since your last assessment on ' || qa.assessed_at::date
+                     WHEN ABS(l.gem_score - qa.gem_score) >= 0.05 THEN
+                       'gem score moved ' || ROUND(qa.gem_score,3) || ' -> ' ||
+                       ROUND(l.gem_score,3) || ' since your last assessment on ' ||
+                       qa.assessed_at::date
+                     ELSE
+                       'narrative exposure moved ' || ROUND(qa.narrative_score,2) ||
+                       ' -> ' || ROUND(l.narrative_score,2) ||
+                       ' since your last assessment on ' || qa.assessed_at::date
+                   END AS reason
+            FROM latest l
+            LEFT JOIN qual_assessments qa ON qa.symbol = l.symbol
+            LEFT JOIN LATERAL (
+                SELECT f.filing_type AS ftype, f.filing_date::date AS fdate
+                FROM filings f
+                WHERE f.symbol = l.symbol
+                  AND (f.filing_type = 'EARN_CALL'
+                       OR (f.filing_type = '8-K' AND f.event_type = 'EARNINGS'))
+                  AND f.filing_date > qa.assessed_at
+                  AND f.filing_date > NOW() - INTERVAL '14 days'
+                ORDER BY f.filing_date DESC LIMIT 1
+            ) ef ON qa.symbol IS NOT NULL
+            WHERE (qa.assessed_at IS NULL OR qa.assessed_at < NOW() - INTERVAL '18 hours')
+              AND (
+                    (qa.symbol IS NULL AND l.tier IS NOT NULL)
+                 OR ef.fdate IS NOT NULL
+                 OR ABS(l.gem_score - COALESCE(qa.gem_score, l.gem_score)) >= 0.05
+                 OR (qa.narrative_score IS NOT NULL
+                     AND ABS(l.narrative_score - qa.narrative_score) >= 0.10)
+              )
+            ORDER BY l.gem_score DESC
+            LIMIT 80
         """)).fetchall()
 
-    to_assess = list(dict.fromkeys([r[0] for r in movers] + [r[0] for r in unassessed]))
+    to_assess = [r[0] for r in rows]
+    trig = {r[0]: r[1] for r in rows}
     if to_assess:
-        _ok(f"Assessing {len(to_assess)} stocks: {', '.join(to_assess)}")
+        _ok(f"Assessing {len(to_assess)} triggered stocks: {', '.join(to_assess[:15])}"
+            + ("…" if len(to_assess) > 15 else ""))
         # gems=None makes the assessor re-score itself; never pass [] (matches nothing)
-        run_qual_assessment(symbols=to_assess, gems=gems if gems else None)
+        run_qual_assessment(symbols=to_assess, gems=gems if gems else None,
+                            triggers=trig)
         create_table(eng)
         updated = apply_qual_tiers(eng)
         _ok(f"Qual tiers stamped: {updated} rows")

@@ -119,6 +119,7 @@ MOST RECENT 10-K/10-Q:
 
 5-YEAR FUNDAMENTAL TREND (annual, oldest → newest):
 {fundamental_trend}
+{trigger_context}
 
 Respond in valid JSON only:
 {{
@@ -288,6 +289,11 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         filing_trajectory    = filing_traj,
         filing_tone          = filing_tone,
         fundamental_trend    = fundamental_trend,
+        trigger_context      = (
+            f"\nWHY YOU ARE BEING ASKED NOW: {gem['_trigger']}\n"
+            "Your rationale MUST open by stating whether this event/move changes "
+            "the thesis or is noise — that opinion is the point of this assessment."
+            if gem.get("_trigger") else ""),
     )
 
 
@@ -327,15 +333,18 @@ def assess_stock(client, engine, gem: dict) -> dict:
 
 def store_assessment(engine, gem: dict, result: dict):
     with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS narrative_score NUMERIC(10,4)"))
         conn.execute(text("""
             INSERT INTO qual_assessments
-                (symbol, gem_score, raw_tier, adjusted_tier, direction,
+                (symbol, gem_score, narrative_score, raw_tier, adjusted_tier, direction,
                  rationale, key_bull, key_bear, assessed_at)
             VALUES
-                (:symbol, :gem_score, :raw_tier, :adjusted_tier, :direction,
+                (:symbol, :gem_score, :narrative_score, :raw_tier, :adjusted_tier, :direction,
                  :rationale, :key_bull, :key_bear, NOW())
             ON CONFLICT (symbol) DO UPDATE SET
                 gem_score     = EXCLUDED.gem_score,
+                narrative_score = EXCLUDED.narrative_score,
                 raw_tier      = EXCLUDED.raw_tier,
                 adjusted_tier = EXCLUDED.adjusted_tier,
                 direction     = EXCLUDED.direction,
@@ -346,6 +355,7 @@ def store_assessment(engine, gem: dict, result: dict):
         """), {
             "symbol":        gem["symbol"],
             "gem_score":     gem["hidden_gem_score"],
+            "narrative_score": gem.get("narrative_score"),
             "raw_tier":      gem.get("_raw_tier"),
             "adjusted_tier": result.get("adjusted_tier"),
             "direction":     result.get("direction", "hold"),
@@ -357,7 +367,8 @@ def store_assessment(engine, gem: dict, result: dict):
 
 
 def run_qual_assessment(top_n: int = TOP_N, symbol: str = None,
-                        symbols: list = None, gems: list = None):
+                        symbols: list = None, gems: list = None,
+                        triggers: dict = None):
     """
     Run qual assessment.
     - symbol:  assess a single named stock (CLI use)
@@ -393,9 +404,11 @@ def run_qual_assessment(top_n: int = TOP_N, symbol: str = None,
         # Full pass — all Watch+ stocks
         gems = [g for g in gems if g["hidden_gem_score"] >= MIN_SCORE]
 
-    # Tag each gem with its raw tier before assessment
+    # Tag each gem with its raw tier + trigger reason before assessment
     for g in gems:
         g["_raw_tier"] = get_tier(g["hidden_gem_score"]) or "None"
+        if triggers and g["symbol"] in triggers:
+            g["_trigger"] = triggers[g["symbol"]]
 
     print(f"  Assessing {len(gems)} stocks with {MODEL}\n")
 

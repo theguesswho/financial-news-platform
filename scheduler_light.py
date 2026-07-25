@@ -722,32 +722,145 @@ def weekly_deep_refresh():
     _banner("WEEKLY DEEP REFRESH COMPLETE")
 
 
+# ── Missed-slot catch-up (V2 #16) ────────────────────────────────────────────
+# APScheduler keeps its schedule in memory only: a deploy restarting the
+# service at (or during) a cron slot silently eats that run — happened
+# Jul 7, Jul 20, Jul 22. Every job records itself in scheduler_runs; at
+# startup, if a slot fired within the lookback window and has no recorded
+# start, the job runs once immediately. All jobs are idempotent (upserts,
+# ON CONFLICT, 18h qual guards), so a catch-up can never double-apply.
+
+CATCHUP_LOOKBACK_MIN = 45
+
+def _record_run(job_id: str, slot_ts, phase: str):
+    from pipeline.hidden_gem_scorer import get_engine
+    eng = get_engine()
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS scheduler_runs (
+                    id SERIAL PRIMARY KEY,
+                    job_id VARCHAR(20) NOT NULL,
+                    slot_ts TIMESTAMP NOT NULL,
+                    started_at TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    UNIQUE (job_id, slot_ts)
+                )"""))
+            if phase == "start":
+                conn.execute(text("""
+                    INSERT INTO scheduler_runs (job_id, slot_ts, started_at)
+                    VALUES (:j, :s, NOW())
+                    ON CONFLICT (job_id, slot_ts) DO UPDATE SET started_at = NOW()
+                """), {"j": job_id, "s": slot_ts})
+            else:
+                conn.execute(text("""
+                    UPDATE scheduler_runs SET finished_at = NOW()
+                    WHERE job_id = :j AND slot_ts = :s
+                """), {"j": job_id, "s": slot_ts})
+    finally:
+        eng.dispose()
+
+
+def _last_slot(job_id: str, now):
+    """Most recent scheduled fire time <= now for a job, or None."""
+    from datetime import datetime, timedelta
+    for days_back in range(0, 8):
+        d = (now - timedelta(days=days_back)).date()
+        wd = d.weekday()          # Mon=0 .. Sun=6
+        hour = {"daily": 6, "midday": 13, "after_close": 21, "weekly": 18}[job_id]
+        if job_id in ("midday", "after_close") and wd > 4:
+            continue
+        if job_id == "weekly" and wd != 6:
+            continue
+        slot = datetime(d.year, d.month, d.day, hour, 0, 0)
+        if slot <= now:
+            return slot
+    return None
+
+
+def _wrap_job(job_id: str, fn):
+    """Job wrapper: stamps the run ledger around the real job."""
+    from datetime import datetime
+    def runner():
+        slot = _last_slot(job_id, datetime.utcnow()) or datetime.utcnow().replace(
+            minute=0, second=0, microsecond=0)
+        try:
+            _record_run(job_id, slot, "start")
+        except Exception as e:
+            logger.warning(f"run-ledger start failed for {job_id}: {e}")
+        fn()
+        try:
+            _record_run(job_id, slot, "finish")
+        except Exception as e:
+            logger.warning(f"run-ledger finish failed for {job_id}: {e}")
+    runner.__name__ = f"{job_id}_recorded"
+    return runner
+
+
+def _catchup_missed_slots(jobs: dict):
+    """At startup: run any job whose slot fired within the lookback window
+    but never recorded a start (the deploy ate it)."""
+    from datetime import datetime, timedelta
+    from pipeline.hidden_gem_scorer import get_engine
+    now = datetime.utcnow()
+    eng = get_engine()
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS scheduler_runs (
+                    id SERIAL PRIMARY KEY,
+                    job_id VARCHAR(20) NOT NULL,
+                    slot_ts TIMESTAMP NOT NULL,
+                    started_at TIMESTAMP,
+                    finished_at TIMESTAMP,
+                    UNIQUE (job_id, slot_ts)
+                )"""))
+        for job_id, fn in jobs.items():
+            slot = _last_slot(job_id, now)
+            if slot is None or now - slot > timedelta(minutes=CATCHUP_LOOKBACK_MIN):
+                continue
+            with eng.connect() as conn:
+                seen = conn.execute(text("""
+                    SELECT 1 FROM scheduler_runs
+                    WHERE job_id = :j AND slot_ts = :s AND started_at IS NOT NULL
+                """), {"j": job_id, "s": slot}).fetchone()
+            if seen:
+                continue
+            logger.info(f"⚠ CATCH-UP: slot {slot} UTC for '{job_id}' has no recorded "
+                        f"run (deploy ate it?) — running now")
+            _wrap_job(job_id, fn)()
+    except Exception as e:
+        logger.error(f"catch-up check failed: {e}")
+    finally:
+        eng.dispose()
+
+
 # ── Scheduler setup ───────────────────────────────────────────────────────────
 
 def start_scheduler():
     scheduler = BackgroundScheduler(timezone="UTC")
 
     scheduler.add_job(
-        daily_data_update,
+        _wrap_job("daily", daily_data_update),
         trigger=CronTrigger(hour=6, minute=0, timezone="UTC"),
         id="daily", name="Daily data update",
         replace_existing=True, misfire_grace_time=3600,
     )
     scheduler.add_job(
-        midday_refresh,
+        _wrap_job("midday", midday_refresh),
         trigger=CronTrigger(day_of_week="0-4", hour=13, minute=0, timezone="UTC"),
         id="midday", name="Mid-day refresh (Mon–Fri)",
         replace_existing=True, misfire_grace_time=1800,
     )
     scheduler.add_job(
-        after_close_refresh,
+        _wrap_job("after_close", after_close_refresh),
         trigger=CronTrigger(day_of_week="0-4", hour=21, minute=0, timezone="UTC"),
         id="after_close", name="After-close refresh (Mon–Fri)",
         replace_existing=True, misfire_grace_time=1800,
     )
 
     scheduler.add_job(
-        weekly_deep_refresh,
+        _wrap_job("weekly", weekly_deep_refresh),
         trigger=CronTrigger(day_of_week="6", hour=18, minute=0, timezone="UTC"),
         id="weekly", name="Weekly deep refresh (Sunday)",
         replace_existing=True, misfire_grace_time=7200,
@@ -769,6 +882,12 @@ if __name__ == "__main__":
     # jobs fire on time regardless. status='running' guard prevents overlap.
     import threading
     threading.Thread(target=_process_onboarding_queue, name="onboarding").start()
+
+    # V2 #16: if a deploy just ate a cron slot, run the missed job now.
+    threading.Thread(target=_catchup_missed_slots, name="catchup", kwargs={
+        "jobs": {"daily": daily_data_update, "midday": midday_refresh,
+                 "after_close": after_close_refresh, "weekly": weekly_deep_refresh}
+    }).start()
 
     import time
     try:

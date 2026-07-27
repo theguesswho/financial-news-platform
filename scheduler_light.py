@@ -691,21 +691,35 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Meta-theme build failed", e)
 
-    _step("5d", "Narrative exposure scoring (the brain — LLM-judged, cited)")
+    _step("5d", "Narrative exposure UPDATE pass (stateful ledger — user directive 2026-07-27)")
     try:
-        from pipeline.narrative_exposure import run_exposure_scoring
+        import os as _os
         from pipeline.hidden_gem_scorer import get_engine as _ge
         eng = _ge()
-        r = run_exposure_scoring(eng)
-        _ok(f"Exposures: {r}")
-        # Sonnet signing pass (v2): direction + linkage are AUTHORITATIVE from
-        # this pass — Haiku's inline values are provisional (60% agreement).
-        from pipeline.narrative_exposure import sign_exposures
-        rs = sign_exposures(eng)   # only_unsigned: fresh re-judged rows
+        if _os.environ.get("EXPOSURE_LEGACY") == "1":
+            # Rollback path: the old wipe-and-rewrite judge (one cycle only)
+            from pipeline.narrative_exposure import run_exposure_scoring, sign_exposures
+            _ok(f"LEGACY exposures: {run_exposure_scoring(eng)}")
+            _ok(f"Signed: {sign_exposures(eng)}")
+        else:
+            from pipeline.exposure_ledger import run_update_pass, verify_universe
+            r = run_update_pass(eng)   # evidence-gated changes only
+            _ok(f"Ledger update: {r}")
+            # Establishment for stocks with NO ledger (new onboardings) —
+            # Sonnet-grade with two-vote removal protection, never Haiku coin-flips
+            with eng.connect() as _c:
+                newcomers = [x[0] for x in _c.execute(text("""
+                    SELECT DISTINCT ft.symbol FROM filing_themes ft
+                    LEFT JOIN narrative_exposures ne ON ne.symbol = ft.symbol
+                    WHERE ne.symbol IS NULL
+                      AND ft.filing_date >= NOW() - INTERVAL '15 months'
+                """)).fetchall()]
+            if newcomers:
+                _ok(f"Establishing ledgers for {len(newcomers)} new stocks")
+                verify_universe(eng, symbols=newcomers)
         eng.dispose()
-        _ok(f"Signed: {rs}")
     except Exception as e:
-        _err("Narrative exposure scoring failed", e)
+        _err("Exposure ledger pass failed", e)
 
     _step("5e", "Narrative lifecycle (candidates, promotions, falsification)")
     try:

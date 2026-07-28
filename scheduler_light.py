@@ -174,6 +174,70 @@ def _qual_sweep(gems=None):
 # the proxy. Enqueue a chunk by inserting into onboarding_queue; the next
 # scheduled run picks it up (one per run) and stores the readiness report.
 
+def _process_job_queue():
+    """
+    Generic heavy-job runner — jobs execute ON RAILWAY, next to the DB,
+    because the proxy kills long connections from outside the datacenter
+    (root cause of every 'server closed the connection' failure to date).
+    Enqueue: INSERT INTO job_queue (job_type, payload) VALUES
+      ('verify_universe', NULL) | ('update_pass', NULL) |
+      ('qual_full_sweep', NULL) — drained one per slot like onboarding.
+    Failures store the full error text in report; never empty again.
+    """
+    import json as _json, traceback as _tb
+    from pipeline.hidden_gem_scorer import get_engine
+    eng = get_engine()
+    with eng.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS job_queue (
+                id SERIAL PRIMARY KEY,
+                job_type VARCHAR(40) NOT NULL,
+                payload TEXT,
+                status VARCHAR(12) DEFAULT 'pending',
+                report TEXT,
+                requested_at TIMESTAMP DEFAULT NOW(),
+                finished_at TIMESTAMP
+            )"""))
+    with eng.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, job_type, payload FROM job_queue
+            WHERE status = 'pending' ORDER BY id LIMIT 1
+        """)).fetchone()
+    if row:
+        jid, jtype, payload = row
+        _banner(f"JOB QUEUE — {jtype}")
+        with eng.begin() as conn:
+            conn.execute(text("UPDATE job_queue SET status='running' WHERE id=:i"), {"i": jid})
+        try:
+            if jtype == "verify_universe":
+                from pipeline.exposure_ledger import verify_universe
+                syms = _json.loads(payload) if payload else None
+                rep = verify_universe(eng, symbols=syms)
+            elif jtype == "update_pass":
+                from pipeline.exposure_ledger import run_update_pass
+                rep = run_update_pass(eng)
+            elif jtype == "qual_full_sweep":
+                from pipeline.qual_assessor import run_qual_assessment
+                from pipeline.hidden_gem_scorer import score_all_stocks
+                gems = score_all_stocks(eng)
+                run_qual_assessment(symbols=[g["symbol"] for g in gems], gems=gems)
+                rep = {"assessed": len(gems)}
+            else:
+                raise ValueError(f"unknown job_type {jtype}")
+            with eng.begin() as conn:
+                conn.execute(text("""UPDATE job_queue SET status='done', finished_at=NOW(),
+                    report=:r WHERE id=:i"""), {"r": _json.dumps(rep)[:2000], "i": jid})
+            _ok(f"Job {jtype} done: {rep}")
+        except Exception:
+            err = _tb.format_exc()[-1800:]
+            _err(f"Job {jtype} failed", err)
+            with eng.begin() as conn:
+                conn.execute(text("""UPDATE job_queue SET status='failed', finished_at=NOW(),
+                    report=:r WHERE id=:i"""), {"r": err, "i": jid})
+    eng.dispose()
+    _process_onboarding_queue()
+
+
 def _process_onboarding_queue():
     import json as _json
     from pipeline.hidden_gem_scorer import get_engine
@@ -200,12 +264,14 @@ def _process_onboarding_queue():
             """), {"r": _json.dumps({"ready": rep["ready"], "partial": rep["partial"],
                                       "exposed": rep["exposed_count"]}), "i": qid})
         _ok(f"Onboarding done: {len(rep['ready'])} ready, {len(rep['partial'])} partial")
-    except Exception as e:
-        _err("Onboarding failed", e)
+    except Exception:
+        import traceback as _tb2
+        err = _tb2.format_exc()[-1800:]
+        _err("Onboarding failed", err)
         with eng.begin() as conn:
-            conn.execute(text(
-                "UPDATE onboarding_queue SET status='failed', finished_at=NOW() WHERE id=:i"),
-                {"i": qid})
+            conn.execute(text("""
+                UPDATE onboarding_queue SET status='failed', finished_at=NOW(),
+                    report=:r WHERE id=:i"""), {"r": _json.dumps({"error": err}), "i": qid})
     eng.dispose()
 
 
@@ -422,9 +488,9 @@ def daily_data_update():
         _err("Synopsis generation failed", e)
 
     try:
-        _process_onboarding_queue()
+        _process_job_queue()
     except Exception as e:
-        _err("Onboarding queue failed", e)
+        _err("Job queue failed", e)
 
     if engine:
         engine.dispose()
@@ -752,9 +818,9 @@ def weekly_deep_refresh():
         _err("Fundamentals history failed", e)
 
     try:
-        _process_onboarding_queue()
+        _process_job_queue()
     except Exception as e:
-        _err("Onboarding queue failed", e)
+        _err("Job queue failed", e)
 
     _banner("WEEKLY DEEP REFRESH COMPLETE")
 
@@ -918,7 +984,7 @@ if __name__ == "__main__":
     # pending chunk wait for the next cron slot. Separate thread so scheduled
     # jobs fire on time regardless. status='running' guard prevents overlap.
     import threading
-    threading.Thread(target=_process_onboarding_queue, name="onboarding").start()
+    threading.Thread(target=_process_job_queue, name="jobqueue").start()
 
     # V2 #16: if a deploy just ate a cron slot, run the missed job now.
     threading.Thread(target=_catchup_missed_slots, name="catchup", kwargs={

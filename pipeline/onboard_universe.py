@@ -190,12 +190,22 @@ def onboard(chunk_path: str, apply: bool = False):
     run_extraction()          # theme the new transcripts too
 
     print("\n[7/8] Embeddings...")
-    from pipeline.embedding_builder import run_embedding_build
-    run_embedding_build()
+    try:
+        # sentence_transformers is deliberately absent from the Railway image
+        # (heavy ML dep). On Railway this phase is skipped with a loud note —
+        # run `python -m pipeline.embedding_builder` locally to backfill.
+        # This exact import crashed chunk 2's onboarding on 2026-07-28.
+        from pipeline.embedding_builder import run_embedding_build
+        run_embedding_build()
+    except ModuleNotFoundError:
+        print("  ⚠ sentence_transformers not installed here — embeddings SKIPPED; "
+              "backfill locally with: python -m pipeline.embedding_builder")
 
-    print("\n[8/8] Narrative exposures (LLM-judged)...")
-    from pipeline.narrative_exposure import run_exposure_scoring
-    run_exposure_scoring(engine, symbols=valid)
+    print("\n[8/8] Narrative exposures (stateful ledger establishment)...")
+    # v2 ledger (2026-07-27): establishment goes through verify_universe —
+    # Sonnet-grade, two-vote union — never the Haiku from-scratch coin flip.
+    from pipeline.exposure_ledger import verify_universe
+    verify_universe(engine, symbols=valid)
 
     print("\n═══ READINESS REPORT ═══")
     rep = readiness_report(engine, valid)

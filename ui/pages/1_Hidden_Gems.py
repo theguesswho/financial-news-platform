@@ -234,6 +234,21 @@ def load_prev_leaderboard():
     engine = get_engine()
     return get_prev_leaderboard(engine)
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_first_board_dates():
+    """First-EVER board appearance per symbol (V2 #11): the ★ NEW badge means
+    'first time on the board', full stop. A veteran knocked off for a day by
+    churn and re-entering is NOT new (MCK case, 2026-07-28)."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT symbol, MIN(date) FROM leaderboard_history
+            WHERE tier IS NOT NULL GROUP BY symbol
+        """)).fetchall()
+        snap_date = conn.execute(text(
+            "SELECT MAX(date) FROM leaderboard_history")).scalar()
+    return {r[0]: r[1] for r in rows}, snap_date
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_company_names():
     engine = get_engine()
@@ -408,7 +423,11 @@ current_ranked = sorted(
 )
 current_rank_map = {g["symbol"]: i + 1 for i, g in enumerate(current_ranked)}
 
-# Tag each gem with movement metadata
+# Tag each gem with movement metadata.
+# ★ NEW = FIRST-EVER board appearance is the current snapshot (V2 #11 fix,
+# 2026-07-28): survives refreshes all day, and a veteran that flapped off for
+# a day and returned is never relabeled new.
+first_dates, _snap_date = load_first_board_dates()
 for g in gems:
     sym = g["symbol"]
     cur_rank = current_rank_map.get(sym)
@@ -416,16 +435,12 @@ for g in gems:
     if cur_rank is None:
         g["rank_change"] = None
         g["is_new"]      = False
-    elif not prev_on_board:
-        # No history yet — first run
-        g["rank_change"] = None
-        g["is_new"]      = False
-    elif sym not in prev_on_board:
-        g["rank_change"] = None
-        g["is_new"]      = True
-    else:
+        continue
+    g["is_new"] = bool(_snap_date and first_dates.get(sym) == _snap_date)
+    if prv_rank is not None and not g["is_new"]:
         g["rank_change"] = prv_rank - cur_rank   # positive = moved up
-        g["is_new"]      = False
+    else:
+        g["rank_change"] = None
 
 # Apply tier filter
 filtered = sorted(gems, key=lambda g: (

@@ -922,10 +922,14 @@ def _catchup_missed_slots(jobs: dict):
             slot = _last_slot(job_id, now)
             if slot is None or now - slot > timedelta(minutes=CATCHUP_LOOKBACK_MIN):
                 continue
+            # A run must have FINISHED to count. At startup, any started-but-
+            # unfinished row is guaranteed dead — the restart killed the process
+            # that stamped it (proven live 2026-07-31: deploy at 13:00:26 killed
+            # the 13:00 run 3 min in; started_at alone made catch-up skip it).
             with eng.connect() as conn:
                 seen = conn.execute(text("""
                     SELECT 1 FROM scheduler_runs
-                    WHERE job_id = :j AND slot_ts = :s AND started_at IS NOT NULL
+                    WHERE job_id = :j AND slot_ts = :s AND finished_at IS NOT NULL
                 """), {"j": job_id, "s": slot}).fetchone()
             if seen:
                 continue

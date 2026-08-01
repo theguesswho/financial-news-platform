@@ -106,6 +106,10 @@ def _qual_sweep(gems=None):
             SELECT l.symbol,
                    CASE
                      WHEN qa.symbol IS NULL THEN 'first assessment: new to the board'
+                     WHEN ov.promoted_since IS NOT NULL THEN
+                       'this stock was PROMOTED to ' || ov.tier || ' by the narrative-override mechanism on ' ||
+                       ov.promoted_since::date || ', AFTER your last assessment on ' || qa.assessed_at::date ||
+                       '. The override thesis (evaluate it on its merits): ' || ov.reason
                      WHEN ef.fdate IS NOT NULL THEN
                        'new earnings data (' || ef.ftype || ' filed ' || ef.fdate ||
                        ') since your last assessment on ' || qa.assessed_at::date ||
@@ -123,6 +127,14 @@ def _qual_sweep(gems=None):
                    END AS reason
             FROM latest l
             LEFT JOIN qual_assessments qa ON qa.symbol = l.symbol
+            LEFT JOIN LATERAL (
+                SELECT no2.assessed_at AS promoted_since, no2.adjusted_tier AS tier,
+                       LEFT(COALESCE(no2.rationale,'') || ' Evidence: ' ||
+                            COALESCE(no2.evidence,''), 600) AS reason
+                FROM narrative_overrides no2
+                WHERE no2.symbol = l.symbol AND no2.promoted
+                  AND no2.assessed_at > qa.assessed_at
+            ) ov ON qa.symbol IS NOT NULL AND COALESCE(l.qual_promoted, FALSE)
             LEFT JOIN LATERAL (
                 -- created_at (ingestion time), NOT filing_date: transcripts are
                 -- backdated to the call date, so a transcript arriving days
@@ -146,7 +158,8 @@ def _qual_sweep(gems=None):
             ) px ON ef.fdate IS NOT NULL
             WHERE (qa.assessed_at IS NULL OR qa.assessed_at < NOW() - INTERVAL '18 hours')
               AND (
-                    (qa.symbol IS NULL AND l.tier IS NOT NULL)
+                    (qa.symbol IS NULL AND (l.tier IS NOT NULL OR COALESCE(l.qual_promoted, FALSE)))
+                 OR ov.promoted_since IS NOT NULL
                  OR ef.fdate IS NOT NULL
                  OR ABS(l.gem_score - COALESCE(qa.gem_score, l.gem_score)) >= 0.05
                  OR (qa.narrative_score IS NOT NULL

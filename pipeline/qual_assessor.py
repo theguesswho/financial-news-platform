@@ -332,7 +332,7 @@ def assess_stock(client, engine, gem: dict) -> dict:
         try:
             resp = client.messages.create(
                 model     = MODEL,
-                max_tokens= 600,
+                max_tokens= 1200,   # 600 truncated mid-JSON once continuity framing lengthened rationales (GDDY 2026-08-01)
                 messages  = [{"role": "user", "content": prompt}],
                 timeout   = 45,
             )
@@ -347,14 +347,10 @@ def assess_stock(client, engine, gem: dict) -> dict:
         except Exception:
             if attempt < 2:
                 time.sleep(2 ** attempt)
-    return {
-        "symbol":        gem["symbol"],
-        "direction":     "hold",
-        "adjusted_tier": gem.get("_raw_tier", "—"),
-        "rationale":     "Assessment failed — holding quant tier",
-        "key_bull":      "",
-        "key_bear":      "",
-    }
+    # Total failure: return None — store_assessment is SKIPPED so a real
+    # prior assessment is never overwritten by a placeholder (learned
+    # 2026-08-01 when a truncation failure stomped GDDY's live verdict).
+    return None
 
 
 def store_assessment(engine, gem: dict, result: dict):
@@ -467,6 +463,9 @@ def run_qual_assessment(top_n: int = TOP_N, symbol: str = None,
 
     def process(gem):
         result = assess_stock(client, engine, gem)
+        if result is None:
+            return gem, {"direction": "failed", "adjusted_tier": gem.get("_raw_tier"),
+                         "rationale": "(assessment errored — previous verdict retained)"}
         store_assessment(engine, gem, result)
         return gem, result
 

@@ -66,13 +66,30 @@ def archive_leaderboard(engine, gems=None) -> dict:
 
     today = date.today()
 
-    from pipeline.tiers import tier_for
+    from pipeline.tiers import tier_for, WATCH, BOARD_EXIT
+
+    # Exit hysteresis (user-approved 2026-08-01): stocks on YESTERDAY's board
+    # whose score dipped into the [BOARD_EXIT, WATCH] band keep their Watch
+    # seat — a wobble at the line is not an exit. Below BOARD_EXIT, they leave.
+    from sqlalchemy import text as _t
+    with engine.connect() as _c:
+        _prev_board = {r[0] for r in _c.execute(_t("""
+            SELECT symbol FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history
+                          WHERE date < CURRENT_DATE)
+              AND tier IS NOT NULL""")).fetchall()}
+
+    def tier_with_hysteresis(g):
+        t = tier_for(g["hidden_gem_score"])
+        if t is None and g["symbol"] in _prev_board                 and BOARD_EXIT < g["hidden_gem_score"] <= WATCH:
+            return "Watch"
+        return t
 
     TIER_ORDER = {"Strong Buy": 0, "Buy": 1, "Watch": 2}
 
     on_board = sorted(
-        [g for g in gems if tier_for(g["hidden_gem_score"]) is not None],
-        key=lambda g: (TIER_ORDER.get(tier_for(g["hidden_gem_score"]), 3), -g["hidden_gem_score"])
+        [g for g in gems if tier_with_hysteresis(g) is not None],
+        key=lambda g: (TIER_ORDER.get(tier_with_hysteresis(g), 3), -g["hidden_gem_score"])
     )
 
     rows = []
@@ -81,7 +98,7 @@ def archive_leaderboard(engine, gems=None) -> dict:
             "date":            today,
             "symbol":          g["symbol"],
             "gem_score":       g["hidden_gem_score"],
-            "tier":            tier_for(g["hidden_gem_score"]),
+            "tier":            tier_with_hysteresis(g),
             "rank":            rank,
             "narrative_score": g.get("narrative_score"),
             "value_score":     g.get("value_score"),

@@ -13,6 +13,10 @@ and ONLY here.
 STRONG_BUY = 0.46
 BUY        = 0.36
 WATCH      = 0.34
+# Board-exit hysteresis (user-approved 2026-08-01): a stock ENTERS the board
+# above WATCH but only EXITS below BOARD_EXIT — leaving always requires real
+# deterioration or a sustained slide, never a daily price wobble at the line.
+BOARD_EXIT = 0.32
 
 
 def fmt10(score, dp: int = 1) -> str:

@@ -6,4 +6,6 @@ env.yaml
 seen_filings.txt
 
 # Ignore Python virtual environment
-venv/
+venv/__pycache__/
+*.pyc
+data/postgres/

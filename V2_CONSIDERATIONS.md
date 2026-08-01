@@ -170,6 +170,27 @@ decision, measurable separately vs SPY). Every decision (incl. declines) is
 stored in narrative_overrides — the labeled dataset for the proper v2
 company-narrative layer (#3/#14). Module: pipeline/narrative_override.py.
 
+### 18. Earnings Radar — calendar-driven anticipation (2026-08-01, user; SCOPED, not built)
+EarningsCall.biz's calendar API (subscribed, Starter tier) gives forward
+earnings dates for 9,000+ companies. Today the platform is purely REACTIVE
+to earnings; the calendar makes it ANTICIPATORY. Scope:
+- INGEST: nightly calendar pull for the universe (1-2 API calls/day) into
+  an earnings_calendar table (symbol, call datetime, confirmed/estimated).
+- SURFACE: (a) "Reporting this week" strip on Home, board stocks first, each
+  with score/tier chip; (b) next-earnings date on Stock Detail hero; (c)
+  brief section: "3 board stocks report tomorrow: GDDY (5.2, Strong Buy)...".
+- PRE-EARNINGS POSTURE (the interesting half): before a board stock reports,
+  auto-generate a one-paragraph "what to watch" note from its existing
+  assessment + open catalysts/risks — so the post-call verdict has a stated
+  prior to be judged against ("we said watch ad-tier bookings; they missed").
+  Pairs with continuity framing and management-credibility (#15).
+- OPS USE: calendar tells the scheduler WHICH evenings need a fast-transcript
+  sweep and primes the dirty-symbol list before the 8-K even lands.
+- Cost: negligible (calendar calls + a few Sonnet notes/week).
+- Build order when green-lit: ingest -> Home strip + Detail date (display
+  only) -> brief section -> pre-earnings posture notes last (new LLM output,
+  needs its own prompt discipline).
+
 ### 16. Deploy-eats-cron: startup catch-up for missed job slots (2026-07-20)
 Twice now (Jul 7, Jul 20) a git push near a cron slot restarted the Railway
 service mid-trigger and APScheduler silently skipped the run (no persistence

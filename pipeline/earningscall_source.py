@@ -36,13 +36,21 @@ def _get(path: str, params: dict) -> tuple[int, bytes]:
     qs = "&".join(f"{k}={v}" for k, v in {**params, "apikey": _api_key()}.items())
     req = urllib.request.Request(f"{BASE}/{path}?{qs}",
                                  headers={"User-Agent": "hidden-gems-platform"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status, r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, b""
-    except Exception:
-        return 0, b""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 2:
+                time.sleep(35)   # rate-limited: wait out the window, retry
+                continue
+            return e.code, b""
+        except Exception:
+            if attempt < 2:
+                time.sleep(5)
+                continue
+            return 0, b""
+    return 0, b""
 
 
 def _load_symbol_exchanges():

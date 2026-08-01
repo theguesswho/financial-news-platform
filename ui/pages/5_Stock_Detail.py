@@ -359,7 +359,7 @@ def build_stock_context(symbol, company, gem, qa, fund, calls, filings, claims, 
     parts.append(f"## Hidden Gem Score for {symbol} ({company})")
     if gem:
         score = gem.get("hidden_gem_score")
-        parts.append(f"Overall Score: {score:.3f}" if score else "Overall Score: N/A")
+        parts.append(f"Overall Score: {score*10:.1f}/10" if score else "Overall Score: N/A")
         parts.append(f"  Narrative Score:       {gem.get('narrative_score', 0):.2f}  (macro theme alignment)")
         parts.append(f"  Value Score:           {gem.get('value_score', 0):.2f}  (valuation vs quality)")
         parts.append(f"  Quality Score:         {gem.get('quality_score', 0):.2f}  (ROIC, margins, growth)")
@@ -605,7 +605,7 @@ with col_left:
 """, unsafe_allow_html=True)
 
 with col_right:
-    score_display = f"{gem_score:.3f}" if gem_score else "—"
+    score_display = f"{gem_score*10:.1f}" if gem_score else "—"
     st.markdown(f"""
 <div class="stock-hero" style="text-align:center">
   <div style="font-size:0.68rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
@@ -642,7 +642,7 @@ for col, label, val, color, desc in [
         st.markdown(f"""
 <div class="score-card">
   <div class="score-card-label">{label}</div>
-  <div class="score-card-value" style="color:{color}">{val:.2f}</div>
+  <div class="score-card-value" style="color:{color}">{val*10:.1f}</div>
   <div class="score-card-bar">
     <div class="score-card-fill" style="width:{pct}%;background:{color}"></div>
   </div>

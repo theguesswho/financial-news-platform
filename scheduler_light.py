@@ -113,12 +113,12 @@ def _qual_sweep(gems=None):
                            ROUND(px.chg_pct, 1) || '% on the latest session — ' ||
                            'adjudicate whether the market sees something the thesis misses', '')
                      WHEN ABS(l.gem_score - qa.gem_score) >= 0.05 THEN
-                       'gem score moved ' || ROUND(qa.gem_score,3) || ' -> ' ||
-                       ROUND(l.gem_score,3) || ' since your last assessment on ' ||
+                       'the overall score moved ' || ROUND(qa.gem_score*10,1) || ' -> ' ||
+                       ROUND(l.gem_score*10,1) || ' (10-point scale) since your last assessment on ' ||
                        qa.assessed_at::date
                      ELSE
-                       'narrative exposure moved ' || ROUND(qa.narrative_score,2) ||
-                       ' -> ' || ROUND(l.narrative_score,2) ||
+                       'narrative exposure moved ' || ROUND(qa.narrative_score*10,1) ||
+                       ' -> ' || ROUND(l.narrative_score*10,1) || ' (10-point scale)' ||
                        ' since your last assessment on ' || qa.assessed_at::date
                    END AS reason
             FROM latest l

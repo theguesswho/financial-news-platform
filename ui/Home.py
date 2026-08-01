@@ -284,7 +284,7 @@ def load_gem_scores_map():
                    lh.quality_score,  lh.gap_score
             FROM leaderboard_history lh
             WHERE lh.date = (SELECT MAX(date) FROM leaderboard_history)
-              AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy')
+              AND COALESCE(lh.assessed_tier, lh.tier) IN ('Strong Buy', 'Buy', 'Watch')
         """)).fetchall()
     return {
         r[0]: {
@@ -512,8 +512,10 @@ with col_filings:
                 synopsis = get_synopsis(fid, sym, ftype, title, llm_analysis,
                                         trajectory, tone, catalysts, risks)
 
-            gem_badge = ('&nbsp;<span class="pill pill-blue">💎 Gem</span>'
-                         if sym in gem_syms else "")
+            # Score + status chip (user 2026-08-01): "5.2 Strong Buy", not a bare gem icon
+            _g = load_gem_scores_map().get(sym)
+            gem_badge = (f'&nbsp;<span class="pill pill-blue">💎 {float(_g["gem_score"])*10:.1f} '
+                         f'{_g["display_tier"]}</span>' if _g else "")
 
             if ftype in ("8-K", "8-K/A"):
                 pills = impact_pill
@@ -591,7 +593,7 @@ with col_moves:
                     unsafe_allow_html=True)
         for m in moves["movers"][:6]:
             delta_cls = "mover-delta-pos" if m["delta"] > 0 else "mover-delta-neg"
-            delta_str = f'+{m["delta"]:.3f}' if m["delta"] > 0 else f'{m["delta"]:.3f}'
+            delta_str = f'+{m["delta"]*10:.1f}' if m["delta"] > 0 else f'{m["delta"]*10:.1f}'
             tier_str  = m["tier"] or "–"
             st.markdown(f"""
 <div class="mover-row">
@@ -642,7 +644,9 @@ def render_insider_block(col, trades, label, hdr_cls):
             role    = shorten_title(title, "")
             val_str = fmt_value(value)
             date_str = txn_date.strftime("%b %d") if txn_date else "–"
-            gem_badge = (' <span class="ir-gem">💎 Gem</span>' if sym in gem_syms else "")
+            _g2 = load_gem_scores_map().get(sym)
+            gem_badge = (f' <span class="ir-gem">💎 {float(_g2["gem_score"])*10:.1f} '
+                         f'{_g2["display_tier"]}</span>' if _g2 else "")
             st.markdown(f"""
 <div class="insider-row">
   <span class="ir-sym">{sym}</span>
@@ -681,7 +685,7 @@ else:
                 st.markdown(f"""
 <div class="filing-card" style="text-align:center; cursor:pointer;">
   <div style="font-size:1.1rem; font-weight:700;">{sym}</div>
-  <div style="font-size:1.5rem; font-weight:800; color:{color};">{score:.3f}</div>
+  <div style="font-size:1.5rem; font-weight:800; color:{color};">{score*10:.1f}</div>
   <div style="font-size:0.72rem; color:{color}; font-weight:600;">{tier}</div>
 </div>""", unsafe_allow_html=True)
             else:

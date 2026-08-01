@@ -361,7 +361,8 @@ def tier_emoji(tier):
     return {"Strong Buy": "🔥", "Buy": "✅", "Watch": "👀"}.get(tier, "–")
 
 def fmt_score(v):
-    return f"{v:.3f}" if v is not None else "—"
+    from pipeline.tiers import fmt10
+    return fmt10(v) if v is not None else "—"
 
 def bar_html(val, color="#3b82f6"):
     pct = int((val or 0) * 100)
@@ -641,7 +642,7 @@ for g in display_stocks:
         st.markdown(
             f'<div style="text-align:center;padding-top:0.3rem">'
             f'<div style="font-size:1.4rem;font-weight:900;color:{tier_col};line-height:1">'
-            f'{score:.3f}</div>'
+            f'{score*10:.1f}</div>'
             f'<div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;'
             f'letter-spacing:0.06em;color:{tier_col};margin-top:0.15rem">'
             f'{tier_emoji(tier)} {tier or "—"}</div>'
@@ -660,7 +661,7 @@ for g in display_stocks:
             dir_badge = (f' <span title="{_tip}" style="background:#f3e8ff;color:#6b21a8;'
                          f'font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;'
                          f'border-radius:3px;vertical-align:middle;border:1px solid #d8b4fe">'
-                         f'⭐ QUAL-PROMOTED{_ntxt} · raw {g["hidden_gem_score"]:.3f}</span>')
+                         f'⭐ QUAL-PROMOTED{_ntxt} · raw {g["hidden_gem_score"]*10:.1f}</span>')
         elif direction == "upgrade":
             dir_badge = ' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↑ UPGRADED</span>'
         elif direction == "downgrade":
@@ -712,7 +713,7 @@ for g in display_stocks:
             bcol1, bcol2, bcol3 = st.columns([1, 4, 0.7])
             bcol1.markdown(f'<span style="font-size:0.68rem;color:#94a3b8;font-weight:600">{label}</span>', unsafe_allow_html=True)
             bcol2.progress(float(val))
-            bcol3.markdown(f'<span style="font-size:0.72rem;font-weight:700;color:#0f172a">{val:.2f}</span>', unsafe_allow_html=True)
+            bcol3.markdown(f'<span style="font-size:0.72rem;font-weight:700;color:#0f172a">{val*10:.1f}</span>', unsafe_allow_html=True)
 
     with c_btn:
         st.markdown("<div style='padding-top:0.3rem'></div>", unsafe_allow_html=True)

@@ -15,6 +15,15 @@ BUY        = 0.36
 WATCH      = 0.34
 
 
+def fmt10(score, dp: int = 1) -> str:
+    """Display convention (user 2026-08-01): scores render on a 10-point
+    scale — 0.588 shows as 5.9. Internal math stays 0–1; this is the ONLY
+    place the transform lives."""
+    if score is None:
+        return "—"
+    return f"{float(score) * 10:.{dp}f}"
+
+
 def tier_for(score):
     if score is None:
         return None

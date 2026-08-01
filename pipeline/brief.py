@@ -276,7 +276,15 @@ Rules:
 - watch_list: 2-4 items max. Prioritise negative signals (bad news travels fast)
 - on_radar: 2-3 items. Focus on convergence — when 2+ signals point to the same stock
 - Be direct. "This is worth watching because X" not "Investors may wish to consider"
-- If it's a quiet day, say so honestly but still extract the most useful signal available"""
+- If it's a quiet day, say so honestly but still extract the most useful signal available
+- SCORES ARE ALWAYS QUOTED ON A 10-POINT SCALE: an input of 0.588 is written
+  as "5.9". Never show raw 0-1 decimals to the reader
+- PLAIN LANGUAGE ONLY: never use internal shorthand (P=, E=, NG, V_s, gem,
+  priced_in). Say "the market has priced about half this story", "narrative
+  exposure", "standalone value"
+- EVERY stock mention carries its score and status inline the FIRST time it
+  appears: "GDDY (5.2, Strong Buy)". If the item IS about a score change,
+  lead with the move: "GDDY upgraded from 4.8 to 5.2 after ..." """
 
 
 # ---------------------------------------------------------------------------

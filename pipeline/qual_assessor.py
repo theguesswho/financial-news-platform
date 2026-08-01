@@ -121,11 +121,27 @@ MOST RECENT 10-K/10-Q:
 {fundamental_trend}
 {trigger_context}
 
+YOUR PREVIOUS ASSESSMENT ({prev_date}): {prev_verdict}
+{prev_rationale}
+
+CONTINUITY REQUIREMENT: your analysis is a LIVING VIEW, not a fresh take.
+Read your previous assessment above and frame this one explicitly as
+BUILDING on it, REINFORCING it, SHIFTING it, or DIVERGING from it — and say
+which, and why the new data justifies that. Never contradict your previous
+view without acknowledging you held it.
+
+WRITING RULES (the reader is an intelligent investor, NOT a platform
+insider): never use internal shorthand like P=, E=, NG, V_s, gem. Say it
+straight — "the market has already priced about half this story", "narrative
+exposure is strong", "standalone value is high". Quote scores on a 10-POINT
+scale (a 0.55 input is "5.5 out of 10").
+
 Respond in valid JSON only:
 {{
   "direction": "upgrade" | "downgrade" | "hold",
   "adjusted_tier": "Strong Buy" | "Buy" | "Watch" | "None",
-  "rationale": "One or two sentences — specific reason for any change, or why it holds",
+  "continuity": "building" | "reinforcing" | "shifting" | "diverging" | "first",
+  "rationale": "Two to four sentences — plain language, opens with the continuity framing (and the trigger verdict if one was given)",
   "key_bull": "Single most compelling reason to own it",
   "key_bear": "Single most important risk to the thesis"
 }}
@@ -143,6 +159,11 @@ Rules:
 def get_stock_context(engine, symbol: str) -> dict:
     """Pull all context needed for qual assessment from DB."""
     with engine.connect() as conn:
+        # Previous assessment — the continuity anchor (user 2026-08-01)
+        prev = conn.execute(text("""
+            SELECT adjusted_tier, direction, rationale, assessed_at::date
+            FROM qual_assessments WHERE symbol = :sym
+        """), {"sym": symbol}).fetchone()
         # Most recent earnings call
         call = conn.execute(text("""
             SELECT ft.narrative_strength, ft.trajectory, ft.management_tone,
@@ -185,6 +206,7 @@ def get_stock_context(engine, symbol: str) -> dict:
         "filing":     filing,
         "fund":       fund,
         "trend_rows": trend_rows,
+        "prev":       prev,
     }
 
 
@@ -289,6 +311,10 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         filing_trajectory    = filing_traj,
         filing_tone          = filing_tone,
         fundamental_trend    = fundamental_trend,
+        prev_date            = str(ctx["prev"][3]) if ctx.get("prev") else "none",
+        prev_verdict         = (f"{ctx['prev'][0]} ({ctx['prev'][1]})"
+                                if ctx.get("prev") else "FIRST ASSESSMENT — no prior view"),
+        prev_rationale       = (ctx["prev"][2] or "")[:600] if ctx.get("prev") else "",
         trigger_context      = (
             f"\nWHY YOU ARE BEING ASKED NOW: {gem['_trigger']}\n"
             "Your rationale MUST open by stating whether this event/move changes "
@@ -335,14 +361,36 @@ def store_assessment(engine, gem: dict, result: dict):
     with engine.connect() as conn:
         conn.execute(text(
             "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS narrative_score NUMERIC(10,4)"))
+        conn.execute(text(
+            "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS continuity VARCHAR(12)"))
+        # Preserve the chain (user 2026-08-01): the upsert overwrites, so the
+        # outgoing assessment is archived first — the full sequence of views
+        # per stock lives in qual_history.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS qual_history (
+                id SERIAL PRIMARY KEY,
+                symbol VARCHAR(10) NOT NULL,
+                gem_score NUMERIC(10,4), raw_tier VARCHAR(20),
+                adjusted_tier VARCHAR(20), direction VARCHAR(12),
+                continuity VARCHAR(12), rationale TEXT,
+                assessed_at TIMESTAMP
+            )"""))
+        conn.execute(text("""
+            INSERT INTO qual_history (symbol, gem_score, raw_tier, adjusted_tier,
+                                      direction, continuity, rationale, assessed_at)
+            SELECT symbol, gem_score, raw_tier, adjusted_tier, direction,
+                   continuity, rationale, assessed_at
+            FROM qual_assessments WHERE symbol = :s
+        """), {"s": gem["symbol"]})
         conn.execute(text("""
             INSERT INTO qual_assessments
                 (symbol, gem_score, narrative_score, raw_tier, adjusted_tier, direction,
-                 rationale, key_bull, key_bear, assessed_at)
+                 continuity, rationale, key_bull, key_bear, assessed_at)
             VALUES
                 (:symbol, :gem_score, :narrative_score, :raw_tier, :adjusted_tier, :direction,
-                 :rationale, :key_bull, :key_bear, NOW())
+                 :continuity, :rationale, :key_bull, :key_bear, NOW())
             ON CONFLICT (symbol) DO UPDATE SET
+                continuity    = EXCLUDED.continuity,
                 gem_score     = EXCLUDED.gem_score,
                 narrative_score = EXCLUDED.narrative_score,
                 raw_tier      = EXCLUDED.raw_tier,
@@ -356,6 +404,7 @@ def store_assessment(engine, gem: dict, result: dict):
             "symbol":        gem["symbol"],
             "gem_score":     gem["hidden_gem_score"],
             "narrative_score": gem.get("narrative_score"),
+            "continuity":    result.get("continuity", "first"),
             "raw_tier":      gem.get("_raw_tier"),
             "adjusted_tier": result.get("adjusted_tier"),
             "direction":     result.get("direction", "hold"),

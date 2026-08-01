@@ -280,8 +280,21 @@ def run_narrative_override(engine, gems=None) -> dict:
         else:
             stats["declined"] += 1
         if promoted:
-            stats["promoted"] += 1
-            promotions.append({"symbol": sym, "tier": tier, "gem_adjusted": gem_adj})
+            # GATE (user design 2026-08-01): the override only NOMINATES.
+            # Before anything reaches the board, the full qual assessor
+            # evaluates the thesis — told explicitly that the raw narrative
+            # score is known-blind to company stories — and ISSUES the tier.
+            # Only an endorsed nomination is stamped. 1-in-7 is fine; a stock
+            # appearing then vanishing without visible reason is not.
+            verdict = _gate_assessment(engine, sym, tier, gem_adj, result)
+            if verdict in ("Strong Buy", "Buy", "Watch"):
+                stats["promoted"] += 1
+                promotions.append({"symbol": sym, "tier": verdict,
+                                   "gem_adjusted": gem_adj})
+            else:
+                stats["gate_declined"] = stats.get("gate_declined", 0) + 1
+                promoted = False
+                tier = None
 
         with engine.begin() as conn:
             conn.execute(text("""
@@ -313,6 +326,38 @@ def run_narrative_override(engine, gems=None) -> dict:
     _stamp(engine, promotions)
     print(f"Narrative override: {stats}")
     return stats
+
+
+def _gate_assessment(engine, sym: str, nominated_tier: str,
+                     gem_adj: float, override_result: dict) -> str | None:
+    """Full qual assessment of a nominated thesis. Reuses a verdict fresher
+    than the nomination; otherwise assesses now. Returns the assessor's tier."""
+    from sqlalchemy import text as _text
+    with engine.connect() as conn:
+        row = conn.execute(_text("""
+            SELECT qa.adjusted_tier FROM qual_assessments qa
+            JOIN narrative_overrides no2 ON no2.symbol = qa.symbol
+            WHERE qa.symbol = :s AND qa.assessed_at > no2.assessed_at
+        """), {"s": sym}).fetchone()
+    if row:
+        return row[0]
+    from pipeline.qual_assessor import run_qual_assessment
+    trig = (f"the narrative-override mechanism NOMINATES this stock as {nominated_tier} "
+            f"(adjusted score {gem_adj*10:.1f}/10). IMPORTANT CONTEXT: the raw narrative "
+            f"score shown above is KNOWN-BLIND to company-specific stories — do not hold "
+            f"the low raw score against the thesis; judge the thesis itself. "
+            f"The thesis: {(override_result.get('rationale') or '')[:400]} "
+            f"Evidence: {(override_result.get('evidence') or '')[:300]} "
+            f"If credible, endorse {nominated_tier} or any lower tier; if not, return None.")
+    try:
+        run_qual_assessment(symbols=[sym], triggers={sym: trig})
+        with engine.connect() as conn:
+            row = conn.execute(_text(
+                "SELECT adjusted_tier FROM qual_assessments WHERE symbol = :s"),
+                {"s": sym}).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None   # gate failure = no promotion (fail-closed)
 
 
 def _stamp(engine, promotions: list):

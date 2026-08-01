@@ -356,6 +356,17 @@ def daily_data_update():
 
     _step(4, "Earnings transcripts")
     try:
+        # Fast path first (earningscall.biz, ~15 min post-call), then FMP
+        # fallback — same EARN_CALL:{sym}:Q{q}:{year} key-space, so whichever
+        # lands first owns the row and the other skips. Purely additive.
+        try:
+            from pipeline.earningscall_source import fetch_fast_transcripts
+            from pipeline.hidden_gem_scorer import get_engine as _ge_ec
+            _ec = _ge_ec()
+            _ok(f"Fast transcripts: {fetch_fast_transcripts(_ec)}")
+            _ec.dispose()
+        except Exception as e:
+            _err("Fast transcript source failed (FMP fallback continues)", e)
         from pipeline.earnings_ingestion import run_earnings_ingestion
         r = run_earnings_ingestion(quarters=1, force=False)
         _ok(f"Earnings ingestion done: {r}")
@@ -548,6 +559,17 @@ def midday_refresh():
 
     _step(3, "Earnings transcripts")
     try:
+        # Fast path first (earningscall.biz, ~15 min post-call), then FMP
+        # fallback — same EARN_CALL:{sym}:Q{q}:{year} key-space, so whichever
+        # lands first owns the row and the other skips. Purely additive.
+        try:
+            from pipeline.earningscall_source import fetch_fast_transcripts
+            from pipeline.hidden_gem_scorer import get_engine as _ge_ec
+            _ec = _ge_ec()
+            _ok(f"Fast transcripts: {fetch_fast_transcripts(_ec)}")
+            _ec.dispose()
+        except Exception as e:
+            _err("Fast transcript source failed (FMP fallback continues)", e)
         from pipeline.earnings_ingestion import run_earnings_ingestion
         r = run_earnings_ingestion(quarters=1, force=False)
         _ok(f"Earnings ingestion done: {r}")
@@ -583,6 +605,17 @@ def after_close_refresh():
 
     _step(2, "Earnings transcripts")
     try:
+        # Fast path first (earningscall.biz, ~15 min post-call), then FMP
+        # fallback — same EARN_CALL:{sym}:Q{q}:{year} key-space, so whichever
+        # lands first owns the row and the other skips. Purely additive.
+        try:
+            from pipeline.earningscall_source import fetch_fast_transcripts
+            from pipeline.hidden_gem_scorer import get_engine as _ge_ec
+            _ec = _ge_ec()
+            _ok(f"Fast transcripts: {fetch_fast_transcripts(_ec)}")
+            _ec.dispose()
+        except Exception as e:
+            _err("Fast transcript source failed (FMP fallback continues)", e)
         from pipeline.earnings_ingestion import run_earnings_ingestion
         r = run_earnings_ingestion(quarters=1, force=False)
         _ok(f"Earnings ingestion done: {r}")

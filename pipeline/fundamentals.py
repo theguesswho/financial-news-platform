@@ -157,8 +157,10 @@ def _yoy_growth(trends: dict, key: str) -> Optional[float]:
 
 def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
     """
-    Fetch and store fundamentals for all symbols.
-    Skips symbols updated within the last 7 days unless forced.
+    Fetch and store fundamentals for every symbol passed — no internal skip
+    (a stale docstring claimed a 7-day window; behavior has always been
+    fetch-all, giving <=24h staleness via the daily 06:00 full refresh).
+    Callers control cost by choosing the symbol list.
     """
     from sqlalchemy import text
     # Create table if needed

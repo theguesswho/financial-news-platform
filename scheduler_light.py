@@ -108,7 +108,10 @@ def _qual_sweep(gems=None):
                      WHEN qa.symbol IS NULL THEN 'first assessment: new to the board'
                      WHEN ef.fdate IS NOT NULL THEN
                        'new earnings data (' || ef.ftype || ' filed ' || ef.fdate ||
-                       ') since your last assessment on ' || qa.assessed_at::date
+                       ') since your last assessment on ' || qa.assessed_at::date ||
+                       COALESCE('. MARKET REACTION: the stock moved ' ||
+                           ROUND(px.chg_pct, 1) || '% on the latest session — ' ||
+                           'adjudicate whether the market sees something the thesis misses', '')
                      WHEN ABS(l.gem_score - qa.gem_score) >= 0.05 THEN
                        'gem score moved ' || ROUND(qa.gem_score,3) || ' -> ' ||
                        ROUND(l.gem_score,3) || ' since your last assessment on ' ||
@@ -121,15 +124,26 @@ def _qual_sweep(gems=None):
             FROM latest l
             LEFT JOIN qual_assessments qa ON qa.symbol = l.symbol
             LEFT JOIN LATERAL (
+                -- created_at (ingestion time), NOT filing_date: transcripts are
+                -- backdated to the call date, so a transcript arriving days
+                -- after the 8-K-triggered assessment must RE-fire the trigger
+                -- (GDDY case 2026-07-31).
                 SELECT f.filing_type AS ftype, f.filing_date::date AS fdate
                 FROM filings f
                 WHERE f.symbol = l.symbol
                   AND (f.filing_type = 'EARN_CALL'
                        OR (f.filing_type = '8-K' AND f.event_type = 'EARNINGS'))
-                  AND f.filing_date > qa.assessed_at
+                  AND f.created_at > qa.assessed_at
                   AND f.filing_date > NOW() - INTERVAL '14 days'
-                ORDER BY f.filing_date DESC LIMIT 1
+                ORDER BY f.created_at DESC LIMIT 1
             ) ef ON qa.symbol IS NOT NULL
+            LEFT JOIN LATERAL (
+                SELECT ROUND(100 * (a.close / NULLIF(b.close, 0) - 1), 1) AS chg_pct
+                FROM (SELECT close FROM eod_prices WHERE symbol = l.symbol
+                      ORDER BY date DESC LIMIT 1) a,
+                     (SELECT close FROM eod_prices WHERE symbol = l.symbol
+                      ORDER BY date DESC OFFSET 1 LIMIT 1) b
+            ) px ON ef.fdate IS NOT NULL
             WHERE (qa.assessed_at IS NULL OR qa.assessed_at < NOW() - INTERVAL '18 hours')
               AND (
                     (qa.symbol IS NULL AND l.tier IS NOT NULL)
@@ -355,6 +369,17 @@ def daily_data_update():
         _ok("Narrative extraction done")
     except Exception as e:
         _err("Narrative extraction failed", e)
+
+    _step("4c", "Narrative ledger update (evidence-gated, daily cadence)")
+    try:
+        from pipeline.exposure_ledger import run_update_pass
+        from pipeline.hidden_gem_scorer import get_engine as _ge4c
+        eng = _ge4c()
+        r = run_update_pass(eng)
+        eng.dispose()
+        _ok(f"Ledger update: {r}")
+    except Exception as e:
+        _err("Ledger update failed", e)
 
     _step(5, "Re-score + archive leaderboard")
     engine = None
@@ -593,6 +618,49 @@ def after_close_refresh():
         _ok("Narrative extraction done")
     except Exception as e:
         _err("Narrative extraction failed", e)
+
+    _step("3d", "Dirty-symbol fundamentals re-fetch (event-driven, 2026-07-31)")
+    # Same-evening structured numbers for stocks that JUST reported: a symbol
+    # is dirty iff an earnings filing was INGESTED after its last fundamentals
+    # fetch. Self-limiting: once re-fetched, fetched_at > created_at -> clean.
+    # Bounded at 25/run; the 06:00 full refresh mops up any overflow.
+    try:
+        from pipeline.hidden_gem_scorer import get_engine as _ge
+        eng = _ge()
+        with eng.connect() as _c:
+            dirty = [r[0] for r in _c.execute(text("""
+                SELECT DISTINCT fu.symbol FROM fundamentals fu
+                JOIN filings f ON f.symbol = fu.symbol
+                WHERE (f.filing_type = 'EARN_CALL'
+                       OR (f.filing_type = '8-K' AND f.event_type = 'EARNINGS'))
+                  AND f.created_at > fu.fetched_at
+                  AND f.created_at > NOW() - INTERVAL '3 days'
+                LIMIT 25
+            """)).fetchall()]
+        eng.dispose()
+        if dirty:
+            from db.session import get_session
+            from pipeline.fundamentals import fetch_fundamentals
+            s = get_session()
+            fetch_fundamentals(s, dirty)
+            s.close()
+            _ok(f"Dirty re-fetch: {len(dirty)} just-reported symbols: {', '.join(dirty[:10])}")
+        else:
+            _ok("No dirty symbols — nothing re-fetched")
+    except Exception as e:
+        _err("Dirty fundamentals re-fetch failed", e)
+
+    _step("3e", "Narrative ledger update (evidence-gated, daily cadence)")
+    # The stateful update-pass self-limits to stocks whose filings are newer
+    # than their ledger — zero LLM calls on quiet days by construction.
+    try:
+        from pipeline.exposure_ledger import run_update_pass
+        eng = _ge()
+        r = run_update_pass(eng)
+        eng.dispose()
+        _ok(f"Ledger update: {r}")
+    except Exception as e:
+        _err("Ledger update failed", e)
 
     _step(4, "Re-score + archive leaderboard")
     gems = None

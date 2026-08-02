@@ -150,13 +150,18 @@ def run_update_pass(engine, shadow: bool = False, symbols=None) -> dict:
                        + (f', {l["misses"]} pending removal vote)' if l["misses"] else ')')
                        for l in links)
         eb = "\n".join(new_ev[sym])
-        prompt = UPDATE_PROMPT.format(sym=sym, sector=sectors.get(sym),
-                                      ledger_block=lb, evidence_block=eb,
-                                      narrative_block=nar_block)
+        sys_static, user_part = UPDATE_PROMPT.split("Company: {sym}", 1)
+        user_text = ("Company: " + user_part).format(
+            sym=sym, sector=sectors.get(sym), ledger_block=lb, evidence_block=eb,
+            narrative_block="(see system prompt)")
         for attempt in range(3):
             try:
                 resp = client.messages.create(model=SONNET, max_tokens=1600, timeout=60,
-                    messages=[{"role": "user", "content": prompt}])
+                    system=[{"type": "text", "text": sys_static},
+                            {"type": "text",
+                             "text": "AVAILABLE NARRATIVES (for 'add' operations only):\n" + nar_block,
+                             "cache_control": {"type": "ephemeral"}}],
+                    messages=[{"role": "user", "content": user_text}])
                 raw = resp.content[0].text.strip()
                 if raw.startswith("```"):
                     raw = raw.split("```")[1].removeprefix("json").rsplit("```", 1)[0]

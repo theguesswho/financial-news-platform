@@ -44,7 +44,7 @@ TOP_N       = 20   # kept for backwards compat but no longer caps assessment
 MIN_SCORE   = WATCH  # assess everything at Watch tier or above (single-source: pipeline/tiers.py)
 
 
-ASSESSMENT_PROMPT = """You are a senior fundamental equity analyst performing a qualitative review of a stock flagged by a quantitative scoring system.
+ASSESSMENT_SYSTEM = """You are a senior fundamental equity analyst performing a qualitative review of a stock flagged by a quantitative scoring system.
 
 Your job is NOT to validate the score — it's to catch what the numbers miss. Look for:
 - Earnings quality issues (declining earnings, investment phase vs structural deterioration)
@@ -99,33 +99,9 @@ COMPONENT DEFINITIONS (v2 formula: gem = sqrt(Value x Quality) x NG^0.75):
   high, treat it as a RED FLAG and say so — do not endorse it as margin of
   safety.
 
-QUANTITATIVE SCORES:
-  Symbol: {symbol}
-  Gem score: {gem_score} → Raw tier: {raw_tier}
-  Exposure E: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Priced-in P: {priced_in} | NG: {ng_score}
-  PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC: {roic}
-
-TOP THEMES (from filings + earnings calls):
-{themes}
-
-MOST RECENT EARNINGS CALL ({last_call_date}):
-  Narrative strength: {call_narrative_strength} | Trajectory: {call_trajectory} | Tone: {call_tone}
-  Key themes: {call_themes}
-  Catalysts: {call_catalysts}
-  Risks: {call_risks}
-
-MOST RECENT 10-K/10-Q:
-  Narrative strength: {filing_narrative_strength} | Trajectory: {filing_trajectory} | Tone: {filing_tone}
-
-5-YEAR FUNDAMENTAL TREND (annual, oldest → newest):
-{fundamental_trend}
-{trigger_context}
-
-YOUR PREVIOUS ASSESSMENT ({prev_date}): {prev_verdict}
-{prev_rationale}
 
 CONTINUITY REQUIREMENT: your analysis is a LIVING VIEW, not a fresh take.
-Read your previous assessment above and frame this one explicitly as
+Read your previous assessment in the provided data and frame this one explicitly as
 BUILDING on it, REINFORCING it, SHIFTING it, or DIVERGING from it — and say
 which, and why the new data justifies that. Never contradict your previous
 view without acknowledging you held it.
@@ -154,6 +130,31 @@ Rules:
   explicitly state why one step is insufficient
 - Never upgrade to Strong Buy unless narrative is genuinely differentiated AND cheap AND quality
 - Return ONLY valid JSON, no markdown"""
+
+ASSESSMENT_USER = """QUANTITATIVE SCORES:
+  Symbol: {symbol}
+  Gem score: {gem_score} → Raw tier: {raw_tier}
+  Exposure E: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Priced-in P: {priced_in} | NG: {ng_score}
+  PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC: {roic}
+
+TOP THEMES (from filings + earnings calls):
+{themes}
+
+MOST RECENT EARNINGS CALL ({last_call_date}):
+  Narrative strength: {call_narrative_strength} | Trajectory: {call_trajectory} | Tone: {call_tone}
+  Key themes: {call_themes}
+  Catalysts: {call_catalysts}
+  Risks: {call_risks}
+
+MOST RECENT 10-K/10-Q:
+  Narrative strength: {filing_narrative_strength} | Trajectory: {filing_trajectory} | Tone: {filing_tone}
+
+5-YEAR FUNDAMENTAL TREND (annual, oldest → newest):
+{fundamental_trend}
+{trigger_context}
+
+YOUR PREVIOUS ASSESSMENT ({prev_date}): {prev_verdict}
+{prev_rationale}"""
 
 
 def get_stock_context(engine, symbol: str) -> dict:
@@ -282,7 +283,11 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         fundamental_trend = "  (no multi-year history available)"
 
     from pipeline.tiers import STRONG_BUY, BUY, WATCH
-    return ASSESSMENT_PROMPT.format(
+    # Static system block (identical every call -> prompt-cached);
+    # dynamic per-stock data rides in the user message.
+    system_text = ASSESSMENT_SYSTEM.format(
+        tier_sb=f"{STRONG_BUY:.2f}", tier_buy=f"{BUY:.2f}", tier_watch=f"{WATCH:.2f}")
+    return system_text, ASSESSMENT_USER.format(
         symbol               = gem["symbol"],
         gem_score            = fmt(gem["hidden_gem_score"]),
         raw_tier             = gem.get("_raw_tier", "—"),
@@ -291,9 +296,6 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         quality_score        = fmt(gem["quality_score"]),
         priced_in            = fmt(gem.get("priced_in", 0.5)),
         ng_score             = fmt(gem.get("ng_score", 0)),
-        tier_sb              = f"{STRONG_BUY:.2f}",
-        tier_buy             = f"{BUY:.2f}",
-        tier_watch           = f"{WATCH:.2f}",
         peg                  = fmt(fund[0] if fund else None),
         fwd_pe               = fmt(fund[1] if fund else None),
         rev_growth           = fmt(fund[2] if fund else None, pct=True),
@@ -326,14 +328,16 @@ def build_prompt(gem: dict, ctx: dict) -> str:
 def assess_stock(client, engine, gem: dict) -> dict:
     """Run qual assessment for one stock. Returns result dict."""
     ctx    = get_stock_context(engine, gem["symbol"])
-    prompt = build_prompt(gem, ctx)
+    system_text, user_text = build_prompt(gem, ctx)
 
     for attempt in range(3):
         try:
             resp = client.messages.create(
                 model     = MODEL,
                 max_tokens= 1200,   # 600 truncated mid-JSON once continuity framing lengthened rationales (GDDY 2026-08-01)
-                messages  = [{"role": "user", "content": prompt}],
+                system    = [{"type": "text", "text": system_text,
+                              "cache_control": {"type": "ephemeral"}}],
+                messages  = [{"role": "user", "content": user_text}],
                 timeout   = 45,
             )
             raw = resp.content[0].text.strip()

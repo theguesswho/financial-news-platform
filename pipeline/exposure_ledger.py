@@ -162,6 +162,8 @@ def run_update_pass(engine, shadow: bool = False, symbols=None) -> dict:
                              "text": "AVAILABLE NARRATIVES (for 'add' operations only):\n" + nar_block,
                              "cache_control": {"type": "ephemeral"}}],
                     messages=[{"role": "user", "content": user_text}])
+                from pipeline.llm_usage import record_usage
+                record_usage(engine, "ledger_update", SONNET, resp.usage)
                 raw = resp.content[0].text.strip()
                 if raw.startswith("```"):
                     raw = raw.split("```")[1].removeprefix("json").rsplit("```", 1)[0]
@@ -365,13 +367,19 @@ def verify_universe(engine, symbols=None, max_workers=4) -> dict:
         lb = "\n".join(f'- id {l["nid"]}: "{l["name"]}" exposure {l["exposure"]:.2f} '
                        f'{l["direction"]}/{l["linkage"]}' for l in links) or "(no links recorded)"
         eb = "\n".join(ctx[sym]["themes"]) or "no extracted themes"
-        prompt = VERIFY_PROMPT.format(sym=sym, sector=sectors.get(sym),
-                                      ledger_block=lb, evidence_block=eb,
-                                      narrative_block=nar_block)
+        sys_static, user_part = VERIFY_PROMPT.split("Company: {sym}", 1)
+        user_text = ("Company: " + user_part).format(
+            sym=sym, sector=sectors.get(sym), ledger_block=lb, evidence_block=eb,
+            narrative_block="(see system prompt)")
         for attempt in range(3):
             try:
                 resp = client.messages.create(model=SONNET, max_tokens=2000, timeout=60,
-                    messages=[{"role": "user", "content": prompt}])
+                    system=[{"type": "text", "text": sys_static},
+                            {"type": "text", "text": "NARRATIVES:\n" + nar_block,
+                             "cache_control": {"type": "ephemeral"}}],
+                    messages=[{"role": "user", "content": user_text}])
+                from pipeline.llm_usage import record_usage
+                record_usage(engine, "ledger_verify", SONNET, resp.usage)
                 raw = resp.content[0].text.strip()
                 if raw.startswith("```"):
                     raw = raw.split("```")[1].removeprefix("json").rsplit("```", 1)[0]

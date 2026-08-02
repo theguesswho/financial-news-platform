@@ -111,6 +111,11 @@ def extract_themes_from_filing(client, symbol, filing_type, filing_date, text_co
                 messages=[{"role": "user", "content": prompt}],
                 timeout=45,  # never hang a worker indefinitely
             )
+            try:
+                from pipeline.llm_usage import record_usage
+                record_usage(None, "theme_extraction", MODEL, response.usage)
+            except Exception:
+                pass
             raw = response.content[0].text.strip()
 
             if raw.startswith("```"):

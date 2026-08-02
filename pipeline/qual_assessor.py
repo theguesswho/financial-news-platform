@@ -340,6 +340,8 @@ def assess_stock(client, engine, gem: dict) -> dict:
                 messages  = [{"role": "user", "content": user_text}],
                 timeout   = 45,
             )
+            from pipeline.llm_usage import record_usage
+            record_usage(engine, "qual_assessor", MODEL, resp.usage)
             raw = resp.content[0].text.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]

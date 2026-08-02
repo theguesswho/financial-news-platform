@@ -909,6 +909,17 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Narrative lifecycle failed", e)
 
+    _step("5f", "Narrative structure pass (taxonomy, merge discipline, census)")
+    try:
+        from pipeline.narrative_structure import run_structure_pass
+        from pipeline.hidden_gem_scorer import get_engine as _ge5f
+        _e5f = _ge5f()
+        r = run_structure_pass(_e5f)
+        _e5f.dispose()
+        _ok(f"Structure: {r}")
+    except Exception as e:
+        _err("Narrative structure pass failed", e)
+
     _step(6, "Historical metrics refresh (FMP quarterly)")
     try:
         from pipeline.fmp_historical import fetch_historical_metrics

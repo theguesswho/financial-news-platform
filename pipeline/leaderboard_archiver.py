@@ -182,6 +182,28 @@ def apply_qual_tiers(engine) -> int:
               AND tier IS NULL AND assessed_tier IS NOT NULL
               AND NOT COALESCE(qual_promoted, FALSE)
         """))
+        # FINAL RANK (user 2026-08-03): the position after qual adjustment —
+        # what the investor actually experiences. Quant rank stays in `rank`;
+        # the two together make the qual layer's influence measurable.
+        conn.execute(text(
+            "ALTER TABLE leaderboard_history ADD COLUMN IF NOT EXISTS final_rank INTEGER"))
+        conn.execute(text("""
+            WITH ranked AS (
+                SELECT id, ROW_NUMBER() OVER (
+                    ORDER BY CASE COALESCE(assessed_tier, tier)
+                        WHEN 'Strong Buy' THEN 0 WHEN 'Buy' THEN 1
+                        WHEN 'Watch' THEN 2 ELSE 3 END,
+                    COALESCE(gem_adjusted, gem_score) DESC) AS fr
+                FROM leaderboard_history
+                WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+                  AND (COALESCE(assessed_tier, tier) IN ('Strong Buy','Buy','Watch'))
+            )
+            UPDATE leaderboard_history lh SET final_rank = ranked.fr
+            FROM ranked WHERE lh.id = ranked.id"""))
+        conn.execute(text("""
+            UPDATE leaderboard_history SET final_rank = NULL
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+              AND COALESCE(assessed_tier, tier) NOT IN ('Strong Buy','Buy','Watch')"""))
         conn.commit()
     return result.rowcount
 

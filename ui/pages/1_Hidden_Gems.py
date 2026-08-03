@@ -235,6 +235,23 @@ def load_prev_leaderboard():
     return get_prev_leaderboard(engine)
 
 @st.cache_data(ttl=300, show_spinner=False)
+def load_prev_final():
+    """Yesterday's FINAL positions (after qual): {symbol: (final_tier, final_rank)}.
+    Movement badges key off THIS — the recommendation the reader saw yesterday —
+    not the raw quant rank (ACM case 2026-08-03: Buy->Strong Buy overnight via a
+    qual verdict change showed no movement badge)."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT symbol, COALESCE(assessed_tier, tier), final_rank
+            FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history
+                          WHERE date < (SELECT MAX(date) FROM leaderboard_history))
+              AND COALESCE(assessed_tier, tier) IN ('Strong Buy','Buy','Watch')
+        """)).fetchall()
+    return {r[0]: (r[1], r[2]) for r in rows}
+
+@st.cache_data(ttl=300, show_spinner=False)
 def load_first_board_dates():
     """First-EVER board appearance per symbol (V2 #11): the ★ NEW badge means
     'first time on the board', full stop. A veteran knocked off for a day by
@@ -429,17 +446,25 @@ current_rank_map = {g["symbol"]: i + 1 for i, g in enumerate(current_ranked)}
 # 2026-07-28): survives refreshes all day, and a veteran that flapped off for
 # a day and returned is never relabeled new.
 first_dates, _snap_date = load_first_board_dates()
+prev_final = load_prev_final()
+TIER_RANKING = {"Strong Buy": 0, "Buy": 1, "Watch": 2}
 for g in gems:
     sym = g["symbol"]
     cur_rank = current_rank_map.get(sym)
-    prv_rank = prev_rank_map.get(sym)
     if cur_rank is None:
         g["rank_change"] = None
         g["is_new"]      = False
+        g["tier_move"]   = None
         continue
     g["is_new"] = bool(_snap_date and first_dates.get(sym) == _snap_date)
-    if prv_rank is not None and not g["is_new"]:
-        g["rank_change"] = prv_rank - cur_rank   # positive = moved up
+    pf = prev_final.get(sym)
+    # Tier transition of the FINAL recommendation (whichever organ moved it)
+    g["tier_move"] = None
+    if pf and pf[0] and g["display_tier"] and pf[0] != g["display_tier"]:
+        g["tier_move"] = ("up" if TIER_RANKING.get(g["display_tier"], 3)
+                          < TIER_RANKING.get(pf[0], 3) else "down", pf[0])
+    if pf and pf[1] is not None and not g["is_new"] and not g["tier_move"]:
+        g["rank_change"] = pf[1] - cur_rank   # positive = moved up
     else:
         g["rank_change"] = None
 
@@ -663,9 +688,9 @@ for g in display_stocks:
                          f'border-radius:3px;vertical-align:middle;border:1px solid #d8b4fe">'
                          f'⭐ QUAL-PROMOTED{_ntxt} · raw {g["hidden_gem_score"]*10:.1f}</span>')
         elif direction == "upgrade":
-            dir_badge = ' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↑ UPGRADED</span>'
+            dir_badge = ' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↑ CLAUDE RAISED</span>'
         elif direction == "downgrade":
-            dir_badge = ' <span style="background:#fee2e2;color:#991b1b;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↓ DOWNGRADED</span>'
+            dir_badge = ' <span style="background:#fee2e2;color:#991b1b;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↓ CLAUDE RESTRAINED</span>'
         wl_badge = ' <span style="background:#eff6ff;color:#1d4ed8;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle;border:1px solid #bfdbfe">★ Watchlist</span>' if in_wl else ""
 
         # Buffett tier badge
@@ -688,7 +713,17 @@ for g in display_stocks:
 
         # New entrant / rank-change badge
         move_badge = ""
-        if g.get("is_new"):
+        if g.get("tier_move"):
+            _dirn, _from = g["tier_move"]
+            if _dirn == "up":
+                move_badge = (f' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;'
+                              f'font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;'
+                              f'vertical-align:middle">▲ UPGRADED TODAY ({_from} → {tier})</span>')
+            else:
+                move_badge = (f' <span style="background:#fee2e2;color:#991b1b;font-size:0.62rem;'
+                              f'font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;'
+                              f'vertical-align:middle">▼ MOVED DOWN TODAY ({_from} → {tier})</span>')
+        elif g.get("is_new"):
             move_badge = ' <span style="background:#f3e8ff;color:#6b21a8;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">★ NEW</span>'
         elif g.get("rank_change") is not None:
             delta = g["rank_change"]

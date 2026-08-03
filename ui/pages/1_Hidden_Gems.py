@@ -687,10 +687,23 @@ for g in display_stocks:
                          f'font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;'
                          f'border-radius:3px;vertical-align:middle;border:1px solid #d8b4fe">'
                          f'⭐ QUAL-PROMOTED{_ntxt} · raw {g["hidden_gem_score"]*10:.1f}</span>')
-        elif direction == "upgrade":
-            dir_badge = ' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↑ CLAUDE RAISED</span>'
-        elif direction == "downgrade":
-            dir_badge = ' <span style="background:#fee2e2;color:#991b1b;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle">↓ CLAUDE RESTRAINED</span>'
+        else:
+            # Disagreement badge computed from DATA, not the model's self-
+            # reported direction (LHX 2026-08-03: assessor held its prior
+            # Strong Buy view at raw 3.8/Buy and said direction='hold' --
+            # continuity framing drifted 'direction' to mean vs-own-prior,
+            # not vs-quant). display vs raw-implied tier is the truth.
+            _raw_t = tier_for(g["hidden_gem_score"])
+            _rank_of = {"Strong Buy": 0, "Buy": 1, "Watch": 2, None: 3}
+            if g.get("assessed") and tier and _raw_t != tier:
+                if _rank_of.get(tier, 3) < _rank_of.get(_raw_t, 3):
+                    dir_badge = (' <span style="background:#dcfce7;color:#166534;font-size:0.62rem;'
+                                 'font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;'
+                                 f'vertical-align:middle">↑ CLAUDE RAISED (numbers say {_raw_t or "off board"})</span>')
+                else:
+                    dir_badge = (' <span style="background:#fee2e2;color:#991b1b;font-size:0.62rem;'
+                                 'font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;'
+                                 f'vertical-align:middle">↓ CLAUDE RESTRAINED (numbers say {_raw_t})</span>')
         wl_badge = ' <span style="background:#eff6ff;color:#1d4ed8;font-size:0.62rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:3px;vertical-align:middle;border:1px solid #bfdbfe">★ Watchlist</span>' if in_wl else ""
 
         # Buffett tier badge

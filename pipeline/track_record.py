@@ -182,16 +182,21 @@ def get_scorecard(engine, era: str = ERA) -> dict:
     with engine.connect() as conn:
         rows = conn.execute(text("""
             WITH latest AS (
-                SELECT symbol, close,
-                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) rn
+                -- DISTINCT ON over a 10-day window, not a full-history window
+                -- ranking: the old form scanned every eod_prices row and the
+                -- proxy killed it once the midcap backfill grew the table
+                -- (silent scorecard disappearance, 2026-08-03).
+                SELECT DISTINCT ON (symbol) symbol, close
                 FROM eod_prices
+                WHERE date > CURRENT_DATE - 10
+                ORDER BY symbol, date DESC
             )
             SELECT tl.lot_date, tl.symbol, tl.is_entry, tl.amount,
                    tl.entry_price, ls.close AS now_price,
                    tl.spy_price,  lspy.close AS spy_now
             FROM track_lots tl
-            JOIN latest ls   ON ls.symbol = tl.symbol AND ls.rn = 1
-            JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY') AND lspy.rn = 1
+            JOIN latest ls   ON ls.symbol = tl.symbol
+            JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY')
             WHERE NOT COALESCE(tl.voided, FALSE)
               AND COALESCE(tl.era, 'v1') = :era
             ORDER BY tl.lot_date, tl.symbol

@@ -176,13 +176,17 @@ def load_insider_activity(days: int = 30):
     cutoff = datetime.utcnow() - timedelta(days=days)
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT symbol, person_name, person_title, transaction_type,
-                   shares, price_per_share, total_value, transaction_date
+            SELECT symbol, person_name, MIN(person_title), transaction_type,
+                   SUM(shares),
+                   ROUND(SUM(COALESCE(total_value,0)) / NULLIF(SUM(shares),0), 2),
+                   SUM(total_value) AS tv, transaction_date
             FROM insider_trades
             WHERE transaction_date >= :cutoff
-              AND total_value >= 50000
-              AND UPPER(transaction_type) IN ('BUY', 'SELL', 'P', 'S')
-            ORDER BY total_value DESC
+              AND transaction_type IN ('BUY', 'SELL')
+              AND NOT (UPPER(person_name) ~ '(L\\.P|LLC|FUND|PARTNERS|CAPITAL|HOLDINGS|TRUST|MANAGEMENT|SPV| L P|LP$)')
+            GROUP BY symbol, person_name, transaction_type, transaction_date
+            HAVING SUM(total_value) >= 50000
+            ORDER BY (transaction_type = 'BUY') DESC, tv DESC
         """), {"cutoff": cutoff}).fetchall()
     return rows
 

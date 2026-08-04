@@ -302,11 +302,19 @@ def load_symbol_data(symbol):
         """), {"s": symbol}).fetchall()
 
         # Insider trades (last 12 months)
+        # Aggregated per person/day (2026-08-04): 10b5-1 programs execute in
+        # dozens of lots per day; one executive's day is ONE decision, not 40
+        # rows (Kurtz/CRWD: 31k lot rows in 60d). Entity filers excluded.
         trades = conn.execute(text("""
-            SELECT person_name, person_title, transaction_date,
-                   transaction_type, shares, price_per_share, total_value
+            SELECT person_name, MIN(person_title), transaction_date,
+                   transaction_type, SUM(shares),
+                   ROUND(SUM(COALESCE(total_value,0)) / NULLIF(SUM(shares),0), 2),
+                   SUM(total_value)
             FROM insider_trades
             WHERE symbol = :s
+              AND transaction_type IN ('BUY','SELL')
+              AND NOT (UPPER(person_name) ~ '(L\\.P|LLC|FUND|PARTNERS|CAPITAL|HOLDINGS|TRUST|MANAGEMENT|SPV| L P|LP$)')
+            GROUP BY person_name, transaction_date, transaction_type
             ORDER BY transaction_date DESC
             LIMIT 30
         """), {"s": symbol}).fetchall()

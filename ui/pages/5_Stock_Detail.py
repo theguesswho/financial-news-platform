@@ -209,10 +209,32 @@ header[data-testid="stHeader"] { display: none; }
 """, unsafe_allow_html=True)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_gem_scores():
+    """SINGLE SOURCE OF TRUTH (consistency audit 2026-08-04): the board
+    snapshot in leaderboard_history — never a live re-score, which was slow
+    and could diverge intra-day from what the Hidden Gems page shows."""
     engine = get_engine()
-    return {g["symbol"]: g for g in score_all_stocks(engine)}
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT lh.symbol, lh.gem_score, lh.narrative_score, lh.value_score,
+                   lh.quality_score, lh.gap_score, lh.priced_in, lh.ng_score,
+                   f.sector
+            FROM leaderboard_history lh
+            LEFT JOIN fundamentals f ON f.symbol = lh.symbol
+            WHERE lh.date = (SELECT MAX(date) FROM leaderboard_history)
+        """)).fetchall()
+    return {r[0]: {
+        "symbol": r[0],
+        "hidden_gem_score": float(r[1]),
+        "narrative_score":  float(r[2]) if r[2] is not None else 0.0,
+        "value_score":      float(r[3]) if r[3] is not None else 0.0,
+        "quality_score":    float(r[4]) if r[4] is not None else 0.0,
+        "gap_score":        float(r[5]) if r[5] is not None else 0.0,
+        "priced_in":        float(r[6]) if r[6] is not None else None,
+        "ng_score":         float(r[7]) if r[7] is not None else None,
+        "sector":           r[8],
+    } for r in rows}
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_company_names():

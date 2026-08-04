@@ -458,13 +458,10 @@ def daily_data_update():
     except Exception as e:
         _err("8-K backfill failed", e)
 
-    _step(7, "Archive daily scores")
-    try:
-        from pipeline.daily_score_archiver import archive_daily_scores
-        r = archive_daily_scores()
-        _ok(f"{r.get('stored', 0)} scores archived")
-    except Exception as e:
-        _err("Daily score archive failed", e)
+    # Step 7 (archive daily scores) RETIRED 2026-08-04: daily_score_archiver
+    # computed the LEGACY formula into a table nothing reads — score-history
+    # truth lives in leaderboard_history (which Stock Detail's chart uses).
+    # Table retained for its historical rows; no new legacy numbers written.
 
     _step(8, "Qual assessment sweep (movers + unassessed Buy/Strong Buy)")
     try:

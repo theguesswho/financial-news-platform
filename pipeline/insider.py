@@ -27,7 +27,9 @@ TRANSACTION_MAP = {
     "P": "BUY",    # open-market purchase — most meaningful
     "S": "SELL",   # open-market sale
     "A": "AWARD",  # grant/award (compensation, not a signal)
-    "D": "SELL",   # disposition
+    "D": "OTHER",  # disposition to issuer — routine/non-discretionary, NOT a
+                   # sell signal (was mapped to SELL; part of the 40:1 skew,
+                   # fixed 2026-08-04)
     "F": "OTHER",  # tax withholding on vesting (neutral)
     "M": "OTHER",  # option exercise
     "G": "OTHER",  # gift
@@ -172,6 +174,16 @@ def run_insiders(session: Session, tickers: list[str]) -> dict:
                     trades = _parse_form4(filing["url"], symbol)
                     for trade in trades:
                         # Only store meaningful transactions
+                        _nm = (trade.get("person_name") or "").upper()
+                        if any(t in _nm for t in (" L.P", " LP", " LLC", " FUND",
+                                                  " PARTNERS", " CAPITAL", " HOLDINGS",
+                                                  " TRUST", " MANAGEMENT", " SPV")):
+                            # Institutional 10%-owner filers (e.g. Silver Lake's
+                            # entities: 15,700 DELL rows in 6 weeks) are share-
+                            # distribution plumbing, not insider sentiment —
+                            # they drowned the real signal 40:1 and bloated the
+                            # table to 117MB. Individuals only (2026-08-04).
+                            continue
                         if trade["transaction_type"] not in ("BUY", "SELL"):
                             continue
                         try:

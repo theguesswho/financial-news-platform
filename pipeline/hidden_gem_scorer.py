@@ -201,6 +201,9 @@ def compute_narrative_score(engine) -> dict:
             FROM narrative_exposures ne
             JOIN narratives nar ON nar.id = ne.narrative_id
             WHERE nar.status IN ('active', 'declining')
+              -- Company-scope narratives are EXCLUDED from live E until the
+              -- shadow-calibrated design ships (COMPANY_NARRATIVE_SPEC P4).
+              AND COALESCE(nar.scope, '') != 'company'
         """)).fetchall()
 
     # v2 signed exposure (V2_SPEC 2026-07-22): only beneficiary exposure counts

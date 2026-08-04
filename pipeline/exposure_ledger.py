@@ -49,6 +49,8 @@ Operations you may return, one per existing/new link:
 - "add": new evidence establishes a NEW genuine, material link (bar is money, not mentions) — new_exposure 0.25-1.0, direction (beneficiary/adapting/threatened), linkage (direct/secondary/incidental), cite evidence.
 - "propose_remove": new evidence CONTRADICTS the link (segment sold, program cancelled, thesis explicitly refuted). You must state what contradicts it. Absence of mention is NOT contradiction.
 
+Additionally — and RARELY — if the new evidence reveals a TRANSFORMATIVE company-specific change (a major acquisition being integrated, a spin-off/separation, a genuine platform shift), you may append ONE extra object: {{"op": "flag_company_narrative", "thesis": "<the change in one or two sentences>", "evidence": "<cited from NEW evidence>"}}. This only NOMINATES the company for a separate strict review; it changes nothing here. Most passes should NOT include this flag — routine good quarters, guidance raises, and buybacks do not qualify.
+
 Rules:
 - Most passes should be mostly "confirm". The ledger has memory; respect it.
 - Never propose_remove because the new evidence doesn't discuss the link.
@@ -197,6 +199,19 @@ def run_update_pass(engine, shadow: bool = False, symbols=None) -> dict:
             if not isinstance(o, dict): continue
             nid = o.get("narrative_id")
             op = o.get("op")
+            if op == "flag_company_narrative":
+                # P2 event-birth channel: the judge NOMINATES only — the
+                # strict two-vote birth judge decides, under the weekly cap.
+                if not shadow and o.get("thesis"):
+                    try:
+                        from pipeline.company_narrative import enqueue_birth
+                        seed = (f"{o['thesis']} "
+                                f"Evidence: {o.get('evidence') or ''}").strip()
+                        if enqueue_birth(engine, sym, seed, source="event"):
+                            stats["flagged"] = stats.get("flagged", 0) + 1
+                    except Exception:
+                        pass
+                continue
             if nid not in valid_ids or op not in (
                     "confirm", "strengthen", "weaken", "add", "propose_remove"):
                 continue

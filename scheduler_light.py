@@ -249,6 +249,13 @@ def _process_job_queue():
                 gems = score_all_stocks(eng)
                 run_qual_assessment(symbols=[g["symbol"] for g in gems], gems=gems)
                 rep = {"assessed": len(gems)}
+            elif jtype == "birth_queue":
+                from pipeline.company_narrative import process_birth_queue
+                rep = process_birth_queue(eng, limit=_json.loads(payload) if payload else 2)
+            elif jtype == "negative_controls":
+                from pipeline.company_narrative import run_negative_controls
+                syms = _json.loads(payload) if payload else None
+                rep = run_negative_controls(eng, controls=syms)
             else:
                 raise ValueError(f"unknown job_type {jtype}")
             with eng.begin() as conn:
@@ -404,6 +411,17 @@ def daily_data_update():
         _ok(f"Ledger update: {r}")
     except Exception as e:
         _err("Ledger update failed", e)
+
+    _step("4d", "Company-narrative birth queue (P2: max 2 judged/day, 5 births/week)")
+    try:
+        from pipeline.company_narrative import process_birth_queue
+        from pipeline.hidden_gem_scorer import get_engine as _ge4d
+        eng = _ge4d()
+        r = process_birth_queue(eng, limit=2)
+        eng.dispose()
+        _ok(f"Birth queue: {r}")
+    except Exception as e:
+        _err("Birth queue failed", e)
 
     _step(5, "Re-score + archive leaderboard")
     engine = None
@@ -916,6 +934,30 @@ def weekly_deep_refresh():
         _ok(f"Structure: {r}")
     except Exception as e:
         _err("Narrative structure pass failed", e)
+
+    _step("5g", "Negative-control audit (monthly: birth-judge FP rate)")
+    try:
+        from pipeline.hidden_gem_scorer import get_engine as _ge5g
+        _e5g = _ge5g()
+        with _e5g.connect() as _c:
+            last = _c.execute(text("""
+                SELECT MAX(judged_at) FROM narrative_births WHERE source='control'
+            """)).scalar()
+        from datetime import datetime as _dt, timedelta as _td
+        if last is None or _dt.utcnow() - last > _td(days=28):
+            with _e5g.begin() as _c:
+                _c.execute(text("""
+                    INSERT INTO job_queue (job_type, payload)
+                    SELECT 'negative_controls', NULL
+                    WHERE NOT EXISTS (SELECT 1 FROM job_queue
+                        WHERE job_type='negative_controls' AND status='pending')
+                """))
+            _ok("Negative-control audit enqueued (last run >28d ago)")
+        else:
+            _ok(f"Negative controls fresh (last {last:%Y-%m-%d})")
+        _e5g.dispose()
+    except Exception as e:
+        _err("Negative-control audit check failed", e)
 
     _step(6, "Historical metrics refresh (FMP quarterly)")
     try:

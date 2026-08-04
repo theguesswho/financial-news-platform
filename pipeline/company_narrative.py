@@ -26,6 +26,16 @@ from sqlalchemy import text
 SONNET = "claude-sonnet-4-6"
 BIRTH_MATURITY = 0.25
 MAX_BIRTHS_PER_WEEK = 5
+FP_FREEZE_RATE = 0.10      # control false-positive rate that freezes births
+CONTROL_WINDOW_DAYS = 45   # controls newer than this govern the freeze
+# Negative controls: stocks chosen for having no plausible company-specific
+# change story. ATO deliberately excluded (Texas rate-case thesis was a real
+# corpus entry). LNT removed 2026-08-04 after the baseline run: its filings
+# contain an executed 3.4GW data-center load story (control-selection error;
+# the judge's accept was CORRECT — row marked INVALIDATED in narrative_births,
+# never silently deleted). Lesson: regulated utilities are no longer
+# automatically story-free. Rotate only with a note here and in the spec.
+CONTROLS = ["AWK", "ED", "WEC", "FAST", "CMS"]
 
 BIRTH_SYSTEM = """You are the birth judge for a platform's COMPANY NARRATIVE layer — the strictest gate in the system. You decide whether a company has ONE genuine company-specific narrative worth tracking as a living dossier.
 
@@ -37,7 +47,7 @@ THE BAR (all four required — any failure means REJECT):
 
 Be strict. Most candidates should fail. A rejected real story costs little (it can be reborn when its next catalyst files); a false narrative pollutes scoring. When unsure, REJECT.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON — no preamble, no reasoning outside the JSON, start your response with {:
 {"verdict": "accept" | "reject",
  "name": "<narrative name, specific, <60 chars>",            // accept only
  "thesis": "<full paragraph: the story, the mechanism, what is changing, what the market appears to miss — synthesized from the provided material>",
@@ -98,8 +108,12 @@ def _judge_once(client, engine, symbol: str, seed_thesis: str | None) -> dict | 
     from pipeline.llm_usage import record_usage
     for attempt in range(3):
         try:
+            # 2500 not 1500: a truncated rich ACCEPT parses as a failed vote,
+            # i.e. a silent reject — the third max_tokens lesson (qual 600→
+            # 1200, verify 900→2000). Rich dossiers are the expensive ones
+            # to lose.
             resp = client.messages.create(
-                model=SONNET, max_tokens=1500, timeout=60,
+                model=SONNET, max_tokens=2500, timeout=90,
                 system=[{"type": "text", "text": BIRTH_SYSTEM,
                          "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user}])
@@ -113,6 +127,33 @@ def _judge_once(client, engine, symbol: str, seed_thesis: str | None) -> dict | 
     return None
 
 
+def births_frozen(engine) -> bool:
+    """Births freeze when the negative-control false-positive rate exceeds
+    FP_FREEZE_RATE over the recent control window (min 3 controls to judge).
+    The judge's error rate is a measured number; above threshold, no new
+    narratives are born until the prompt is tightened and controls re-run."""
+    with engine.connect() as conn:
+        total, fp = conn.execute(text("""
+            SELECT COUNT(*),
+                   COUNT(*) FILTER (WHERE reason LIKE 'CONTROL FALSE POSITIVE%')
+            FROM narrative_births
+            WHERE source = 'control'
+              AND judged_at > NOW() - make_interval(days => :w)
+        """), {"w": CONTROL_WINDOW_DAYS}).fetchone()
+    return total >= 3 and (fp / total) > FP_FREEZE_RATE
+
+
+def _vote_verdict(v, ok: bool) -> str | None:
+    """A per-vote label so rejections are auditable (founding-report gap)."""
+    if ok:
+        return None
+    if v is None:
+        return "vote failed (no response after retries)"
+    if v.get("verdict") == "accept":
+        return "accepted but dossier too thin (<2 checkpoints or no thesis)"
+    return v.get("reject_reason") or "rejected without stated reason"
+
+
 def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
                 source: str = "override") -> dict:
     """Two-vote birth. Both votes must ACCEPT for a birth; checkpoints are
@@ -120,6 +161,10 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
     recorded in narrative_births."""
     from anthropic import Anthropic
     client = Anthropic()
+
+    if source != "migration" and births_frozen(engine):
+        return {"verdict": "frozen",
+                "reason": "births frozen: control FP rate above threshold"}
 
     # One-per-company: an existing active company narrative blocks a new birth
     with engine.connect() as conn:
@@ -138,10 +183,11 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
                 and v.get("thesis") and len(v.get("checkpoints") or []) >= 2)
 
     if not (_ok(v1) and _ok(v2)):
-        reason = "; ".join(filter(None, [
-            (v1 or {}).get("reject_reason") if not _ok(v1) else None,
-            (v2 or {}).get("reject_reason") if not _ok(v2) else None,
-        ])) or "one or both votes failed to produce a qualifying narrative"
+        parts = []
+        for label, v, ok in (("vote1", v1, _ok(v1)), ("vote2", v2, _ok(v2))):
+            vr = _vote_verdict(v, ok)
+            parts.append(f"{label}: {vr}" if vr else f"{label}: accepted")
+        reason = " | ".join(parts)
         with engine.begin() as conn:
             conn.execute(text("""
                 INSERT INTO narrative_births (symbol, source, verdict, reason)
@@ -193,6 +239,101 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
             "checkpoints": len(checkpoints)}
 
 
+def create_queue_table(engine):
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS narrative_birth_queue (
+                id          SERIAL PRIMARY KEY,
+                symbol      VARCHAR(10) NOT NULL,
+                seed_thesis TEXT,
+                source      VARCHAR(20) NOT NULL,
+                status      VARCHAR(12) DEFAULT 'pending',
+                result      TEXT,
+                created_at  TIMESTAMP DEFAULT NOW(),
+                judged_at   TIMESTAMP
+            )"""))
+
+
+def enqueue_birth(engine, symbol: str, seed_thesis: str | None, source: str) -> bool:
+    """Nominate a symbol for a company-narrative birth. Cheap and idempotent:
+    no LLM call here — judging happens in process_birth_queue under the
+    weekly cap. Skips symbols already pending or already holding an active
+    company narrative. Returns True if enqueued."""
+    create_queue_table(engine)
+    with engine.connect() as conn:
+        dup = conn.execute(text("""
+            SELECT 1 FROM narrative_birth_queue
+            WHERE symbol = :s AND status = 'pending'
+            UNION ALL
+            SELECT 1 FROM narratives
+            WHERE symbol = :s AND scope = 'company' AND status IN ('active','candidate')
+            UNION ALL
+            -- 30-day cooldown: a recently judged (and rejected) symbol is not
+            -- re-judged daily on the same standing nomination; its next shot
+            -- comes with genuinely new material or after the cooldown.
+            SELECT 1 FROM narrative_births
+            WHERE symbol = :s AND source != 'control'
+              AND judged_at > NOW() - INTERVAL '30 days'
+            LIMIT 1"""), {"s": symbol}).fetchone()
+    if dup:
+        return False
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO narrative_birth_queue (symbol, seed_thesis, source)
+            VALUES (:s, :t, :src)"""),
+            {"s": symbol, "t": (seed_thesis or "")[:1500] or None, "src": source})
+    return True
+
+
+def process_birth_queue(engine, limit: int = 2) -> dict:
+    """Drain pending nominations through the birth judge, oldest first,
+    respecting MAX_BIRTHS_PER_WEEK (accepted non-migration births in the
+    last 7 days) — above the cap, nominations WAIT in the queue, they are
+    not discarded. Also a no-op while births are frozen."""
+    create_queue_table(engine)
+    stats = {"judged": 0, "accepted": 0, "rejected": 0, "blocked": 0, "waiting": 0}
+    if births_frozen(engine):
+        print("birth queue: FROZEN (control FP rate above threshold) — nothing judged")
+        stats["frozen"] = True
+        return stats
+    with engine.connect() as conn:
+        week_births = conn.execute(text("""
+            SELECT COUNT(*) FROM narrative_births
+            WHERE verdict = 'accepted' AND source != 'migration'
+              AND judged_at > NOW() - INTERVAL '7 days'""")).scalar()
+        pending = conn.execute(text("""
+            SELECT id, symbol, seed_thesis, source FROM narrative_birth_queue
+            WHERE status = 'pending' ORDER BY id""")).fetchall()
+    budget = max(0, MAX_BIRTHS_PER_WEEK - week_births)
+    if not pending:
+        return stats
+    if budget == 0:
+        stats["waiting"] = len(pending)
+        print(f"birth queue: weekly cap reached ({week_births} births); "
+              f"{len(pending)} nominations waiting")
+        return stats
+
+    for qid, symbol, seed, source in pending[:limit]:
+        if stats["accepted"] >= budget:
+            break
+        r = birth_judge(engine, symbol, seed_thesis=seed, source=source)
+        stats["judged"] += 1
+        key = r["verdict"] if r["verdict"] in ("accepted", "rejected", "blocked") else "rejected"
+        stats[key] += 1
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE narrative_birth_queue
+                SET status = :st, result = :r, judged_at = NOW()
+                WHERE id = :i"""),
+                {"st": r["verdict"], "i": qid,
+                 "r": (r.get("name") or r.get("reason") or "")[:500]})
+        print(f"  birth queue {symbol} ({source}): {r['verdict'].upper()} "
+              f"{r.get('name') or r.get('reason','')[:70]}")
+    stats["waiting"] = max(0, len(pending) - stats["judged"])
+    print(f"birth queue: {stats}")
+    return stats
+
+
 def run_migration(engine) -> dict:
     """One-time: every override-corpus thesis through the birth judge with
     full source material. All verdicts recorded. (User-delegated curation.)"""
@@ -214,27 +355,44 @@ def run_migration(engine) -> dict:
     return stats
 
 
-def run_negative_controls(engine, controls: list[str]) -> dict:
-    """Feed the judge stocks chosen for having NO plausible company story.
-    Any accept = measured false positive. Does NOT create narratives —
-    dry-run judging only (votes recorded to narrative_births as control)."""
+def run_negative_controls(engine, controls: list[str] | None = None) -> dict:
+    """Feed the judge stocks chosen for having NO plausible company story,
+    through the SAME two-vote bar as a real birth. Both votes accepting =
+    a measured false positive (a control that would have been born).
+    Single-vote accepts are recorded in the reason as a leading indicator.
+    Does NOT create narratives — dry-run judging only. FP rate above
+    FP_FREEZE_RATE freezes births (see births_frozen)."""
     from anthropic import Anthropic
     client = Anthropic()
+    controls = controls or CONTROLS
     fp = 0
+
+    def _ok(v):
+        return (isinstance(v, dict) and v.get("verdict") == "accept"
+                and v.get("thesis") and len(v.get("checkpoints") or []) >= 2)
+
     for sym in controls:
-        v = _judge_once(client, engine, sym, None)
-        accepted = (isinstance(v, dict) and v.get("verdict") == "accept")
-        fp += accepted
+        v1 = _judge_once(client, engine, sym, None)
+        v2 = _judge_once(client, engine, sym, None)
+        births = _ok(v1) and _ok(v2)
+        vote_accepts = int(_ok(v1)) + int(_ok(v2))
+        fp += births
+        if births:
+            reason = ("CONTROL FALSE POSITIVE: " + (v1.get("name") or ""))[:300]
+        elif vote_accepts == 1:
+            reason = "control rejected at birth bar (but 1 of 2 votes accepted)"
+        else:
+            reason = "control correctly rejected (0/2 votes)"
         with engine.begin() as conn:
             conn.execute(text("""
                 INSERT INTO narrative_births (symbol, source, verdict, reason)
                 VALUES (:s, 'control', :v, :r)"""),
-                {"s": sym, "v": "accepted" if accepted else "rejected",
-                 "r": ("CONTROL FALSE POSITIVE: " + (v.get("name") or ""))[:300]
-                      if accepted else "control correctly rejected"})
-        print(f"  control {sym}: {'FALSE POSITIVE' if accepted else 'correctly rejected'}")
+                {"s": sym, "v": "accepted" if births else "rejected", "r": reason})
+        print(f"  control {sym}: {'FALSE POSITIVE' if births else 'rejected'} "
+              f"({vote_accepts}/2 votes accepted)")
     rate = fp / max(1, len(controls))
-    print(f"negative controls: {fp}/{len(controls)} false positives ({rate:.0%})")
+    print(f"negative controls: {fp}/{len(controls)} false positives ({rate:.0%})"
+          + (" — BIRTHS FROZEN" if rate > FP_FREEZE_RATE else ""))
     return {"controls": len(controls), "false_positives": fp, "fp_rate": rate}
 
 
@@ -247,3 +405,7 @@ if __name__ == "__main__":
     from pipeline.hidden_gem_scorer import get_engine
     if "--migrate" in sys.argv:
         run_migration(get_engine())
+    elif "--controls" in sys.argv:
+        run_negative_controls(get_engine())
+    elif "--queue" in sys.argv:
+        process_birth_queue(get_engine())

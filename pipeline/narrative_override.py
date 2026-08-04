@@ -291,6 +291,18 @@ def run_narrative_override(engine, gems=None) -> dict:
                 stats["promoted"] += 1
                 promotions.append({"symbol": sym, "tier": verdict,
                                    "gem_adjusted": gem_adj})
+                # P2 (spec §3.2): an endorsed thesis nominates a PERSISTENT
+                # company narrative — the insight is kept, not forgotten.
+                # Enqueue only (no LLM call here); the birth queue judges
+                # under the weekly cap. Never allowed to break a promotion.
+                try:
+                    from pipeline.company_narrative import enqueue_birth
+                    seed = (f"{result.get('rationale') or ''} "
+                            f"Evidence: {result.get('evidence') or ''}").strip()
+                    if enqueue_birth(engine, sym, seed, source="override"):
+                        stats["birth_nominations"] = stats.get("birth_nominations", 0) + 1
+                except Exception as e:
+                    print(f"  {sym} birth nomination failed (promotion unaffected): {e}")
             else:
                 stats["gate_declined"] = stats.get("gate_declined", 0) + 1
                 promoted = False

@@ -253,9 +253,10 @@ def _process_job_queue():
                 from pipeline.company_narrative import process_birth_queue
                 rep = process_birth_queue(eng, limit=_json.loads(payload) if payload else 2)
             elif jtype == "negative_controls":
-                from pipeline.company_narrative import run_negative_controls
-                syms = _json.loads(payload) if payload else None
-                rep = run_negative_controls(eng, controls=syms)
+                # Amendment 2026-08-05: job name kept for queue compat;
+                # the audit measures evidence-grounding, not story-scarcity.
+                from pipeline.company_narrative import run_grounding_audit
+                rep = run_grounding_audit(eng)
             else:
                 raise ValueError(f"unknown job_type {jtype}")
             with eng.begin() as conn:
@@ -412,12 +413,12 @@ def daily_data_update():
     except Exception as e:
         _err("Ledger update failed", e)
 
-    _step("4d", "Company-narrative birth queue (P2: max 2 judged/day, 5 births/week)")
+    _step("4d", "Company-narrative birth queue (judge is the filter; cap = circuit-breaker)")
     try:
         from pipeline.company_narrative import process_birth_queue
         from pipeline.hidden_gem_scorer import get_engine as _ge4d
         eng = _ge4d()
-        r = process_birth_queue(eng, limit=2)
+        r = process_birth_queue(eng)
         eng.dispose()
         _ok(f"Birth queue: {r}")
     except Exception as e:
@@ -935,13 +936,13 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Narrative structure pass failed", e)
 
-    _step("5g", "Negative-control audit (monthly: birth-judge FP rate)")
+    _step("5g", "Grounding audit (monthly: dossier evidence must trace to filings)")
     try:
         from pipeline.hidden_gem_scorer import get_engine as _ge5g
         _e5g = _ge5g()
         with _e5g.connect() as _c:
             last = _c.execute(text("""
-                SELECT MAX(judged_at) FROM narrative_births WHERE source='control'
+                SELECT MAX(judged_at) FROM narrative_births WHERE source='audit'
             """)).scalar()
         from datetime import datetime as _dt, timedelta as _td
         if last is None or _dt.utcnow() - last > _td(days=28):

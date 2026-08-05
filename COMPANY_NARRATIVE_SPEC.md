@@ -1,7 +1,56 @@
-# Company Narrative Layer — Specification (DRAFT for final sign-off)
+# Company Narrative Layer — Specification
 
-Status: scoped 2026-08-04, user-shaped. Nothing built until this document
-is approved. The last unbuilt piece of the v2 exposure redesign: narratives
+Status: approved 2026-08-04; AMENDED 2026-08-05 (user-confirmed) after the
+founding migration and negative-control baseline taught us two facts:
+(1) the token-cap bug aside, the judge does NOT hallucinate — every audited
+accept traced to filed material; (2) story-scarcity does not exist — nearly
+every company has a filed change-story (even "boring" utilities carried
+mergers and data-center load ramps). Scarcity therefore cannot be the
+anti-noise device. The amendment moves the discrimination from the BIRTH
+gate to the WEIGHT gate:
+
+## A. Data-linked maturity (the amendment's core)
+
+The platform's first principle extended: the market's view is not evidence
+(price never moves a thesis) — and MANAGEMENT'S VIEW IS NOT EVIDENCE EITHER.
+The CEO is a salesman on one side, price a salesman on the other; only
+delivered numbers sit between them, and only they carry weight.
+
+- Every evidence row is typed at birth: **claim** (management assertion,
+  strategy language, targets, guidance) or **delivered** (filed, already-
+  happened numbers: segment revenue, backlog, closed transactions, margins).
+- **Claims never raise maturity. Zero, forever.** A first-quarter story
+  (the "Dell-alone" hypothetical: management shouting AI, no numbers yet)
+  is BORN — captured, tracked, checkpointed — at near-zero weight.
+- Maturity is a CORROBORATION score, not a seasoning clock: it rises only
+  with grounded delivered evidence and confirmed checkpoints; falls hard
+  on missed checkpoints; decays on evidence staleness. Provisional curve
+  (shadow lane calibrates): born 0.10 + 0.10 x grounded delivered rows
+  (cap 0.40); checkpoint confirmed +0.15; missed -0.25; staleness decay
+  ~90-day half-life.
+- **Quote-guard (deterministic, no LLM):** every cited excerpt must
+  materially overlap the provided source text or the row is dropped as
+  ungrounded; a dossier with zero grounded evidence is not born. Kills the
+  hallucination class mechanically.
+- Births stay OPEN: the two-vote judge is the filter, not an arbitrary
+  quota (user 2026-08-05). The weekly cap is retained only as a cost
+  circuit-breaker (25/week), with daily judging throughput of 8.
+- Negative controls are REDEFINED: they measure evidence-GROUNDING (does
+  every dossier trace to filings?), not story-scarcity. Monthly grounding
+  audit over recent births; a dossier under 50% grounded rows is a failure;
+  failure rate >10% freezes births. (The original scarcity controls were
+  invalidated by reality: LNT, AWK, WEC, CMS all carried genuine filed
+  stories — rows kept in narrative_births, marked INVALIDATED, for audit.)
+
+The original definition bar below still applies at birth (change-not-
+description, company causality, falsifiable checkpoints, filings-only
+evidence). What changed is where selectivity lives: the score, not the gate.
+
+---
+
+Original specification (2026-08-04) with amendment annotations:
+
+The last unbuilt piece of the v2 exposure redesign: narratives
 that belong to ONE company, held to a stricter evidentiary bar than any
 other object in the platform.
 

@@ -24,18 +24,23 @@ import time
 from sqlalchemy import text
 
 SONNET = "claude-sonnet-4-6"
-BIRTH_MATURITY = 0.25
-MAX_BIRTHS_PER_WEEK = 5
-FP_FREEZE_RATE = 0.10      # control false-positive rate that freezes births
-CONTROL_WINDOW_DAYS = 45   # controls newer than this govern the freeze
-# Negative controls: stocks chosen for having no plausible company-specific
-# change story. ATO deliberately excluded (Texas rate-case thesis was a real
-# corpus entry). LNT removed 2026-08-04 after the baseline run: its filings
-# contain an executed 3.4GW data-center load story (control-selection error;
-# the judge's accept was CORRECT — row marked INVALIDATED in narrative_births,
-# never silently deleted). Lesson: regulated utilities are no longer
-# automatically story-free. Rotate only with a note here and in the spec.
-CONTROLS = ["AWK", "ED", "WEC", "FAST", "CMS"]
+# Amendment 2026-08-05 (data-linked maturity): the two-vote judge is the
+# filter, not a quota. The weekly cap is a COST CIRCUIT-BREAKER only.
+MAX_BIRTHS_PER_WEEK = 25
+DAILY_JUDGE_LIMIT = 8
+FP_FREEZE_RATE = 0.10      # grounding-audit failure rate that freezes births
+CONTROL_WINDOW_DAYS = 45   # audits newer than this govern the freeze
+GROUNDING_MIN_OVERLAP = 0.50   # per-excerpt token overlap vs source material
+GROUNDED_DOSSIER_MIN = 0.50    # dossier fails audit below this grounded ratio
+# Provisional corroboration curve — shadow lane (P3) calibrates these:
+MATURITY_BASE = 0.10           # a born story with zero delivered numbers
+MATURITY_PER_DELIVERED = 0.10  # per grounded delivered-evidence row
+MATURITY_BIRTH_CAP = 0.40      # delivered-at-birth can't exceed this
+CHECKPOINT_CONFIRM_BONUS = 0.15
+CHECKPOINT_MISS_PENALTY = 0.25
+# Story-scarcity controls RETIRED 2026-08-05 (see spec §A): every "boring"
+# pick except ED/FAST turned out to carry a real filed story. The control
+# question is now evidence-grounding — see run_grounding_audit.
 
 BIRTH_SYSTEM = """You are the birth judge for a platform's COMPANY NARRATIVE layer — the strictest gate in the system. You decide whether a company has ONE genuine company-specific narrative worth tracking as a living dossier.
 
@@ -43,7 +48,12 @@ THE BAR (all four required — any failure means REJECT):
 1. A CHANGE, NOT A DESCRIPTION. "This company has a moat / a flywheel / a monopoly" is a business description — timeless, unfalsifiable, REJECT. A narrative has direction and a timeline: an acquisition being integrated, a platform shift underway, a mix transformation, a regulatory unlock approaching. Composite stories are fine (multiple dynamic elements in one narrative).
 2. COMPANY-SPECIFIC CAUSALITY. The story arises from this company's own actions or unique position — not a sector tailwind it shares with peers.
 3. FALSIFIABLE CHECKPOINTS. You must state 2-4 testable claims, each with an observable metric and a deadline (a quarter/date by which it should show in filings). If you cannot write real checkpoints, there is no narrative — REJECT.
-4. EVIDENCE FROM THE COMPANY'S OWN FILINGS/CALLS ONLY — quoted from the material provided. Price action and analyst opinion are NOT evidence. If the provided material does not evidence the story, REJECT regardless of how plausible it sounds.
+4. EVIDENCE FROM THE COMPANY'S OWN FILINGS/CALLS ONLY — quoted from the material provided. Price action and analyst opinion are NOT evidence. If the provided material does not evidence the story, REJECT regardless of how plausible it sounds. Excerpts must closely follow the wording of the provided material (they are mechanically checked against it) — never supply facts from your own knowledge of the company.
+
+EVIDENCE TYPING (required): label every evidence row "type": "delivered" or "claim".
+- "delivered" = filed, already-happened numbers: segment revenue/growth, backlog, closed transactions, margins, signed contracts with amounts.
+- "claim" = management assertion, strategy language, targets, guidance, plans.
+The distinction matters: management's view is not proof (a CEO is a salesman); only delivered numbers give a story weight. A story evidenced ONLY by claims can still be accepted (it will be tracked at near-zero weight until data confirms it) — but say so honestly in the typing.
 
 Be strict. Most candidates should fail. A rejected real story costs little (it can be reborn when its next catalyst files); a false narrative pollutes scoring. When unsure, REJECT.
 
@@ -52,7 +62,7 @@ Return ONLY valid JSON — no preamble, no reasoning outside the JSON, start you
  "name": "<narrative name, specific, <60 chars>",            // accept only
  "thesis": "<full paragraph: the story, the mechanism, what is changing, what the market appears to miss — synthesized from the provided material>",
  "checkpoints": [{"claim": "...", "observable": "<metric/disclosure to watch>", "deadline": "YYYY-MM-DD"}],
- "evidence": [{"source": "<filing type + date>", "excerpt": "<short quote/paraphrase from the material>"}],
+ "evidence": [{"source": "<filing type + date>", "excerpt": "<short quote closely following the material's wording>", "type": "delivered" | "claim"}],
  "reject_reason": "<why it fails the bar>"                    // reject only
 }"""
 
@@ -99,8 +109,54 @@ def _stock_material(engine, symbol: str) -> str:
     return "\n".join(lines) or "(no material available)"
 
 
-def _judge_once(client, engine, symbol: str, seed_thesis: str | None) -> dict | None:
-    material = _stock_material(engine, symbol)
+_STOP = {"the", "and", "for", "with", "that", "this", "from", "into", "over",
+         "through", "their", "will", "have", "has", "are", "was", "were"}
+
+
+def _norm_tokens(s: str) -> set:
+    import re
+    return {t for t in re.sub(r"[^a-z0-9%$.]+", " ", (s or "").lower()).split()
+            if len(t) > 3 and t not in _STOP}
+
+
+def excerpt_grounded(excerpt: str, material: str,
+                     min_overlap: float = GROUNDING_MIN_OVERLAP) -> bool:
+    """Deterministic quote-guard: the excerpt's distinctive tokens must
+    materially overlap the source text. Kills world-knowledge fabrication
+    (an invented merger shares almost no tokens with the real filings)
+    while tolerating light paraphrase."""
+    ex = _norm_tokens(excerpt)
+    if not ex:
+        return False
+    mat = _norm_tokens(material)
+    return len(ex & mat) / len(ex) >= min_overlap
+
+
+def _type_and_ground(evidence: list, material: str) -> list:
+    """Stamp each evidence row with grounded (deterministic) and a sanitized
+    type; drop rows with no excerpt."""
+    out = []
+    for e in evidence:
+        if not isinstance(e, dict) or not e.get("excerpt"):
+            continue
+        etype = "delivered" if str(e.get("type", "")).lower().startswith("d") else "claim"
+        out.append({**e, "type": etype,
+                    "grounded": excerpt_grounded(e["excerpt"], material)})
+    return out
+
+
+def birth_maturity(evidence: list) -> float:
+    """Corroboration at birth: claims contribute NOTHING; only grounded
+    delivered rows lift the floor. Provisional curve — P3 calibrates."""
+    delivered = sum(1 for e in evidence
+                    if e.get("type") == "delivered" and e.get("grounded"))
+    return round(min(MATURITY_BIRTH_CAP,
+                     MATURITY_BASE + MATURITY_PER_DELIVERED * delivered), 2)
+
+
+def _judge_once(client, engine, symbol: str, seed_thesis: str | None,
+                material: str | None = None) -> dict | None:
+    material = material if material is not None else _stock_material(engine, symbol)
     seed = (f"\n\nPRIOR THESIS POINTER (from an earlier screening — verify it against "
             f"the material above; do NOT trust it blindly): {seed_thesis[:500]}"
             if seed_thesis else "")
@@ -128,19 +184,19 @@ def _judge_once(client, engine, symbol: str, seed_thesis: str | None) -> dict | 
 
 
 def births_frozen(engine) -> bool:
-    """Births freeze when the negative-control false-positive rate exceeds
-    FP_FREEZE_RATE over the recent control window (min 3 controls to judge).
-    The judge's error rate is a measured number; above threshold, no new
-    narratives are born until the prompt is tightened and controls re-run."""
+    """Amendment 2026-08-05: the freeze is governed by the GROUNDING AUDIT
+    (source='audit' rows — does every dossier's evidence trace to filings?),
+    not the retired story-scarcity controls. Failure rate above threshold =
+    no new narratives until the judge is tightened and re-audited."""
     with engine.connect() as conn:
-        total, fp = conn.execute(text("""
+        total, fails = conn.execute(text("""
             SELECT COUNT(*),
-                   COUNT(*) FILTER (WHERE reason LIKE 'CONTROL FALSE POSITIVE%')
+                   COUNT(*) FILTER (WHERE reason LIKE 'GROUNDING FAILURE%')
             FROM narrative_births
-            WHERE source = 'control'
+            WHERE source = 'audit'
               AND judged_at > NOW() - make_interval(days => :w)
         """), {"w": CONTROL_WINDOW_DAYS}).fetchone()
-    return total >= 3 and (fp / total) > FP_FREEZE_RATE
+    return total >= 3 and (fails / total) > FP_FREEZE_RATE
 
 
 def _vote_verdict(v, ok: bool) -> str | None:
@@ -175,8 +231,9 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
     if existing:
         return {"verdict": "blocked", "reason": f"active company narrative exists: {existing[1]}"}
 
-    v1 = _judge_once(client, engine, symbol, seed_thesis)
-    v2 = _judge_once(client, engine, symbol, seed_thesis)
+    material = _stock_material(engine, symbol)
+    v1 = _judge_once(client, engine, symbol, seed_thesis, material=material)
+    v2 = _judge_once(client, engine, symbol, seed_thesis, material=material)
 
     def _ok(v):
         return (isinstance(v, dict) and v.get("verdict") == "accept"
@@ -199,7 +256,21 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
     checkpoints = (v1.get("checkpoints") or []) + [
         c for c in (v2.get("checkpoints") or [])
         if not any(c.get("claim") == d.get("claim") for d in v1.get("checkpoints") or [])]
-    evidence = (v1.get("evidence") or []) + (v2.get("evidence") or [])
+    evidence = _type_and_ground(
+        (v1.get("evidence") or []) + (v2.get("evidence") or []), material)
+    # Grounded and delivered rows first, so the [:8] slice keeps the best
+    evidence.sort(key=lambda e: (not e["grounded"], e["type"] != "delivered"))
+    if not any(e["grounded"] for e in evidence):
+        # Quote-guard: both votes accepted but NO excerpt traces to the
+        # provided material — the story is not evidenced, it is remembered.
+        reason = "quote-guard: no cited evidence traces to the source material"
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO narrative_births (symbol, source, verdict, reason)
+                VALUES (:s, :src, 'rejected', :r)"""),
+                {"s": symbol, "src": source, "r": reason})
+        return {"verdict": "rejected", "reason": reason}
+    maturity = birth_maturity(evidence)
 
     with engine.connect() as conn:
         parent = conn.execute(text("""
@@ -215,7 +286,7 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
                     :f, NOW())
             RETURNING id"""),
             {"n": v1["name"][:120], "t": v1["thesis"], "s": symbol,
-             "m": BIRTH_MATURITY, "p": parent[0] if parent else None,
+             "m": maturity, "p": parent[0] if parent else None,
              "f": json.dumps({"checkpoints": [c.get("claim") for c in checkpoints]})}
         ).scalar()
         for c in checkpoints[:4]:
@@ -227,16 +298,21 @@ def birth_judge(engine, symbol: str, seed_thesis: str | None = None,
         for e in evidence[:8]:
             conn.execute(text("""
                 INSERT INTO narrative_evidence (narrative_id, symbol, source, stance,
-                                                excerpt, weight, evidence_date)
-                VALUES (:n, :s, :src, 'support', :x, 1.0, CURRENT_DATE)"""),
-                {"n": nid, "s": symbol, "src": (e.get("source") or "birth")[:100],
-                 "x": (e.get("excerpt") or "")[:600]})
+                                                excerpt, weight, evidence_date,
+                                                evidence_type, grounded)
+                VALUES (:n, :s, :src, 'support', :x, 1.0, CURRENT_DATE, :et, :g)"""),
+                {"n": nid, "s": symbol, "src": (e.get("source") or "birth")[:30],
+                 "x": (e.get("excerpt") or "")[:600],
+                 "et": e["type"], "g": e["grounded"]})
         conn.execute(text("""
             INSERT INTO narrative_births (symbol, source, verdict, narrative_id, reason)
             VALUES (:s, :src, 'accepted', :n, :nm)"""),
             {"s": symbol, "src": source, "n": nid, "nm": v1["name"][:200]})
     return {"verdict": "accepted", "narrative_id": nid, "name": v1["name"],
-            "checkpoints": len(checkpoints)}
+            "checkpoints": len(checkpoints), "maturity": maturity,
+            "delivered": sum(1 for e in evidence
+                             if e["type"] == "delivered" and e["grounded"]),
+            "ungrounded": sum(1 for e in evidence if not e["grounded"])}
 
 
 def create_queue_table(engine):
@@ -285,11 +361,11 @@ def enqueue_birth(engine, symbol: str, seed_thesis: str | None, source: str) -> 
     return True
 
 
-def process_birth_queue(engine, limit: int = 2) -> dict:
-    """Drain pending nominations through the birth judge, oldest first,
-    respecting MAX_BIRTHS_PER_WEEK (accepted non-migration births in the
-    last 7 days) — above the cap, nominations WAIT in the queue, they are
-    not discarded. Also a no-op while births are frozen."""
+def process_birth_queue(engine, limit: int = DAILY_JUDGE_LIMIT) -> dict:
+    """Drain pending nominations through the birth judge, oldest first.
+    The two-vote judge is the filter (user 2026-08-05); MAX_BIRTHS_PER_WEEK
+    is only a cost circuit-breaker — above it, nominations WAIT in the
+    queue, never discarded. No-op while births are frozen."""
     create_queue_table(engine)
     stats = {"judged": 0, "accepted": 0, "rejected": 0, "blocked": 0, "waiting": 0}
     if births_frozen(engine):
@@ -299,7 +375,7 @@ def process_birth_queue(engine, limit: int = 2) -> dict:
     with engine.connect() as conn:
         week_births = conn.execute(text("""
             SELECT COUNT(*) FROM narrative_births
-            WHERE verdict = 'accepted' AND source != 'migration'
+            WHERE verdict = 'accepted' AND source IN ('override', 'event')
               AND judged_at > NOW() - INTERVAL '7 days'""")).scalar()
         pending = conn.execute(text("""
             SELECT id, symbol, seed_thesis, source FROM narrative_birth_queue
@@ -355,45 +431,47 @@ def run_migration(engine) -> dict:
     return stats
 
 
-def run_negative_controls(engine, controls: list[str] | None = None) -> dict:
-    """Feed the judge stocks chosen for having NO plausible company story,
-    through the SAME two-vote bar as a real birth. Both votes accepting =
-    a measured false positive (a control that would have been born).
-    Single-vote accepts are recorded in the reason as a leading indicator.
-    Does NOT create narratives — dry-run judging only. FP rate above
-    FP_FREEZE_RATE freezes births (see births_frozen)."""
-    from anthropic import Anthropic
-    client = Anthropic()
-    controls = controls or CONTROLS
-    fp = 0
-
-    def _ok(v):
-        return (isinstance(v, dict) and v.get("verdict") == "accept"
-                and v.get("thesis") and len(v.get("checkpoints") or []) >= 2)
-
-    for sym in controls:
-        v1 = _judge_once(client, engine, sym, None)
-        v2 = _judge_once(client, engine, sym, None)
-        births = _ok(v1) and _ok(v2)
-        vote_accepts = int(_ok(v1)) + int(_ok(v2))
-        fp += births
-        if births:
-            reason = ("CONTROL FALSE POSITIVE: " + (v1.get("name") or ""))[:300]
-        elif vote_accepts == 1:
-            reason = "control rejected at birth bar (but 1 of 2 votes accepted)"
-        else:
-            reason = "control correctly rejected (0/2 votes)"
+def run_grounding_audit(engine, days: int = 45) -> dict:
+    """Amendment 2026-08-05: the control question is no longer 'does the
+    judge invent stories for boring stocks?' (story-scarcity doesn't exist —
+    LNT/AWK/WEC/CMS all had real filed stories) but 'does every dossier's
+    evidence trace to the filings?'. Deterministic, no LLM: re-run the
+    quote-guard over each recent birth's evidence against CURRENT source
+    material. A dossier under GROUNDED_DOSSIER_MIN grounded rows fails.
+    Failure rate above FP_FREEZE_RATE freezes births."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT n.id, n.symbol, array_agg(ev.excerpt)
+            FROM narratives n
+            JOIN narrative_evidence ev ON ev.narrative_id = n.id
+            WHERE n.scope = 'company' AND n.status IN ('active','candidate')
+              AND n.created_at > NOW() - make_interval(days => :d)
+            GROUP BY n.id, n.symbol"""), {"d": days}).fetchall()
+    if not rows:
+        print("grounding audit: no recent births to audit")
+        return {"audited": 0, "failures": 0, "fail_rate": 0.0}
+    failures = 0
+    for nid, sym, excerpts in rows:
+        material = _stock_material(engine, sym)
+        grounded = sum(1 for x in excerpts if excerpt_grounded(x or "", material))
+        ratio = grounded / max(1, len(excerpts))
+        failed = ratio < GROUNDED_DOSSIER_MIN
+        failures += failed
+        reason = (f"GROUNDING FAILURE: narrative {nid} only {grounded}/{len(excerpts)} "
+                  f"excerpts trace to filings" if failed else
+                  f"grounding ok: {grounded}/{len(excerpts)} excerpts trace to filings")
         with engine.begin() as conn:
             conn.execute(text("""
                 INSERT INTO narrative_births (symbol, source, verdict, reason)
-                VALUES (:s, 'control', :v, :r)"""),
-                {"s": sym, "v": "accepted" if births else "rejected", "r": reason})
-        print(f"  control {sym}: {'FALSE POSITIVE' if births else 'rejected'} "
-              f"({vote_accepts}/2 votes accepted)")
-    rate = fp / max(1, len(controls))
-    print(f"negative controls: {fp}/{len(controls)} false positives ({rate:.0%})"
+                VALUES (:s, 'audit', :v, :r)"""),
+                {"s": sym, "v": "rejected" if failed else "accepted",
+                 "r": reason[:300]})
+        if failed:
+            print(f"  AUDIT FAIL {sym} (narrative {nid}): {grounded}/{len(excerpts)} grounded")
+    rate = failures / len(rows)
+    print(f"grounding audit: {failures}/{len(rows)} dossiers fail ({rate:.0%})"
           + (" — BIRTHS FROZEN" if rate > FP_FREEZE_RATE else ""))
-    return {"controls": len(controls), "false_positives": fp, "fp_rate": rate}
+    return {"audited": len(rows), "failures": failures, "fail_rate": round(rate, 3)}
 
 
 if __name__ == "__main__":
@@ -405,7 +483,7 @@ if __name__ == "__main__":
     from pipeline.hidden_gem_scorer import get_engine
     if "--migrate" in sys.argv:
         run_migration(get_engine())
-    elif "--controls" in sys.argv:
-        run_negative_controls(get_engine())
+    elif "--audit" in sys.argv:
+        run_grounding_audit(get_engine())
     elif "--queue" in sys.argv:
         process_birth_queue(get_engine())

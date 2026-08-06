@@ -44,6 +44,9 @@ Voice rules (strict):
 - 1-3 sentences per item body. Direct, confident, honest about uncertainty.
 - Coverage items: when score_prev/score_now are present, say what the news did to the score ("score held at 5.2" / "score moved 4.8 to 5.2"). When the news is solid but the price FELL (price_move_1d_pct negative), note the setup explicitly: the business delivered, the market made it cheaper — that combination is what tends to RAISE our score next. Never present the price drop itself as bad news about the business.
 - The item under "top_story_pick" is the decided top story — write it as such; do not choose your own.
+- week_ahead input rows have raw "watching" text (often technical prediction claims). For each, return a "watch" phrase of AT MOST 14 plain words saying what we're looking for in the report — e.g. "does the sterilization margin hold above 45% as new capacity ramps". Keep stake labels (held, board tier, under review) out of it — those render separately.
+
+Add to the JSON: "week_ahead": [{"symbol": "...", "watch": "<=14 words"}]
 
 Return ONLY valid JSON:
 {"top_story": {"symbol": "...", "headline": "...", "body": "...", "kind": "exit|entry|upgrade|verdict|birth|info"},
@@ -317,7 +320,10 @@ def _week_ahead(engine) -> dict:
         if sym in review: stake.append("story under review")
         if stake:
             notable.append({"symbol": sym, "date": e["date"],
-                            "quarter": e["quarter"], "watching": "; ".join(stake)})
+                            "quarter": e["quarter"], "watching": "; ".join(stake),
+                            "tier": tiers.get(sym), "held": sym in held,
+                            "review": sym in review,
+                            "predictions": cp_map.get(sym, {}).get("count", 0)})
         else:
             other_by_day.setdefault(e["date"], []).append(sym)
     # Prediction deadlines not tied to an earnings date still belong here
@@ -328,7 +334,9 @@ def _week_ahead(engine) -> dict:
         if sym not in seen and cp["due"] <= week_end:
             notable.append({"symbol": sym, "date": cp["due"], "quarter": "",
                             "watching": f"{cp['count']} prediction(s) due — "
-                                        f"e.g. \"{cp['claim']}\""})
+                                        f"e.g. \"{cp['claim']}\"",
+                            "tier": tiers.get(sym), "held": sym in held,
+                            "review": sym in review, "predictions": cp["count"]})
     notable.sort(key=lambda x: x["date"])
     if len(notable) > 16:
         # Trim plain Watch-tier lines first; held positions and Strong Buys
@@ -384,7 +392,7 @@ def generate_report(engine, for_date: date | None = None) -> dict:
     bookkeeping = [m for m in moves if m.get("bookkeeping")]
     top_pick = _pick_top_story(real_moves, stories)
     facts = {"top_story_pick": top_pick, "board_moves": real_moves,
-             "coverage": coverage,
+             "week_ahead": week["notable"], "coverage": coverage,
              "story_events": {k: stories[k] for k in ("births", "verdicts")},
              "note": "Write top_story from top_story_pick and leave it out of "
                      "'moves'. Coverage items only where content is material; "
@@ -423,8 +431,11 @@ def generate_report(engine, for_date: date | None = None) -> dict:
         pos += 1
 
     add("masthead", {"headline": "Morning Report"}, payload=masthead)
+    watch_lines = {w.get("symbol"): w.get("watch")
+                   for w in phrased.get("week_ahead") or [] if isinstance(w, dict)}
     for w in week["notable"]:
-        add("week_ahead", {"symbol": w["symbol"], "kind": "watch"}, payload=w)
+        add("week_ahead", {"symbol": w["symbol"], "kind": "watch"},
+            payload={**w, "watch": watch_lines.get(w["symbol"])})
     for o in week["other"]:
         add("week_ahead", {"kind": "other"}, payload=o)
     if phrased.get("top_story"):
@@ -476,6 +487,45 @@ def render_markdown(engine, for_date: date | None = None) -> str:
     if not rows:
         return "(no report stored)"
     out = []
+    # Week-ahead rows render as one day-grouped block regardless of storage
+    # order; pull them out first.
+    week_rows = [(k, s, json.loads(pl) if pl else {})
+                 for sec, k, s, h, b, pl in rows if sec == "week_ahead"]
+    rows = [r for r in rows if r[0] != "week_ahead"]
+    def _week_block() -> list:
+        from datetime import date as _d
+        by_day: dict[str, dict] = {}
+        for k, s, p in week_rows:
+            d = p.get("date")
+            slot = by_day.setdefault(d, {"watch": [], "other": []})
+            if k == "other":
+                slot["other"] = p.get("symbols") or []
+            else:
+                slot["watch"].append((s, p))
+        blk = ["## Earnings ahead",
+               "*Who in our universe reports this week — and what we're looking for.*"]
+        for d in sorted(by_day):
+            try:
+                dd = _d.fromisoformat(d)
+                blk.append("**Today**" if dd == _d.today() else f"**{dd:%a %b %-d}**")
+            except Exception:
+                blk.append(f"**{d}**")
+            for sym, p in by_day[d]["watch"]:
+                badges = []
+                if p.get("held"): badges.append("HELD")
+                if p.get("tier"): badges.append(p["tier"].upper())
+                if p.get("predictions"): badges.append(
+                    f"{p['predictions']} PREDICTION{'S' if p['predictions'] > 1 else ''} ON THE LINE")
+                if p.get("review"): badges.append("STORY UNDER REVIEW")
+                watch = p.get("watch") or ""
+                blk.append(f"- **{sym}** `{' · '.join(badges)}`"
+                           + (f" — {watch}" if watch else ""))
+            if by_day[d]["other"]:
+                syms = by_day[d]["other"]
+                blk.append("- *Also reporting:* " + ", ".join(syms[:14])
+                           + (f" +{len(syms)-14} more" if len(syms) > 14 else ""))
+        return blk
+
     for section, kind, symbol, headline, body, payload in rows:
         p = json.loads(payload) if payload else {}
         if section == "masthead":
@@ -485,17 +535,8 @@ def render_markdown(engine, for_date: date | None = None) -> str:
                     if us is not None and spy is not None else "")
             out.append(f"**{p.get('board')} stocks on the board · "
                        f"{p.get('changes')} changes · {race}**\n")
-        elif section == "week_ahead":
-            if not any(o.startswith("## The week ahead") for o in out):
-                out.append("## The week ahead")
-            if kind == "other":
-                syms = p.get("symbols") or []
-                out.append(f"- Also reporting {p.get('date')}: "
-                           + ", ".join(syms[:14])
-                           + (f" +{len(syms)-14} more" if len(syms) > 14 else ""))
-            else:
-                q = f" {p.get('quarter')}" if p.get("quarter") else ""
-                out.append(f"- **{symbol}**{q} ({p.get('date')}): {p.get('watching')}")
+            if week_rows:
+                out.extend(_week_block())
         elif section in ("top_story", "moves", "coverage", "stories", "radar"):
             title = {"top_story": "## Top story", "moves": "## What changed on the board",
                      "coverage": "## News on our picks",

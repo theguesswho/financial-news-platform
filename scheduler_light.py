@@ -524,6 +524,17 @@ def daily_data_update():
     except Exception as e:
         _err("Track record failed", e)
 
+    _step("8b2", "Position management (SB=buy, Buy=hold, 2 days below Buy=sell)")
+    try:
+        from pipeline.track_record import manage_positions
+        from pipeline.hidden_gem_scorer import get_engine as _ge8b2
+        _e8b2 = _ge8b2()
+        r = manage_positions(_e8b2)
+        _e8b2.dispose()
+        _ok(f"Positions: {r}")
+    except Exception as e:
+        _err("Position management failed", e)
+
     _step("8c", "Data freshness sentinel")
     try:
         from pipeline.freshness_sentinel import run_sentinel

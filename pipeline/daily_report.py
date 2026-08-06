@@ -366,7 +366,8 @@ def _masthead(engine, moves) -> dict:
     return {"board": board_n, "changes": len(moves),
             "us_pct": sc.get("portfolio_return_pct"),
             "spy_pct": sc.get("spy_return_pct"),
-            "positions": sc.get("n_lots"), "since": "July 23"}
+            "positions": sc.get("open_lots", sc.get("n_lots")),
+            "closed": sc.get("closed_lots"), "since": "July 23"}
 
 
 # ------------------------------------------------------------- generate
@@ -390,13 +391,27 @@ def generate_report(engine, for_date: date | None = None) -> dict:
 
     real_moves = [m for m in moves if not m.get("bookkeeping")]
     bookkeeping = [m for m in moves if m.get("bookkeeping")]
+    with engine.connect() as conn:
+        sales = [{"symbol": r[0],
+                  "return_pct": round((float(r[1]) / float(r[2]) - 1) * 100, 1),
+                  "twin_pct": round((float(r[3]) / float(r[4]) - 1) * 100, 1),
+                  "reason": r[5]}
+                 for r in conn.execute(text("""
+                     SELECT symbol, exit_price, entry_price,
+                            spy_exit_price, spy_price, exit_reason
+                     FROM track_lots
+                     WHERE exit_date > CURRENT_DATE - 2
+                       AND COALESCE(era,'v1') = 'v2'""")).fetchall()]
     top_pick = _pick_top_story(real_moves, stories)
     facts = {"top_story_pick": top_pick, "board_moves": real_moves,
+             "position_sales": sales,
              "week_ahead": week["notable"], "coverage": coverage,
              "story_events": {k: stories[k] for k in ("births", "verdicts")},
              "note": "Write top_story from top_story_pick and leave it out of "
                      "'moves'. Coverage items only where content is material; "
-                     "skip quiet filings entirely."}
+                     "skip quiet filings entirely. position_sales are REAL "
+                     "portfolio sales — each gets a 'moves' item (kind 'exit') "
+                     "leading with the locked result vs its S&P twin."}
     client = Anthropic()
     phrased = None
     for attempt in range(3):

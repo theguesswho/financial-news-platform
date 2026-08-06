@@ -192,18 +192,22 @@ def get_scorecard(engine, era: str = ERA) -> dict:
                 ORDER BY symbol, date DESC
             )
             SELECT tl.lot_date, tl.symbol, tl.is_entry, tl.amount,
-                   tl.entry_price, ls.close AS now_price,
-                   tl.spy_price,  lspy.close AS spy_now
+                   tl.entry_price,
+                   COALESCE(tl.exit_price, ls.close)      AS now_price,
+                   tl.spy_price,
+                   COALESCE(tl.spy_exit_price, lspy.close) AS spy_now,
+                   tl.exit_date
             FROM track_lots tl
-            JOIN latest ls   ON ls.symbol = tl.symbol
-            JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY')
+            LEFT JOIN latest ls   ON ls.symbol = tl.symbol
+            LEFT JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY')
             WHERE NOT COALESCE(tl.voided, FALSE)
               AND COALESCE(tl.era, 'v1') = :era
+              AND (tl.exit_price IS NOT NULL OR ls.close IS NOT NULL)
             ORDER BY tl.lot_date, tl.symbol
         """), {"era": era}).fetchall()
 
     lots = []
-    for d, sym, is_entry, amt, e_px, n_px, e_spy, n_spy in rows:
+    for d, sym, is_entry, amt, e_px, n_px, e_spy, n_spy, exit_d in rows:
         amt = float(amt)
         stock_val = amt * float(n_px) / float(e_px)
         spy_val   = amt * float(n_spy) / float(e_spy)
@@ -213,6 +217,7 @@ def get_scorecard(engine, era: str = ERA) -> dict:
             "spy_value": round(spy_val, 2),
             "vs_spy_pct": round((stock_val - spy_val) / amt * 100, 2),
             "beat": stock_val > spy_val,
+            "closed": exit_d is not None, "exit_date": exit_d,
         })
 
     total_inv  = sum(l["invested"] for l in lots)
@@ -228,6 +233,8 @@ def get_scorecard(engine, era: str = ERA) -> dict:
         "spy_return_pct": round((total_spy / total_inv - 1) * 100, 2) if total_inv else 0,
         "lots_beating_spy": sum(1 for l in lots if l["beat"]),
         "n_lots": len(lots),
+        "open_lots": sum(1 for l in lots if not l["closed"]),
+        "closed_lots": sum(1 for l in lots if l["closed"]),
         "entry_lots_beating": sum(1 for l in entry_lots if l["beat"]),
         "n_entry_lots": len(entry_lots),
     }
@@ -248,3 +255,75 @@ if __name__ == "__main__":
     print(f"SPY twin:  {sc['spy_value']:,.0f} ({sc['spy_return_pct']:+.2f}%)")
     print(f"Lots beating SPY: {sc['lots_beating_spy']}/{sc['n_lots']}"
           f" | entry lots: {sc['entry_lots_beating']}/{sc['n_entry_lots']}")
+
+
+def manage_positions(engine) -> dict:
+    """Position lifecycle (user rule 2026-08-06): Strong Buy = buy,
+    Buy = hold what you have, below Buy = SELL — but only after TWO
+    consecutive daily snapshots below Buy (same anti-chop medicine as the
+    board exit line; DocuSign-class one-day drift never sells a position).
+    The SPY twin is sold the same day so the race stays fair. Closed lots
+    keep their locked result on the record forever; a later fresh Strong
+    Buy opens a NEW lot (re-entry allowed). Judged on the FINAL tier
+    (COALESCE(assessed, raw)) so a bookkeeping stamp-lapse alone cannot
+    trigger a sale when the raw tier still says Buy or better."""
+    stats = {"checked": 0, "reset": 0, "warned": 0, "sold": 0}
+    sold = []
+    with engine.begin() as conn:
+        snap_date = conn.execute(text(
+            "SELECT MAX(date) FROM leaderboard_history")).scalar()
+        if snap_date is None:
+            return stats
+        tiers = dict(conn.execute(text("""
+            SELECT symbol, COALESCE(assessed_tier, tier) FROM leaderboard_history
+            WHERE date = :d"""), {"d": snap_date}).fetchall())
+        lots = conn.execute(text("""
+            SELECT id, symbol, entry_price, spy_price, benchmark,
+                   COALESCE(below_buy_days, 0), below_buy_last_date
+            FROM track_lots
+            WHERE COALESCE(era, 'v1') = :era AND NOT COALESCE(voided, FALSE)
+              AND exit_date IS NULL
+        """), {"era": ERA}).fetchall()
+        for lid, sym, e_px, e_spy, bench, days, last_d in lots:
+            stats["checked"] += 1
+            if last_d == snap_date:
+                continue    # this snapshot already counted (idempotent)
+            tier = tiers.get(sym)
+            if tier in ("Strong Buy", "Buy"):
+                if days:
+                    conn.execute(text("""UPDATE track_lots
+                        SET below_buy_days = 0, below_buy_last_date = :d
+                        WHERE id = :i"""), {"d": snap_date, "i": lid})
+                    stats["reset"] += 1
+                continue
+            days += 1
+            if days < 2:
+                conn.execute(text("""UPDATE track_lots
+                    SET below_buy_days = :n, below_buy_last_date = :d
+                    WHERE id = :i"""), {"n": days, "d": snap_date, "i": lid})
+                stats["warned"] += 1
+                continue
+            # Two consecutive snapshots below Buy: sell lot + twin today.
+            x_px = _close_on_or_after(conn, sym, snap_date)
+            x_spy = _close_on_or_after(conn, bench or "SPY", snap_date)
+            if not x_px or not x_spy:
+                continue    # no price yet — retry next run, counter holds
+            reason = (f"held below Buy for 2 consecutive days "
+                      f"(now {tier or 'off board'}); sold with its "
+                      f"{bench or 'SPY'} twin")
+            conn.execute(text("""UPDATE track_lots
+                SET exit_date = :d, exit_price = :xp, spy_exit_price = :xs,
+                    exit_reason = :r, below_buy_days = :n,
+                    below_buy_last_date = :d
+                WHERE id = :i"""),
+                {"d": snap_date, "xp": x_px, "xs": x_spy, "r": reason,
+                 "n": days, "i": lid})
+            stats["sold"] += 1
+            ret = (float(x_px) / float(e_px) - 1) * 100
+            twin = (float(x_spy) / float(e_spy) - 1) * 100
+            sold.append({"symbol": sym, "return_pct": round(ret, 2),
+                         "twin_pct": round(twin, 2), "reason": reason})
+            print(f"  SOLD {sym}: {ret:+.1f}% vs twin {twin:+.1f}% ({reason})")
+    stats["sales"] = sold
+    print(f"position management: {stats}")
+    return stats

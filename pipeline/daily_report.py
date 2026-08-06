@@ -1,0 +1,359 @@
+"""
+Morning Report generator (Home revamp Phase 1, user-approved mockup
+2026-08-05). Writes one stored report per day into daily_report; the Home
+page (Phase 2) renders it with a single SELECT. The emailed brief converges
+onto these rows in Phase 3.
+
+Structure (plain lexicon everywhere — no internal jargon on any surface):
+  masthead   - the ten-second read (counts, race vs S&P 500, next test)
+  week_ahead - upcoming tests of our predictions (5 trading days)
+  top_story  - the single most significant event (significance ladder:
+               exit > entry > SB upgrade > prediction verdict > birth)
+  moves      - every other board change WITH ITS CAUSE, decomposed
+               deterministically from stored components (the SPGI lesson:
+               a move without a why should never render)
+  coverage   - news on our picks: Strong Buys deep, Buys light, tracked
+               positions always; annotated against predictions; no padding
+  stories    - the story library: births, prediction verdicts, shadow line
+  radar      - approaching the board
+  scoreboard - our picks vs the S&P 500
+
+Cost discipline: every fact is assembled from stored rows (SQL, free);
+ONE batched Sonnet call phrases the narrative sections; deterministic
+sections (masthead, week_ahead, scoreboard) are template-built with no
+LLM at all. Failures leave yesterday's report in place — the page never
+renders a half-written artifact.
+"""
+import json
+import time
+from datetime import date
+
+from sqlalchemy import text
+
+SONNET = "claude-sonnet-4-6"
+
+VOICE = """You write the Morning Report for an investment platform that finds quality companies whose genuine story the market has not priced yet. You are given STRUCTURED FACTS assembled from the platform's own data. Write the report items from those facts.
+
+Voice rules (strict):
+- Plain language a smart non-specialist understands. Never use internal jargon: no "E score", "NG", "qual", "v2", "checkpoint", "override", "narrative score". Say "our score", "a prediction we made", "our assessment", "how much is already priced in".
+- Scores are on a 10-point scale, one decimal ("5.2"). Company names alongside tickers on first mention.
+- Every board move must state its CAUSE from the provided decomposition — never report a move without its why. The causes come as component changes; translate them: priced_in rose = "the market caught up / more of the story is now paid for"; story exposure fell = "new filings weakened the link to its story"; assessment changed = "our latest read of the filings changed".
+- Never treat price moves or analyst opinions as evidence about a business. A price move is only opportunity ("the market just made it cheaper") or crowding ("the market caught up").
+- No padding. If a fact list is thin, write fewer, shorter items. Never invent color.
+- 1-3 sentences per item body. Direct, confident, honest about uncertainty.
+
+Return ONLY valid JSON:
+{"top_story": {"symbol": "...", "headline": "...", "body": "...", "kind": "exit|entry|upgrade|verdict|birth|info"},
+ "moves": [{"symbol": "...", "headline": "...", "body": "...", "kind": "entry|exit|upgrade|downgrade"}],
+ "coverage": [{"symbol": "...", "headline": "...", "body": "...", "kind": "info"}],
+ "stories": [{"symbol": "...", "headline": "...", "body": "...", "kind": "birth|verdict|info"}]}"""
+
+
+def create_table(engine):
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS daily_report (
+                date     DATE NOT NULL,
+                position INTEGER NOT NULL,
+                section  VARCHAR(16) NOT NULL,
+                kind     VARCHAR(12),
+                symbol   VARCHAR(10),
+                headline TEXT,
+                body     TEXT,
+                meta     TEXT,
+                payload  TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (date, position)
+            )"""))
+
+
+# ---------------------------------------------------------------- facts
+
+def _board_moves(engine) -> list:
+    """Board changes between the last two snapshots, with deterministic
+    cause decomposition from stored components."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            WITH d AS (SELECT DISTINCT date FROM leaderboard_history
+                       ORDER BY date DESC LIMIT 2),
+            cur AS (SELECT * FROM leaderboard_history WHERE date=(SELECT MAX(date) FROM d)),
+            prev AS (SELECT * FROM leaderboard_history WHERE date=(SELECT MIN(date) FROM d))
+            SELECT COALESCE(c.symbol, p.symbol),
+                   COALESCE(p.assessed_tier, p.tier), COALESCE(c.assessed_tier, c.tier),
+                   p.gem_score, c.gem_score, p.priced_in, c.priced_in,
+                   p.narrative_score, c.narrative_score, p.value_score, c.value_score,
+                   p.assessed_tier IS NOT NULL, c.assessed_tier IS NOT NULL
+            FROM cur c FULL OUTER JOIN prev p USING (symbol)
+            WHERE COALESCE(COALESCE(c.assessed_tier, c.tier), '_')
+                  IS DISTINCT FROM COALESCE(COALESCE(p.assessed_tier, p.tier), '_')
+        """)).fetchall()
+    moves = []
+    for (sym, pt, ct, pg, cg, pp, cp, pn, cn, pv, cv, p_qual, c_qual) in rows:
+        causes = []
+        f = lambda x: float(x) if x is not None else None
+        pp, cp, pn, cn, pv, cv = map(f, (pp, cp, pn, cn, pv, cv))
+        if pp is not None and cp is not None and abs(cp - pp) >= 0.02:
+            causes.append(f"priced_in {pp:.2f}->{cp:.2f}"
+                          + (" (market caught up)" if cp > pp else " (market backed off)"))
+        if pn is not None and cn is not None and abs(cn - pn) >= 0.03:
+            causes.append(f"story_exposure {pn:.2f}->{cn:.2f}")
+        if pv is not None and cv is not None and abs(cv - pv) >= 0.03:
+            causes.append(f"value {pv:.2f}->{cv:.2f}")
+        if p_qual != c_qual:
+            causes.append("assessment " + ("added" if c_qual else "lapsed"))
+        kind = ("entry" if pt is None else "exit" if ct is None else
+                "upgrade" if ["Watch", "Buy", "Strong Buy"].index(ct)
+                > ["Watch", "Buy", "Strong Buy"].index(pt) else "downgrade") \
+            if (pt in (None, "Watch", "Buy", "Strong Buy")
+                and ct in (None, "Watch", "Buy", "Strong Buy")) else "info"
+        moves.append({
+            "symbol": sym, "from": pt, "to": ct, "kind": kind,
+            "score_from": round(float(pg) * 10, 1) if pg is not None else None,
+            "score_to": round(float(cg) * 10, 1) if cg is not None else None,
+            "causes": causes or ["small combined drift across components"]})
+    return moves
+
+
+def _coverage_facts(engine) -> list:
+    """Filings in the last ~26h for covered symbols (board SB/Buy + all
+    tracked positions), annotated against open predictions."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            WITH covered AS (
+                SELECT symbol, COALESCE(assessed_tier, tier) AS tier
+                FROM leaderboard_history
+                WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+                  AND COALESCE(assessed_tier, tier) IN ('Strong Buy', 'Buy')
+                UNION
+                SELECT DISTINCT symbol, 'Held position' FROM track_lots
+                WHERE COALESCE(era, 'v1') = 'v2' AND NOT COALESCE(voided, FALSE)
+            )
+            SELECT c.symbol, c.tier, f.filing_type, f.filing_date::date,
+                   LEFT(COALESCE(f.llm_analysis, ft.raw_themes::text), 400),
+                   (SELECT COUNT(*) FROM narrative_checkpoints cp
+                    JOIN narratives n ON n.id = cp.narrative_id
+                    WHERE n.symbol = c.symbol AND n.scope = 'company'
+                      AND cp.status = 'pending') AS open_predictions
+            FROM covered c
+            JOIN filings f ON f.symbol = c.symbol
+                AND f.created_at > NOW() - INTERVAL '26 hours'
+            LEFT JOIN filing_themes ft ON ft.filing_id = f.id
+            ORDER BY c.tier, f.filing_date DESC LIMIT 12
+        """)).fetchall()
+    return [{"symbol": r[0], "tier": r[1], "filing": f"{r[2]} {r[3]}",
+             "content": r[4], "open_predictions": r[5]} for r in rows]
+
+
+def _story_facts(engine) -> dict:
+    with engine.connect() as conn:
+        births = conn.execute(text("""
+            SELECT b.symbol, n.name, n.maturity,
+                   (SELECT COUNT(*) FROM narrative_checkpoints c
+                    WHERE c.narrative_id = n.id)
+            FROM narrative_births b JOIN narratives n ON n.id = b.narrative_id
+            WHERE b.verdict = 'accepted' AND b.source IN ('override', 'event')
+              AND b.judged_at > NOW() - INTERVAL '26 hours'""")).fetchall()
+        verdicts = conn.execute(text("""
+            SELECT n.symbol, c.claim, c.status, LEFT(c.status_evidence, 200)
+            FROM narrative_checkpoints c JOIN narratives n ON n.id = c.narrative_id
+            WHERE c.status IN ('confirmed', 'missed')
+              AND c.status_updated > NOW() - INTERVAL '26 hours'""")).fetchall()
+        pending = conn.execute(text(
+            "SELECT COUNT(*) FROM narrative_birth_queue WHERE status='pending'")).scalar()
+        total = conn.execute(text("""
+            SELECT COUNT(*) FROM narratives
+            WHERE scope='company' AND status IN ('active','candidate','declining')""")).scalar()
+    shadow = ""
+    try:
+        from pipeline.shadow_lane import shadow_summary
+        shadow = shadow_summary(engine)
+    except Exception:
+        pass
+    return {"births": [{"symbol": b[0], "name": b[1], "maturity": float(b[2]),
+                        "predictions": b[3]} for b in births],
+            "verdicts": [{"symbol": v[0], "claim": v[1][:150], "status": v[2],
+                          "evidence": v[3]} for v in verdicts],
+            "queue_pending": pending, "library_total": total, "shadow": shadow}
+
+
+def _week_ahead(engine) -> list:
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT n.symbol, MIN(c.deadline), COUNT(*),
+                   MIN(LEFT(c.claim, 120))
+            FROM narrative_checkpoints c JOIN narratives n ON n.id = c.narrative_id
+            WHERE c.status = 'pending' AND n.scope = 'company'
+              AND c.deadline BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+            GROUP BY n.symbol ORDER BY 2 LIMIT 6""")).fetchall()
+    return [{"symbol": r[0], "due": str(r[1]), "count": r[2], "sample_claim": r[3]}
+            for r in rows]
+
+
+def _masthead(engine, moves) -> dict:
+    from pipeline.track_record import get_scorecard
+    with engine.connect() as conn:
+        board_n = conn.execute(text("""
+            SELECT COUNT(*) FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+              AND COALESCE(assessed_tier, tier) IN ('Strong Buy', 'Buy')""")).scalar()
+    sc = {}
+    try:
+        sc = get_scorecard(engine) or {}
+    except Exception:
+        pass
+    return {"board": board_n, "changes": len(moves),
+            "us_pct": sc.get("portfolio_return_pct"),
+            "spy_pct": sc.get("spy_return_pct"),
+            "positions": sc.get("n_lots"), "since": "July 23"}
+
+
+# ------------------------------------------------------------- generate
+
+SIG_ORDER = {"exit": 0, "entry": 1, "upgrade": 2, "verdict": 3, "birth": 4,
+             "downgrade": 5, "info": 6}
+
+
+def generate_report(engine, for_date: date | None = None) -> dict:
+    """Assemble facts, phrase once, store rows. Idempotent per day."""
+    from anthropic import Anthropic
+    from pipeline.llm_usage import record_usage
+
+    create_table(engine)
+    for_date = for_date or date.today()
+    moves = _board_moves(engine)
+    coverage = _coverage_facts(engine)
+    stories = _story_facts(engine)
+    week = _week_ahead(engine)
+    masthead = _masthead(engine, moves)
+
+    facts = {"board_moves": moves, "coverage": coverage,
+             "story_events": {k: stories[k] for k in ("births", "verdicts")},
+             "note": "top_story = most significant by ladder exit>entry>upgrade>"
+                     "prediction verdict>birth; leave 'moves' without it. "
+                     "Coverage items only where content is material; skip quiet "
+                     "filings entirely."}
+    client = Anthropic()
+    phrased = None
+    for attempt in range(3):
+        try:
+            resp = client.messages.create(
+                model=SONNET, max_tokens=3000, timeout=120,
+                system=[{"type": "text", "text": VOICE,
+                         "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content":
+                           "STRUCTURED FACTS:\n" + json.dumps(facts, default=str)}])
+            record_usage(engine, "daily_report", SONNET, resp.usage)
+            raw = resp.content[0].text.strip()
+            phrased = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+            break
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    if not isinstance(phrased, dict):
+        print("daily report: phrasing failed — keeping previous report")
+        return {"status": "failed"}
+
+    rows, pos = [], 0
+
+    def add(section, item, meta=None, payload=None):
+        nonlocal pos
+        rows.append({"date": for_date, "position": pos, "section": section,
+                     "kind": (item or {}).get("kind"),
+                     "symbol": (item or {}).get("symbol"),
+                     "headline": (item or {}).get("headline"),
+                     "body": (item or {}).get("body"), "meta": meta,
+                     "payload": json.dumps(payload, default=str) if payload else None})
+        pos += 1
+
+    add("masthead", {"headline": "Morning Report"}, payload=masthead)
+    for w in week:
+        add("week_ahead", {"symbol": w["symbol"]}, payload=w)
+    if phrased.get("top_story"):
+        add("top_story", phrased["top_story"])
+    for m in sorted(phrased.get("moves") or [],
+                    key=lambda x: SIG_ORDER.get(x.get("kind"), 9)):
+        add("moves", m)
+    for c in phrased.get("coverage") or []:
+        add("coverage", c)
+    for s in phrased.get("stories") or []:
+        add("stories", s)
+    add("stories", {"headline": "Shadow test", "kind": "info",
+                    "body": stories["shadow"]}) if stories["shadow"] else None
+    add("radar", {"headline": f"{stories['queue_pending']} candidates in review",
+                  "kind": "info",
+                  "body": (f"{stories['queue_pending']} companies flagged for possible "
+                           f"stories await their two-vote review. The library tracks "
+                           f"{stories['library_total']} company stories in all.")})
+    add("scoreboard", {"headline": "How we're doing vs the market"}, payload=masthead)
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM daily_report WHERE date = :d"), {"d": for_date})
+        for r in rows:
+            conn.execute(text("""
+                INSERT INTO daily_report (date, position, section, kind, symbol,
+                                          headline, body, meta, payload)
+                VALUES (:date, :position, :section, :kind, :symbol,
+                        :headline, :body, :meta, :payload)"""), r)
+    print(f"daily report {for_date}: {len(rows)} rows "
+          f"({len(moves)} moves, {len(coverage)} coverage facts)")
+    return {"status": "ok", "rows": len(rows), "date": str(for_date)}
+
+
+def render_markdown(engine, for_date: date | None = None) -> str:
+    """Render a stored report as markdown (shadow-phase review + fallback)."""
+    create_table(engine)
+    with engine.connect() as conn:
+        if for_date is None:
+            for_date = conn.execute(text(
+                "SELECT MAX(date) FROM daily_report")).scalar()
+        rows = conn.execute(text("""
+            SELECT section, kind, symbol, headline, body, payload
+            FROM daily_report WHERE date = :d ORDER BY position"""),
+            {"d": for_date}).fetchall()
+    if not rows:
+        return "(no report stored)"
+    out = []
+    for section, kind, symbol, headline, body, payload in rows:
+        p = json.loads(payload) if payload else {}
+        if section == "masthead":
+            out.append(f"# Morning Report — {for_date:%A, %B %-d, %Y}")
+            us, spy = p.get("us_pct"), p.get("spy_pct")
+            race = (f"Our picks {us:+.1f}% vs S&P 500 {spy:+.1f}%"
+                    if us is not None and spy is not None else "")
+            out.append(f"**{p.get('board')} stocks on the board · "
+                       f"{p.get('changes')} changes · {race}**\n")
+        elif section == "week_ahead":
+            if not any(o.startswith("## The week ahead") for o in out):
+                out.append("## The week ahead")
+            out.append(f"- **{symbol}** ({p.get('due')}): {p.get('count')} prediction(s) "
+                       f"come due — e.g. \"{p.get('sample_claim')}\"")
+        elif section in ("top_story", "moves", "coverage", "stories", "radar"):
+            title = {"top_story": "## Top story", "moves": "## What changed on the board",
+                     "coverage": "## News on our picks",
+                     "stories": "## The stories we're tracking",
+                     "radar": "## Approaching the board"}[section]
+            if not any(o == title for o in out):
+                out.append(title)
+            tag = f" `{kind}`" if kind and kind != "info" else ""
+            out.append(f"**{headline}**{tag}\n{body or ''}")
+        elif section == "scoreboard":
+            out.append("## How we're doing vs the market")
+            us, spy = p.get("us_pct"), p.get("spy_pct")
+            if us is not None and spy is not None:
+                out.append(f"Our picks **{us:+.1f}%** vs S&P 500 **{spy:+.1f}%** · "
+                           f"{p.get('positions')} positions · since {p.get('since')}")
+    return "\n\n".join(out)
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+    from pipeline.hidden_gem_scorer import get_engine
+    eng = get_engine()
+    if "--render" in sys.argv:
+        print(render_markdown(eng))
+    else:
+        generate_report(eng)

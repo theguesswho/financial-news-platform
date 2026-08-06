@@ -544,6 +544,17 @@ def daily_data_update():
     except Exception as e:
         _err("Daily brief failed", e)
 
+    _step("9b", "Morning Report (shadow phase — stored, not yet on Home)")
+    try:
+        from pipeline.daily_report import generate_report
+        from pipeline.hidden_gem_scorer import get_engine as _ge9b
+        _e9b = _ge9b()
+        r = generate_report(_e9b)
+        _e9b.dispose()
+        _ok(f"Morning Report: {r}")
+    except Exception as e:
+        _err("Morning Report failed", e)
+
     _step(10, "Filing synopses")
     try:
         from pipeline.synopsis import get_or_generate_synopsis

@@ -199,3 +199,13 @@ within the last ~30 min without producing its expected artifact (e.g. no
 snapshot update since the slot) and run the job once. Freeze-safe ops
 hardening; could ship before v2. Interim discipline: avoid pushing within
 ~10 min of :00 UTC slots (06/13/18/21).
+
+## 2026-08-06 — Divestiture guard on the growth penalty (APPROVED, shipped)
+PTC case: sold a division; reported revenue growth -6.8% while cc ARR
+ex-divestiture grew +9.1% and guidance was RAISED. The both-negative
+growth penalty (x0.5) read the divestiture as deterioration, halved the
+score 5.1 -> 2.5, exited the board, and nearly force-sold two lots under
+the new position rules. Change: when filings within 12 months disclose a
+divestiture/spin-off, the automatic growth penalties stand down; judgment
+falls to the qual assessor (summoned by the score-change trigger anyway).
+User approved 2026-08-06 ("Yes to both").

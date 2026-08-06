@@ -118,10 +118,11 @@ def recompute_gem(g: dict, n_adj: float) -> float:
 
     rev_gr  = g.get("revenue_growth") or 0.0
     earn_gr = g.get("earnings_growth") or 0.0
-    if rev_gr < 0 and earn_gr < 0:
-        gem *= 0.5
-    elif earn_gr < 0 and rev_gr >= 0 and n_adj < 0.40:
-        gem *= 0.75
+    if not g.get("divestiture"):   # divestiture guard, 2026-08-06
+        if rev_gr < 0 and earn_gr < 0:
+            gem *= 0.5
+        elif earn_gr < 0 and rev_gr >= 0 and n_adj < 0.40:
+            gem *= 0.75
     return round(min(gem, 1.0), 4)
 
 

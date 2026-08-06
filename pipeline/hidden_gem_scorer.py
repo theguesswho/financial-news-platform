@@ -855,6 +855,29 @@ def score_all_stocks(engine=None) -> list:
     neg_velocity = {r[0] for r in vel_rows
                     if len(r[1]) == 2 and all(t == "decelerating" for t in r[1])}
 
+    # Divestiture guard (user-approved 2026-08-06, V2_CONSIDERATIONS #1):
+    # a company that SOLD a division shows negative reported growth without
+    # any business deterioration (PTC case: ARR +9.1% cc ex-divestiture,
+    # guidance RAISED, yet the both-negative penalty halved the score). When
+    # filings within 12 months disclose a divestiture/spin-off, the automatic
+    # growth penalty stands down and judgment is left to the qual layer
+    # (which the |change| trigger summons anyway).
+    with engine.connect() as conn:
+        divest_rows = conn.execute(text("""
+            SELECT DISTINCT ft.symbol FROM filing_themes ft
+            JOIN filings f ON f.id = ft.filing_id
+            WHERE f.filing_date > NOW() - INTERVAL '12 months'
+              AND (ft.raw_themes::text ILIKE '%divestit%'
+                   OR ft.raw_themes::text ILIKE '%spin-off%'
+                   OR ft.raw_themes::text ILIKE '%spinoff%'
+                   OR ft.catalysts::text ILIKE '%divestit%')
+            UNION
+            SELECT DISTINCT symbol FROM filings
+            WHERE filing_date > NOW() - INTERVAL '12 months'
+              AND llm_analysis ILIKE '%divestit%'
+        """)).fetchall()
+    divested = {r[0] for r in divest_rows}
+
     stock_themes = {}
     for sym, theme, score in theme_rows:
         stock_themes.setdefault(sym, []).append({"theme": theme, "score": round(score, 3)})
@@ -899,13 +922,14 @@ def score_all_stocks(engine=None) -> list:
         ng = n * unpriced
         gem = (v * q) ** 0.5 * (ng ** 0.75) if (v > 0 and q > 0 and ng > 0) else 0.0
 
-        # ── Fundamental momentum gate (unchanged from v1) ────────────────────
+        # ── Fundamental momentum gate (divestiture guard 2026-08-06) ─────────
+        divest_flag = sym in divested
         if f:
             rev_gr  = float(f[4]) if f[4] is not None else 0.0
             earn_gr = float(f[8]) if f[8] is not None else 0.0
-            if rev_gr < 0 and earn_gr < 0:
+            if rev_gr < 0 and earn_gr < 0 and not divest_flag:
                 gem *= 0.5
-            elif earn_gr < 0 and rev_gr >= 0 and n < 0.40:
+            elif earn_gr < 0 and rev_gr >= 0 and n < 0.40 and not divest_flag:
                 gem *= 0.75
         gem = min(gem, 1.0)
 
@@ -914,6 +938,7 @@ def score_all_stocks(engine=None) -> list:
 
         results.append({
             "symbol":            sym,
+            "divestiture":       divest_flag,
             "hidden_gem_score":  round(gem, 4),
             "narrative_score":   round(n, 4),
             "value_score":       round(v, 4),

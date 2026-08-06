@@ -4,12 +4,13 @@ requests
 beautifulsoup4
 lxml
 anthropic>=0.40
-streamlit>=1.35
+streamlit==1.46.0
+starlette==0.46.2
 pandas
 python-dotenv
 yfinance>=0.2
 fastapi>=0.100
-uvicorn>=0.24
+uvicorn==0.34.3
 pydantic>=2.0
 python-jose[cryptography]>=3.3
 passlib[bcrypt]>=1.7

@@ -85,18 +85,20 @@ def _board_moves(engine) -> list:
                    COALESCE(p.assessed_tier, p.tier), COALESCE(c.assessed_tier, c.tier),
                    p.gem_score, c.gem_score, p.priced_in, c.priced_in,
                    p.narrative_score, c.narrative_score, p.value_score, c.value_score,
-                   p.assessed_tier IS NOT NULL, c.assessed_tier IS NOT NULL
+                   p.assessed_tier IS NOT NULL, c.assessed_tier IS NOT NULL,
+                   p.quality_score, c.quality_score, p.ng_score, c.ng_score
             FROM cur c FULL OUTER JOIN prev p USING (symbol)
             WHERE COALESCE(COALESCE(c.assessed_tier, c.tier), '_')
                   IS DISTINCT FROM COALESCE(COALESCE(p.assessed_tier, p.tier), '_')
         """)).fetchall()
     from pipeline.tiers import BOARD_EXIT, WATCH
     moves = []
-    for (sym, pt, ct, pg, cg, pp, cp, pn, cn, pv, cv, p_qual, c_qual) in rows:
+    for (sym, pt, ct, pg, cg, pp, cp, pn, cn, pv, cv, p_qual, c_qual,
+         pq, cq, png, cng) in rows:
         causes = []
         f = lambda x: float(x) if x is not None else None
-        pp, cp, pn, cn, pv, cv, pg_f, cg_f = map(
-            f, (pp, cp, pn, cn, pv, cv, pg, cg))
+        pp, cp, pn, cn, pv, cv, pg_f, cg_f, pq, cq, png, cng = map(
+            f, (pp, cp, pn, cn, pv, cv, pg, cg, pq, cq, png, cng))
         # Threshold crossings FIRST — a stock leaving because its score
         # crossed the exit line is score-driven, not "assessment lapsed"
         # (the META mislabel, user 2026-08-06).
@@ -107,13 +109,40 @@ def _board_moves(engine) -> list:
         if pt is None and cg_f is not None and pg_f is not None \
                 and cg_f > WATCH >= pg_f:
             causes.append("score crossed above the entry line")
+        # Causes are FINISHED plain-language phrases — the writer must not
+        # reinterpret component directions (it inverted value twice on PEG).
         if pp is not None and cp is not None and abs(cp - pp) >= 0.02:
-            causes.append(f"priced_in {pp:.2f}->{cp:.2f}"
-                          + (" (market caught up)" if cp > pp else " (market backed off)"))
+            causes.append(
+                f"the market caught up — more of the story is now paid for "
+                f"(priced-in {pp:.2f}->{cp:.2f})" if cp > pp else
+                f"the market backed off — more unpriced opportunity "
+                f"(priced-in {pp:.2f}->{cp:.2f})")
         if pn is not None and cn is not None and abs(cn - pn) >= 0.03:
-            causes.append(f"story_exposure {pn:.2f}->{cn:.2f}")
+            causes.append(
+                f"filings {'strengthened' if cn > pn else 'weakened'} the link "
+                f"to its story (exposure {pn:.2f}->{cn:.2f})")
         if pv is not None and cv is not None and abs(cv - pv) >= 0.03:
-            causes.append(f"value {pv:.2f}->{cv:.2f}")
+            causes.append(
+                f"the stock got cheaper relative to peers (value {pv:.2f}->{cv:.2f})"
+                if cv > pv else
+                f"the valuation richened (value {pv:.2f}->{cv:.2f})")
+        # Growth-penalty detection (PEG 2026-08-06: components fine, score
+        # halved by fresh fundamentals showing shrinking revenue+earnings).
+        # Stored gem vs gem expected from components exposes the multiplier.
+        def _ratio(g, v, q, ng):
+            if None in (g, v, q, ng) or v <= 0 or q <= 0 or ng <= 0:
+                return None
+            return g / ((v * q) ** 0.5 * ng ** 0.75)
+        r_prev, r_now = _ratio(pg_f, pv, pq, png), _ratio(cg_f, cv, cq, cng)
+        if r_now is not None and r_now < 0.6 and (r_prev is None or r_prev > 0.85):
+            causes.append("fresh filed numbers show BOTH revenue and earnings "
+                          "shrinking — the growth penalty halved the score")
+        elif r_now is not None and 0.6 <= r_now < 0.85 and (r_prev is None or r_prev > 0.85):
+            causes.append("fresh filed numbers show earnings declining — "
+                          "the earnings penalty cut the score by a quarter")
+        elif r_prev is not None and r_prev < 0.85 and r_now is not None and r_now > 0.85:
+            causes.append("delivered growth turned positive again — the "
+                          "growth penalty lifted")
         if p_qual != c_qual and not causes:
             # Only a cause when nothing real moved: pure stamp bookkeeping
             causes.append("bookkeeping_only: assessment stamp "

@@ -432,6 +432,31 @@ def daily_data_update():
     except Exception as e:
         _err("Scoring failed", e)
 
+    _step("5b2", "Prediction grader (due checkpoints -> maturity)")
+    try:
+        from pipeline.checkpoint_grader import grade_due_checkpoints
+        from pipeline.hidden_gem_scorer import get_engine as _ge5b
+        _e5b = _ge5b()
+        r = grade_due_checkpoints(_e5b)
+        _e5b.dispose()
+        _ok(f"Grader: {r}")
+    except Exception as e:
+        _err("Prediction grader failed", e)
+
+    _step("5b3", "Shadow lane (designs A/B/C, live scores untouched)")
+    try:
+        from pipeline.shadow_lane import compute_shadow
+        from pipeline.hidden_gem_scorer import get_engine as _ge5s
+        _e5s = _ge5s()
+        if gems:
+            r = compute_shadow(_e5s, gems)
+            _ok(f"Shadow lane: {r}")
+        else:
+            _ok("Shadow lane skipped (no scored universe this run)")
+        _e5s.dispose()
+    except Exception as e:
+        _err("Shadow lane failed", e)
+
     _step("5c", "Theme valuation gaps (Dell detector)")
     try:
         from pipeline.theme_valuation_gap import compute_theme_gaps

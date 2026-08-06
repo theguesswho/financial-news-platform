@@ -140,9 +140,18 @@ def _gather_signals(session: Session) -> dict:
     except Exception:
         pass
 
+    # Shadow lane (P3 calibration window): plain-language one-liner
+    shadow = ""
+    try:
+        from pipeline.shadow_lane import shadow_summary
+        shadow = shadow_summary(session.get_bind())
+    except Exception:
+        pass
+
     return {
         "board": board,
         "health": health,
+        "shadow": shadow,
         "tier_moves": tier_moves,
         "recent_events": recent_events,
         "clusters": clusters,
@@ -174,6 +183,11 @@ def _build_prompt(signals: dict) -> str:
         lines.append("\nNEW CANDIDATE/EMERGING NARRATIVES (detected within 3 weeks):")
         for t in signals["emerging"]:
             lines.append(f"  {t[0]}: {t[1] or t[2]}")
+
+    if signals.get("shadow"):
+        lines.append("\nSHADOW LANE (report this in ONE sentence under a 'Shadow test' "
+                     "line — it is a background experiment; live scores are untouched):")
+        lines.append(f"  {signals['shadow']}")
 
     if signals["tier_moves"]:
         lines.append("TIER CHANGES SINCE LAST SNAPSHOT:")

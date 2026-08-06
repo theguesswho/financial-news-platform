@@ -41,6 +41,8 @@ Voice rules (strict):
 - Never treat price moves or analyst opinions as evidence about a business. A price move is only opportunity ("the market just made it cheaper") or crowding ("the market caught up").
 - No padding. If a fact list is thin, write fewer, shorter items. Never invent color.
 - 1-3 sentences per item body. Direct, confident, honest about uncertainty.
+- Coverage items: when score_prev/score_now are present, say what the news did to the score ("score held at 5.2" / "score moved 4.8 to 5.2"). When the news is solid but the price FELL (price_move_1d_pct negative), note the setup explicitly: the business delivered, the market made it cheaper — that combination is what tends to RAISE our score next. Never present the price drop itself as bad news about the business.
+- The item under "top_story_pick" is the decided top story — write it as such; do not choose your own.
 
 Return ONLY valid JSON:
 {"top_story": {"symbol": "...", "headline": "...", "body": "...", "kind": "exit|entry|upgrade|verdict|birth|info"},
@@ -87,11 +89,23 @@ def _board_moves(engine) -> list:
             WHERE COALESCE(COALESCE(c.assessed_tier, c.tier), '_')
                   IS DISTINCT FROM COALESCE(COALESCE(p.assessed_tier, p.tier), '_')
         """)).fetchall()
+    from pipeline.tiers import BOARD_EXIT, WATCH
     moves = []
     for (sym, pt, ct, pg, cg, pp, cp, pn, cn, pv, cv, p_qual, c_qual) in rows:
         causes = []
         f = lambda x: float(x) if x is not None else None
-        pp, cp, pn, cn, pv, cv = map(f, (pp, cp, pn, cn, pv, cv))
+        pp, cp, pn, cn, pv, cv, pg_f, cg_f = map(
+            f, (pp, cp, pn, cn, pv, cv, pg, cg))
+        # Threshold crossings FIRST — a stock leaving because its score
+        # crossed the exit line is score-driven, not "assessment lapsed"
+        # (the META mislabel, user 2026-08-06).
+        if ct is None and pg_f is not None and cg_f is not None \
+                and pg_f > BOARD_EXIT >= cg_f:
+            causes.append(f"score crossed below the exit line "
+                          f"({BOARD_EXIT*10:.1f} on the 10-scale)")
+        if pt is None and cg_f is not None and pg_f is not None \
+                and cg_f > WATCH >= pg_f:
+            causes.append("score crossed above the entry line")
         if pp is not None and cp is not None and abs(cp - pp) >= 0.02:
             causes.append(f"priced_in {pp:.2f}->{cp:.2f}"
                           + (" (market caught up)" if cp > pp else " (market backed off)"))
@@ -99,8 +113,10 @@ def _board_moves(engine) -> list:
             causes.append(f"story_exposure {pn:.2f}->{cn:.2f}")
         if pv is not None and cv is not None and abs(cv - pv) >= 0.03:
             causes.append(f"value {pv:.2f}->{cv:.2f}")
-        if p_qual != c_qual:
-            causes.append("assessment " + ("added" if c_qual else "lapsed"))
+        if p_qual != c_qual and not causes:
+            # Only a cause when nothing real moved: pure stamp bookkeeping
+            causes.append("bookkeeping_only: assessment stamp "
+                          + ("added" if c_qual else "expired"))
         kind = ("entry" if pt is None else "exit" if ct is None else
                 "upgrade" if ["Watch", "Buy", "Strong Buy"].index(ct)
                 > ["Watch", "Buy", "Strong Buy"].index(pt) else "downgrade") \
@@ -110,8 +126,31 @@ def _board_moves(engine) -> list:
             "symbol": sym, "from": pt, "to": ct, "kind": kind,
             "score_from": round(float(pg) * 10, 1) if pg is not None else None,
             "score_to": round(float(cg) * 10, 1) if cg is not None else None,
+            "bookkeeping": bool(causes) and all("bookkeeping_only" in c for c in causes),
             "causes": causes or ["small combined drift across components"]})
     return moves
+
+
+def _pick_top_story(moves, story_facts) -> dict | None:
+    """Deterministic (user 2026-08-06): ladder exit > entry > SB upgrade >
+    prediction verdict > birth; |score change| breaks ties. Bookkeeping-only
+    moves never lead."""
+    real = [m for m in moves if not m.get("bookkeeping")]
+    delta = lambda m: abs((m.get("score_to") or 0) - (m.get("score_from") or 0))
+    for kind in ("exit", "entry"):
+        cand = sorted((m for m in real if m["kind"] == kind), key=delta, reverse=True)
+        if cand:
+            return {"type": "move", **cand[0]}
+    ups = sorted((m for m in real if m["kind"] == "upgrade"
+                  and m.get("to") == "Strong Buy"), key=delta, reverse=True)
+    if ups:
+        return {"type": "move", **ups[0]}
+    if story_facts["verdicts"]:
+        return {"type": "verdict", **story_facts["verdicts"][0]}
+    if story_facts["births"]:
+        return {"type": "birth", **story_facts["births"][0]}
+    rest = sorted(real, key=delta, reverse=True)
+    return {"type": "move", **rest[0]} if rest else None
 
 
 def _coverage_facts(engine) -> list:
@@ -133,15 +172,38 @@ def _coverage_facts(engine) -> list:
                    (SELECT COUNT(*) FROM narrative_checkpoints cp
                     JOIN narratives n ON n.id = cp.narrative_id
                     WHERE n.symbol = c.symbol AND n.scope = 'company'
-                      AND cp.status = 'pending') AS open_predictions
+                      AND cp.status = 'pending') AS open_predictions,
+                   scores.s_prev, scores.s_now, px.move_pct
             FROM covered c
             JOIN filings f ON f.symbol = c.symbol
                 AND f.created_at > NOW() - INTERVAL '26 hours'
             LEFT JOIN filing_themes ft ON ft.filing_id = f.id
+            LEFT JOIN LATERAL (
+                SELECT MIN(gem_score) FILTER (WHERE date < (SELECT MAX(date) FROM leaderboard_history)) AS s_prev,
+                       MIN(gem_score) FILTER (WHERE date = (SELECT MAX(date) FROM leaderboard_history)) AS s_now
+                FROM leaderboard_history lh
+                WHERE lh.symbol = c.symbol
+                  AND lh.date >= (SELECT MAX(date) FROM leaderboard_history) - 1
+            ) scores ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT ROUND(((MAX(close) FILTER (WHERE rn = 1)) /
+                              NULLIF(MAX(close) FILTER (WHERE rn = 2), 0) - 1) * 100, 1) AS move_pct
+                FROM (SELECT close, ROW_NUMBER() OVER (ORDER BY date DESC) rn
+                      FROM eod_prices WHERE symbol = c.symbol
+                        AND date > CURRENT_DATE - 7 LIMIT 2) p
+            ) px ON TRUE
             ORDER BY c.tier, f.filing_date DESC LIMIT 12
         """)).fetchall()
-    return [{"symbol": r[0], "tier": r[1], "filing": f"{r[2]} {r[3]}",
-             "content": r[4], "open_predictions": r[5]} for r in rows]
+    out = []
+    for r in rows:
+        item = {"symbol": r[0], "tier": r[1], "filing": f"{r[2]} {r[3]}",
+                "content": r[4], "open_predictions": r[5],
+                "price_move_1d_pct": float(r[8]) if r[8] is not None else None}
+        if r[6] is not None and r[7] is not None:
+            item["score_prev"] = round(float(r[6]) * 10, 1)
+            item["score_now"] = round(float(r[7]) * 10, 1)
+        out.append(item)
+    return out
 
 
 def _story_facts(engine) -> dict:
@@ -176,17 +238,79 @@ def _story_facts(engine) -> dict:
             "queue_pending": pending, "library_total": total, "shadow": shadow}
 
 
-def _week_ahead(engine) -> list:
+def _week_ahead(engine) -> dict:
+    """User 2026-08-06: ALL universe earnings this week, with 'what we're
+    looking out for' on the ones we have a stake in (board tier, held
+    position, open predictions, story under review); the rest compressed
+    into per-day lists."""
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT n.symbol, MIN(c.deadline), COUNT(*),
-                   MIN(LEFT(c.claim, 120))
+        # ALL open predictions (no window): an earnings report grades a
+        # company's predictions whenever they exist, not only when the
+        # deadline falls this week (CDE case, 2026-08-06).
+        cps = conn.execute(text("""
+            SELECT n.symbol, MIN(c.deadline), COUNT(*), MIN(LEFT(c.claim, 150))
             FROM narrative_checkpoints c JOIN narratives n ON n.id = c.narrative_id
             WHERE c.status = 'pending' AND n.scope = 'company'
-              AND c.deadline BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
-            GROUP BY n.symbol ORDER BY 2 LIMIT 6""")).fetchall()
-    return [{"symbol": r[0], "due": str(r[1]), "count": r[2], "sample_claim": r[3]}
-            for r in rows]
+              AND c.deadline >= CURRENT_DATE
+            GROUP BY n.symbol""")).fetchall()
+        tiers = dict(conn.execute(text("""
+            SELECT symbol, COALESCE(assessed_tier, tier) FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+              AND COALESCE(assessed_tier, tier) IS NOT NULL""")).fetchall())
+        held = {r[0] for r in conn.execute(text("""
+            SELECT DISTINCT symbol FROM track_lots
+            WHERE COALESCE(era,'v1')='v2' AND NOT COALESCE(voided, FALSE)""")).fetchall()}
+        review = {r[0] for r in conn.execute(text(
+            "SELECT symbol FROM narrative_birth_queue WHERE status='pending'")).fetchall()}
+    cp_map = {r[0]: {"due": str(r[1]), "count": r[2], "claim": r[3]} for r in cps}
+
+    earnings = []
+    try:
+        from pipeline.earningscall_source import fetch_calendar
+        earnings = fetch_calendar(engine, days=7)
+    except Exception:
+        pass
+
+    notable, other_by_day = [], {}
+    seen = set()
+    for e in earnings:
+        sym = e["symbol"]
+        if sym in seen:      # calendar duplicates (CF listed Q2 + Q1)
+            continue
+        seen.add(sym)
+        stake = []
+        if sym in tiers: stake.append(f"on the board ({tiers[sym]})")
+        if sym in held: stake.append("held position")
+        if sym in cp_map:
+            stake.append(f"{cp_map[sym]['count']} prediction(s) due — "
+                         f"e.g. \"{cp_map[sym]['claim']}\"")
+        if sym in review: stake.append("story under review")
+        if stake:
+            notable.append({"symbol": sym, "date": e["date"],
+                            "quarter": e["quarter"], "watching": "; ".join(stake)})
+        else:
+            other_by_day.setdefault(e["date"], []).append(sym)
+    # Prediction deadlines not tied to an earnings date still belong here
+    # (but only ones actually due this week)
+    from datetime import date as _date, timedelta as _td
+    week_end = str(_date.today() + _td(days=7))
+    for sym, cp in cp_map.items():
+        if sym not in seen and cp["due"] <= week_end:
+            notable.append({"symbol": sym, "date": cp["due"], "quarter": "",
+                            "watching": f"{cp['count']} prediction(s) due — "
+                                        f"e.g. \"{cp['claim']}\""})
+    notable.sort(key=lambda x: x["date"])
+    if len(notable) > 16:
+        # Trim plain Watch-tier lines first; held positions and Strong Buys
+        # are never cut.
+        protected = [n for n in notable if "held" in n["watching"]
+                     or "Strong Buy" in n["watching"] or "prediction" in n["watching"]]
+        rest = [n for n in notable if n not in protected]
+        notable = sorted(protected + rest[:max(0, 16 - len(protected))],
+                         key=lambda x: x["date"])
+    return {"notable": notable[:20],
+            "other": [{"date": d, "symbols": sorted(s)}
+                      for d, s in sorted(other_by_day.items())]}
 
 
 def _masthead(engine, moves) -> dict:
@@ -226,12 +350,15 @@ def generate_report(engine, for_date: date | None = None) -> dict:
     week = _week_ahead(engine)
     masthead = _masthead(engine, moves)
 
-    facts = {"board_moves": moves, "coverage": coverage,
+    real_moves = [m for m in moves if not m.get("bookkeeping")]
+    bookkeeping = [m for m in moves if m.get("bookkeeping")]
+    top_pick = _pick_top_story(real_moves, stories)
+    facts = {"top_story_pick": top_pick, "board_moves": real_moves,
+             "coverage": coverage,
              "story_events": {k: stories[k] for k in ("births", "verdicts")},
-             "note": "top_story = most significant by ladder exit>entry>upgrade>"
-                     "prediction verdict>birth; leave 'moves' without it. "
-                     "Coverage items only where content is material; skip quiet "
-                     "filings entirely."}
+             "note": "Write top_story from top_story_pick and leave it out of "
+                     "'moves'. Coverage items only where content is material; "
+                     "skip quiet filings entirely."}
     client = Anthropic()
     phrased = None
     for attempt in range(3):
@@ -266,8 +393,10 @@ def generate_report(engine, for_date: date | None = None) -> dict:
         pos += 1
 
     add("masthead", {"headline": "Morning Report"}, payload=masthead)
-    for w in week:
-        add("week_ahead", {"symbol": w["symbol"]}, payload=w)
+    for w in week["notable"]:
+        add("week_ahead", {"symbol": w["symbol"], "kind": "watch"}, payload=w)
+    for o in week["other"]:
+        add("week_ahead", {"kind": "other"}, payload=o)
     if phrased.get("top_story"):
         add("top_story", phrased["top_story"])
     for m in sorted(phrased.get("moves") or [],
@@ -279,6 +408,10 @@ def generate_report(engine, for_date: date | None = None) -> dict:
         add("stories", s)
     add("stories", {"headline": "Shadow test", "kind": "info",
                     "body": stories["shadow"]}) if stories["shadow"] else None
+    if bookkeeping:
+        add("moves", {"headline": "Bookkeeping", "kind": "info",
+                      "body": "Stamp-only adjustments (no new information): "
+                              + ", ".join(m["symbol"] for m in bookkeeping)})
     add("radar", {"headline": f"{stories['queue_pending']} candidates in review",
                   "kind": "info",
                   "body": (f"{stories['queue_pending']} companies flagged for possible "
@@ -325,8 +458,14 @@ def render_markdown(engine, for_date: date | None = None) -> str:
         elif section == "week_ahead":
             if not any(o.startswith("## The week ahead") for o in out):
                 out.append("## The week ahead")
-            out.append(f"- **{symbol}** ({p.get('due')}): {p.get('count')} prediction(s) "
-                       f"come due — e.g. \"{p.get('sample_claim')}\"")
+            if kind == "other":
+                syms = p.get("symbols") or []
+                out.append(f"- Also reporting {p.get('date')}: "
+                           + ", ".join(syms[:14])
+                           + (f" +{len(syms)-14} more" if len(syms) > 14 else ""))
+            else:
+                q = f" {p.get('quarter')}" if p.get("quarter") else ""
+                out.append(f"- **{symbol}**{q} ({p.get('date')}): {p.get('watching')}")
         elif section in ("top_story", "moves", "coverage", "stories", "radar"):
             title = {"top_story": "## Top story", "moves": "## What changed on the board",
                      "coverage": "## News on our picks",

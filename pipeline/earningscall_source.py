@@ -172,3 +172,36 @@ if __name__ == "__main__":
     from pipeline.hidden_gem_scorer import get_engine
     fetch_fast_transcripts(get_engine(), lookback_days=int(
         sys.argv[1]) if len(sys.argv) > 1 else 7)
+
+
+def fetch_calendar(engine, days: int = 7) -> list[dict]:
+    """Upcoming earnings dates for OUR universe over the next `days` days.
+    One /calendar call per day (7 calls, well under the 10/min limit with
+    the standard throttle). Fail-open: [] on any trouble — the report's
+    week-ahead falls back to prediction deadlines only."""
+    import json as _json
+    from datetime import date, timedelta
+
+    from sqlalchemy import text as _text
+    if not _api_key():
+        return []
+    with engine.connect() as conn:
+        universe = {r[0] for r in conn.execute(
+            _text("SELECT symbol FROM fundamentals")).fetchall()}
+    out = []
+    for i in range(days):
+        d = date.today() + timedelta(days=i)
+        status, body = _get("calendar", {"year": d.year, "month": d.month, "day": d.day})
+        if status != 200:
+            continue
+        try:
+            events = _json.loads(body)
+        except Exception:
+            continue
+        for e in events or []:
+            sym = (e.get("symbol") or "").upper()
+            if sym in universe:
+                out.append({"symbol": sym, "date": str(d),
+                            "quarter": f"Q{e.get('quarter')}" if e.get("quarter") else ""})
+        time.sleep(1.0)
+    return out

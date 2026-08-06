@@ -25,6 +25,17 @@ def get_engine():
 
 engine = get_engine()
 
+# ── HOME_MODE switch (Home revamp Phase 2) ───────────────────────────────────
+# 'report' renders the stored Morning Report (ui/report_page.py, visual spec
+# = approved mockup v2); anything else falls through to the original feed
+# below, which also lives permanently on the News Wire page. Cutover is a
+# Railway env change, no code deploy; rollback is unsetting it.
+import os as _os
+if _os.environ.get("HOME_MODE", "feed") == "report":
+    from ui.report_page import render_report
+    render_report(engine)
+    st.stop()
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>

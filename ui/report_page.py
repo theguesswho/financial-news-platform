@@ -43,6 +43,9 @@ CSS = """
 .mr-sym { font-weight: 700; font-size: 14.5px; }
 .mr-why { opacity: .65; font-size: 12.8px; line-height: 1.4; margin-top: 1px; }
 .mr-none { opacity: .4; font-size: 12.5px; font-style: italic; }
+.mr-schip { font-size: 12.5px; font-weight: 600; opacity: .6;
+            margin-left: 8px; white-space: nowrap; }
+.mr-mini { font-size: 11.5px; font-weight: 600; opacity: .55; white-space: nowrap; }
 .mr-b { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; border-radius: 5px;
         padding: 2px 7px; text-transform: uppercase; white-space: nowrap; }
 .mr-b.held { color: #b8860b; background: rgba(184,134,11,.14); }
@@ -93,6 +96,25 @@ def _esc(s):
     return html.escape(str(s)) if s else ""
 
 
+def _load_standings(engine) -> dict:
+    """symbol -> 'Buy · 3.5 · #15' from the latest board snapshot; stocks
+    off the board show score only."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT symbol, COALESCE(assessed_tier, tier),
+                   ROUND(gem_score * 10, 1), COALESCE(final_rank, rank)
+            FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+        """)).fetchall()
+    out = {}
+    for sym, tier, score, rank in rows:
+        sr = " · ".join(([f"{float(score):.1f}"] if score is not None else [])
+                        + ([f"#{rank}"] if tier and rank else []))
+        out[sym] = {"full": " · ".join(([tier] if tier else []) + ([sr] if sr else [])),
+                    "sr": sr}
+    return out
+
+
 def _load(engine, for_date):
     with engine.connect() as conn:
         dates = [r[0] for r in conn.execute(text(
@@ -107,7 +129,8 @@ def _load(engine, for_date):
     return d, rows, dates
 
 
-def _week_html(week_rows, week_dates=None) -> str:
+def _week_html(week_rows, week_dates=None, standings=None) -> str:
+    standings = standings or {}
     by_day = {}
     for kind, sym, p in week_rows:
         slot = by_day.setdefault(p.get("date") or "", {"watch": [], "other": []})
@@ -148,8 +171,10 @@ def _week_html(week_rows, week_dates=None) -> str:
             if p.get("review"):
                 badges.append('<span class="mr-b rev">under review</span>')
             why = _esc(p.get("watch"))
+            sr = (standings.get(sym) or {}).get("sr")
+            sr_html = f'<span class="mr-mini">{_esc(sr)}</span>' if sr else ""
             items.append('<div class="mr-ev"><div class="mr-evhead">'
-                         f'<span class="mr-sym">{_esc(sym)}</span>{"".join(badges)}</div>'
+                         f'<span class="mr-sym">{_esc(sym)}</span>{sr_html}{"".join(badges)}</div>'
                          + (f'<div class="mr-why">{why}</div>' if why else "")
                          + "</div>")
         other = slot["other"]
@@ -175,6 +200,7 @@ def render_report(engine):
                 "the live feed.")
         return
     d, rows, dates = loaded
+    standings = _load_standings(engine)
 
     with st.sidebar:
         pick = st.selectbox("Report date", dates, index=dates.index(d),
@@ -203,14 +229,16 @@ def render_report(engine):
                              f" vs S&amp;P 500 <b>{spy:+.1f}%</b></span>")
             parts.append('<div class="mr-chips">' + "".join(chips) + "</div>")
             if week_rows:
-                parts.append(_week_html(week_rows, p.get("week_dates")))
+                parts.append(_week_html(week_rows, p.get("week_dates"), standings))
         elif section == "top_story":
             parts.append('<div class="mr-h2">Top story</div>')
             badge = BADGE_LABEL.get(kind or "", "")
+            st_full = (standings.get(symbol) or {}).get("full") if symbol else None
+            chip = f'<span class="mr-schip">{_esc(st_full)}</span>' if st_full else ""
             parts.append(
                 f'<div class="mr-card {kind or "info"}">'
                 + (f'<div class="mr-lead">{badge}</div>' if badge else "")
-                + f'<h3>{_esc(headline)}</h3><p>{_esc(body)}</p></div>')
+                + f'<h3>{_esc(headline)}{chip}</h3><p>{_esc(body)}</p></div>')
         elif section in SECTION_HEAD:
             title, sub = SECTION_HEAD[section]
             hdr = f'<div class="mr-h2">{title}</div>'
@@ -220,8 +248,10 @@ def render_report(engine):
                     parts.append(f'<div class="mr-sub">{sub}</div>')
             badge = BADGE_LABEL.get(kind or "")
             b_html = f'<span class="mr-badge {kind}">{badge}</span>' if badge else ""
+            st_full = (standings.get(symbol) or {}).get("full") if symbol else None
+            chip = f'<span class="mr-schip">{_esc(st_full)}</span>' if st_full else ""
             parts.append(f'<div class="mr-card {kind or "info"}">'
-                         f'<h3>{_esc(headline)}{b_html}</h3>'
+                         f'<h3>{_esc(headline)}{b_html}{chip}</h3>'
                          f'<p>{_esc(body)}</p></div>')
         elif section == "scoreboard":
             parts.append('<div class="mr-h2">How we\'re doing vs the market</div>')

@@ -30,8 +30,8 @@ CSS = """
 @media (max-width: 900px) { .mr-week { grid-template-columns: repeat(2, 1fr); } }
 .mr-col { border: 1px solid rgba(128,128,128,.22); border-radius: 10px;
           padding: 10px 11px; min-height: 70px; }
-.mr-col.past { opacity: .45; }
-.mr-col.today { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6 inset; }
+.mr-col.past .mr-colhead { opacity: .55; }
+.mr-col.today { background: rgba(59,130,246,.07); border-color: rgba(59,130,246,.45); }
 .mr-colhead { display: flex; justify-content: space-between; align-items: baseline;
               margin-bottom: 8px; border-bottom: 1px solid rgba(128,128,128,.18);
               padding-bottom: 5px; }

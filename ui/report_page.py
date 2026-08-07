@@ -26,16 +26,23 @@ CSS = """
          opacity: .65; border-top: 1px solid rgba(128,128,128,.25);
          padding-top: 20px; margin: 26px 0 2px; font-weight: 600; }
 .mr-sub { opacity: .55; font-size: 13.5px; font-style: italic; margin: 0 0 12px; }
-.mr-day { display: grid; grid-template-columns: 84px 1fr; gap: 14px;
-          padding: 9px 0; border-bottom: 1px dashed rgba(128,128,128,.25); }
-.mr-day:last-child { border-bottom: none; }
-.mr-date { text-align: right; }
-.mr-dow { font-weight: 700; font-size: 15px; }
+.mr-week { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+@media (max-width: 900px) { .mr-week { grid-template-columns: repeat(2, 1fr); } }
+.mr-col { border: 1px solid rgba(128,128,128,.22); border-radius: 10px;
+          padding: 10px 11px; min-height: 70px; }
+.mr-col.past { opacity: .45; }
+.mr-col.today { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6 inset; }
+.mr-colhead { display: flex; justify-content: space-between; align-items: baseline;
+              margin-bottom: 8px; border-bottom: 1px solid rgba(128,128,128,.18);
+              padding-bottom: 5px; }
+.mr-dow { font-weight: 700; font-size: 14px; }
 .mr-dow.today { color: #3b82f6; }
-.mr-dom { opacity: .55; font-size: 12.5px; }
-.mr-ev { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px; margin-bottom: 6px; }
-.mr-sym { font-weight: 700; }
-.mr-why { opacity: .65; }
+.mr-dom { opacity: .55; font-size: 11.5px; }
+.mr-ev { margin-bottom: 9px; }
+.mr-evhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; }
+.mr-sym { font-weight: 700; font-size: 14.5px; }
+.mr-why { opacity: .65; font-size: 12.8px; line-height: 1.4; margin-top: 1px; }
+.mr-none { opacity: .4; font-size: 12.5px; font-style: italic; }
 .mr-b { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; border-radius: 5px;
         padding: 2px 7px; text-transform: uppercase; white-space: nowrap; }
 .mr-b.held { color: #b8860b; background: rgba(184,134,11,.14); }
@@ -100,7 +107,7 @@ def _load(engine, for_date):
     return d, rows, dates
 
 
-def _week_html(week_rows) -> str:
+def _week_html(week_rows, week_dates=None) -> str:
     by_day = {}
     for kind, sym, p in week_rows:
         slot = by_day.setdefault(p.get("date") or "", {"watch": [], "other": []})
@@ -108,19 +115,22 @@ def _week_html(week_rows) -> str:
             slot["other"] = p.get("symbols") or []
         else:
             slot["watch"].append((sym, p))
-    out = ['<div class="mr-h2">Earnings ahead</div>',
-           '<div class="mr-sub">Who in our universe reports this week — '
-           'and what we\'re looking for.</div>']
-    for d in sorted(by_day):
+    days = week_dates or sorted(by_day)
+    out = ['<div class="mr-h2">This week</div>',
+           '<div class="mr-sub">Who in our universe reports Monday to Friday — '
+           'and what we\'re looking for.</div>', '<div class="mr-week">']
+    for d in days:
         try:
             dd = date.fromisoformat(d)
             is_today = dd == date.today()
-            dow = "Today" if is_today else f"{dd:%a}"
-            dom = f"{dd:%b %-d}"
+            is_past = dd < date.today()
+            dow = "Today" if is_today else f"{dd:%A}"
+            dom = f"{dd:%b %-d}" + (" · reported" if is_past else "")
         except Exception:
-            dow, dom, is_today = d, "", False
+            dow, dom, is_today, is_past = d, "", False, False
+        slot = by_day.get(d, {"watch": [], "other": []})
         items = []
-        watch = by_day[d]["watch"]
+        watch = slot["watch"]
         watch.sort(key=lambda x: (not x[1].get("held"),
                                   not x[1].get("predictions"), x[0] or ""))
         for sym, p in watch:
@@ -134,22 +144,25 @@ def _week_html(week_rows) -> str:
             n = p.get("predictions") or 0
             if n:
                 badges.append(f'<span class="mr-b pred">{n} prediction'
-                              f'{"s" if n > 1 else ""} on the line</span>')
+                              f'{"s" if n > 1 else ""}</span>')
             if p.get("review"):
-                badges.append('<span class="mr-b rev">story under review</span>')
+                badges.append('<span class="mr-b rev">under review</span>')
             why = _esc(p.get("watch"))
-            items.append(f'<div class="mr-ev"><span class="mr-sym">{_esc(sym)}</span>'
-                         + "".join(badges)
-                         + (f'<span class="mr-why">{why}</span>' if why else "")
+            items.append('<div class="mr-ev"><div class="mr-evhead">'
+                         f'<span class="mr-sym">{_esc(sym)}</span>{"".join(badges)}</div>'
+                         + (f'<div class="mr-why">{why}</div>' if why else "")
                          + "</div>")
-        other = by_day[d]["other"]
+        other = slot["other"]
         if other:
-            shown = ", ".join(other[:14]) + (f" +{len(other)-14} more" if len(other) > 14 else "")
-            items.append(f'<div class="mr-also">Also reporting: {_esc(shown)}</div>')
-        out.append(f'<div class="mr-day"><div class="mr-date">'
-                   f'<div class="mr-dow{" today" if is_today else ""}">{dow}</div>'
-                   f'<div class="mr-dom">{dom}</div></div>'
-                   f'<div>{"".join(items)}</div></div>')
+            shown = ", ".join(other[:8]) + (f" +{len(other)-8} more" if len(other) > 8 else "")
+            items.append(f'<div class="mr-also">Also: {_esc(shown)}</div>')
+        if not items:
+            items.append('<div class="mr-none">nothing scheduled</div>')
+        cls = "mr-col" + (" today" if is_today else "") + (" past" if is_past else "")
+        out.append(f'<div class="{cls}"><div class="mr-colhead">'
+                   f'<span class="mr-dow{" today" if is_today else ""}">{dow}</span>'
+                   f'<span class="mr-dom">{dom}</span></div>{"".join(items)}</div>')
+    out.append("</div>")
     return "".join(out)
 
 
@@ -190,7 +203,7 @@ def render_report(engine):
                              f" vs S&amp;P 500 <b>{spy:+.1f}%</b></span>")
             parts.append('<div class="mr-chips">' + "".join(chips) + "</div>")
             if week_rows:
-                parts.append(_week_html(week_rows))
+                parts.append(_week_html(week_rows, p.get("week_dates")))
         elif section == "top_story":
             parts.append('<div class="mr-h2">Top story</div>')
             badge = BADGE_LABEL.get(kind or "", "")

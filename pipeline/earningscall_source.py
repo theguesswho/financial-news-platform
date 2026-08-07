@@ -174,11 +174,11 @@ if __name__ == "__main__":
         sys.argv[1]) if len(sys.argv) > 1 else 7)
 
 
-def fetch_calendar(engine, days: int = 7) -> list[dict]:
-    """Upcoming earnings dates for OUR universe over the next `days` days.
-    One /calendar call per day (7 calls, well under the 10/min limit with
-    the standard throttle). Fail-open: [] on any trouble — the report's
-    week-ahead falls back to prediction deadlines only."""
+def fetch_calendar(engine, days: int = 7, dates: list | None = None) -> list[dict]:
+    """Earnings dates for OUR universe — either the next `days` days or an
+    explicit `dates` list (the report's Mon-Fri week). One /calendar call
+    per day, well under the 10/min limit. Fail-open: [] on any trouble —
+    the report's week section falls back to prediction deadlines only."""
     import json as _json
     from datetime import date, timedelta
 
@@ -189,8 +189,8 @@ def fetch_calendar(engine, days: int = 7) -> list[dict]:
         universe = {r[0] for r in conn.execute(
             _text("SELECT symbol FROM fundamentals")).fetchall()}
     out = []
-    for i in range(days):
-        d = date.today() + timedelta(days=i)
+    span = dates or [date.today() + timedelta(days=i) for i in range(days)]
+    for d in span:
         status, body = _get("calendar", {"year": d.year, "month": d.month, "day": d.day})
         if status != 200:
             continue

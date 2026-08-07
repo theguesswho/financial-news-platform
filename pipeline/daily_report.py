@@ -44,7 +44,7 @@ Voice rules (strict):
 - 1-3 sentences per item body. Direct, confident, honest about uncertainty.
 - Coverage items: when score_prev/score_now are present, say what the news did to the score ("score held at 5.2" / "score moved 4.8 to 5.2"). When the news is solid but the price FELL (price_move_1d_pct negative), note the setup explicitly: the business delivered, the market made it cheaper — that combination is what tends to RAISE our score next. Never present the price drop itself as bad news about the business.
 - The item under "top_story_pick" is the decided top story — write it as such; do not choose your own.
-- week_ahead input rows have raw "watching" text (often technical prediction claims). For each, return a "watch" phrase of AT MOST 14 plain words saying what we're looking for in the report — e.g. "does the sterilization margin hold above 45% as new capacity ramps". Keep stake labels (held, board tier, under review) out of it — those render separately.
+- week_ahead input rows have raw "watching" text (often technical prediction claims). For each, return a "watch" phrase of AT MOST 14 plain words saying what we're looking for. Write it as a NORMAL STATEMENT, never a "does/do/will" question and never starting with "watching" — name the thing and the bar. Examples: "sterilization margins need to hold above 45% as new capacity ramps"; "the Texas rate-case decision — most of the $112M ask should stick"; "credit-rating upgrades that would unlock cheaper borrowing". Keep stake labels (held, board tier, under review) out of it — those render separately.
 
 Add to the JSON: "week_ahead": [{"symbol": "...", "watch": "<=14 words"}]
 
@@ -271,11 +271,21 @@ def _story_facts(engine) -> dict:
             "queue_pending": pending, "library_total": total, "shadow": shadow}
 
 
+def _trading_week() -> list:
+    """Mon-Fri of the CURRENT trading week; from Saturday morning the
+    window rolls to next week's five days (user 2026-08-07)."""
+    from datetime import date as _d, timedelta as _td
+    today = _d.today()
+    wd = today.weekday()
+    monday = today + _td(days=7 - wd) if wd >= 5 else today - _td(days=wd)
+    return [monday + _td(days=i) for i in range(5)]
+
+
 def _week_ahead(engine) -> dict:
     """User 2026-08-06: ALL universe earnings this week, with 'what we're
     looking out for' on the ones we have a stake in (board tier, held
     position, open predictions, story under review); the rest compressed
-    into per-day lists."""
+    into per-day lists. Rendered as Mon-Fri columns under 'This week'."""
     with engine.connect() as conn:
         # ALL open predictions (no window): an earnings report grades a
         # company's predictions whenever they exist, not only when the
@@ -297,10 +307,11 @@ def _week_ahead(engine) -> dict:
             "SELECT symbol FROM narrative_birth_queue WHERE status='pending'")).fetchall()}
     cp_map = {r[0]: {"due": str(r[1]), "count": r[2], "claim": r[3]} for r in cps}
 
+    week = _trading_week()
     earnings = []
     try:
         from pipeline.earningscall_source import fetch_calendar
-        earnings = fetch_calendar(engine, days=7)
+        earnings = fetch_calendar(engine, dates=week)
     except Exception:
         pass
 
@@ -327,11 +338,10 @@ def _week_ahead(engine) -> dict:
         else:
             other_by_day.setdefault(e["date"], []).append(sym)
     # Prediction deadlines not tied to an earnings date still belong here
-    # (but only ones actually due this week)
-    from datetime import date as _date, timedelta as _td
-    week_end = str(_date.today() + _td(days=7))
+    # (but only ones falling inside the displayed week)
+    week_start, week_end = str(week[0]), str(week[-1])
     for sym, cp in cp_map.items():
-        if sym not in seen and cp["due"] <= week_end:
+        if sym not in seen and week_start <= cp["due"] <= week_end:
             notable.append({"symbol": sym, "date": cp["due"], "quarter": "",
                             "watching": f"{cp['count']} prediction(s) due — "
                                         f"e.g. \"{cp['claim']}\"",
@@ -347,6 +357,7 @@ def _week_ahead(engine) -> dict:
         notable = sorted(protected + rest[:max(0, 16 - len(protected))],
                          key=lambda x: x["date"])
     return {"notable": notable[:20],
+            "week_dates": [str(d) for d in week],
             "other": [{"date": d, "symbols": sorted(s)}
                       for d, s in sorted(other_by_day.items())]}
 
@@ -445,7 +456,8 @@ def generate_report(engine, for_date: date | None = None) -> dict:
                      "payload": json.dumps(payload, default=str) if payload else None})
         pos += 1
 
-    add("masthead", {"headline": "Morning Report"}, payload=masthead)
+    add("masthead", {"headline": "Morning Report"},
+        payload={**masthead, "week_dates": week.get("week_dates")})
     watch_lines = {w.get("symbol"): w.get("watch")
                    for w in phrased.get("week_ahead") or [] if isinstance(w, dict)}
     for w in week["notable"]:

@@ -142,3 +142,48 @@ def delete_transaction(engine, tid: str) -> bool:
             ON CONFLICT (id) DO NOTHING
             RETURNING id"""), {"i": tid}).fetchone()
     return moved is not None
+
+
+def spy_comparison(transactions: list, spy_hist: dict, fx_hist: dict,
+                   spy_now: float, fx_now: float) -> dict | None:
+    """SPY twin for the REAL portfolio (user 2026-08-08): every BUY mirrors
+    into SPY units bought with the same pounds on the same day (via that
+    day's GBPUSD); every SELL removes the same notional. Cash movements
+    are excluded — cash earns nothing in both worlds. Returns the shadow
+    value and the relative result. spy_hist/fx_hist: {date_iso: close}.
+    """
+    def _lookup(hist, d):
+        # walk back up to 7 days for weekends/holidays
+        from datetime import timedelta
+        for i in range(8):
+            k = (d - timedelta(days=i)).strftime("%Y-%m-%d")
+            if k in hist:
+                return hist[k]
+        return None
+
+    units = 0.0
+    invested_gbp = 0.0
+    matched = skipped = 0
+    for t in transactions:
+        if t["type"] not in ("BUY", "SELL") or not t.get("value_gbp"):
+            continue
+        d = t["date"].date() if hasattr(t["date"], "date") else t["date"]
+        spy = _lookup(spy_hist, d)
+        fx = _lookup(fx_hist, d)   # GBPUSD: dollars per pound
+        if not spy or not fx:
+            skipped += 1
+            continue
+        usd = t["value_gbp"] * fx
+        if t["type"] == "BUY":
+            units += usd / spy
+            invested_gbp += t["value_gbp"]
+            matched += 1
+        else:
+            units -= usd / spy
+            invested_gbp -= t["value_gbp"]
+            matched += 1
+    if units <= 0 or not spy_now or not fx_now:
+        return None
+    shadow_gbp = units * spy_now / fx_now
+    return {"shadow_value_gbp": shadow_gbp, "net_invested_gbp": invested_gbp,
+            "matched": matched, "skipped": skipped}

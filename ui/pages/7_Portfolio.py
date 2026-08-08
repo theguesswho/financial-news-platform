@@ -71,15 +71,54 @@ def live_quotes(tickers: tuple, currencies: tuple, base: str):
 
 @st.cache_data(ttl=300)
 def day_movers():
+    """US-domiciled, non-ADR names only (user 2026-08-08): candidates are
+    profile-checked in one batch call per list."""
     out = {}
     for kind in ("gainers", "losers"):
         try:
             r = requests.get(f"{FMP}/stock_market/{kind}",
                              params={"apikey": FMP_KEY}, timeout=20)
-            out[kind] = (r.json() if r.ok else [])[:30]
+            cand = [m for m in (r.json() if r.ok else [])
+                    if m.get("symbol") and "." not in m["symbol"]][:60]
+            syms = ",".join(m["symbol"] for m in cand)
+            ok = set()
+            if syms:
+                pr = requests.get(f"{FMP}/profile/{syms}",
+                                  params={"apikey": FMP_KEY}, timeout=20)
+                for p in pr.json() if pr.ok else []:
+                    if (p.get("country") == "US" and not p.get("isAdr")
+                            and p.get("exchangeShortName") in ("NYSE", "NASDAQ", "AMEX")):
+                        ok.add(p.get("symbol"))
+            out[kind] = [m for m in cand if m["symbol"] in ok][:30]
         except Exception:
             out[kind] = []
     return out
+
+
+@st.cache_data(ttl=3600 * 6)
+def benchmark_history():
+    """SPY + GBPUSD daily closes since the first trade (Aug 2022)."""
+    out = {}
+    for sym in ("SPY", "GBPUSD"):
+        try:
+            r = requests.get(f"{FMP}/historical-price-full/{sym}",
+                             params={"serietype": "line", "from": "2022-08-01",
+                                     "apikey": FMP_KEY}, timeout=30)
+            hist = (r.json() or {}).get("historical", []) if r.ok else []
+            out[sym] = {h["date"]: float(h["close"]) for h in hist if h.get("close")}
+        except Exception:
+            out[sym] = {}
+    return out
+
+
+@st.cache_data(ttl=180)
+def spy_day_change():
+    try:
+        r = requests.get(f"{FMP}/quote/SPY", params={"apikey": FMP_KEY}, timeout=15)
+        d = r.json() if r.ok else []
+        return float(d[0].get("changesPercentage") or 0) if d else None
+    except Exception:
+        return None
 
 
 @st.cache_data(ttl=900)
@@ -180,12 +219,40 @@ with h2:
     st.write("")
     if st.button("➕  Add", type="primary", use_container_width=True):
         add_dialog()
+spy_day = spy_day_change()
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Portfolio Value", fmt_ccy(total_value, base))
-c2.metric("Day's Performance", f"{day_pct:+.2f}%")
+c2.metric("Day's Performance", f"{day_pct:+.2f}%",
+          delta=(f"{day_pct - spy_day:+.2f}% vs S&P 500 ({spy_day:+.2f}%)"
+                 if spy_day is not None else None))
 c3.metric("Unrealized P/L", fmt_ccy(unrealized, base))
 c4.metric("Realized P/L", fmt_ccy(state.realized, base))
 c5.metric("Cash Position", fmt_ccy(state.cash, base))
+
+# ── SPY twin since day one (same discipline as the platform's track record) ──
+bh = benchmark_history()
+spy_now_px = prices.get("SPY", {}).get("price") or (
+    sorted(bh["SPY"].items())[-1][1] if bh["SPY"] else None)
+fx_now = (sorted(bh["GBPUSD"].items())[-1][1] if bh["GBPUSD"] else None)
+from pipeline.portfolio import spy_comparison
+cmp_ = spy_comparison(state.transactions, bh["SPY"], bh["GBPUSD"],
+                      spy_now_px, fx_now) if bh["SPY"] and bh["GBPUSD"] else None
+if cmp_:
+    shadow = cmp_["shadow_value_gbp"]
+    rel = (total_stock / shadow - 1) * 100 if shadow else 0
+    tone = "#16a34a" if rel >= 0 else "#dc2626"
+    st.markdown(
+        f"<div style='background:rgba(128,128,128,.07);border:1px solid "
+        f"rgba(128,128,128,.25);border-radius:10px;padding:12px 16px;margin:6px 0 2px'>"
+        f"<b>vs the S&amp;P 500 since day one</b> &nbsp;·&nbsp; "
+        f"Your stocks: <b>{fmt_ccy(total_stock, base)}</b> &nbsp;·&nbsp; "
+        f"The same money, same days, in SPY: <b>{fmt_ccy(shadow, base)}</b> &nbsp;·&nbsp; "
+        f"<b style='color:{tone}'>{rel:+.1f}% vs the index</b>"
+        f"<span style='opacity:.55;font-size:12px'> &nbsp;(every buy and sell "
+        f"mirrored into SPY at that day's price and exchange rate; "
+        f"{cmp_['matched']} trades matched"
+        + (f", {cmp_['skipped']} skipped for missing history" if cmp_["skipped"] else "")
+        + ")</span></div>", unsafe_allow_html=True)
 
 tab_live, tab_news, tab_movers, tab_realized, tab_all = st.tabs(
     ["Live Portfolio", "Portfolio News", "Day Movers", "Realized Trades",

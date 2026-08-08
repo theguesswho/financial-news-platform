@@ -187,3 +187,64 @@ def spy_comparison(transactions: list, spy_hist: dict, fx_hist: dict,
     shadow_gbp = units * spy_now / fx_now
     return {"shadow_value_gbp": shadow_gbp, "net_invested_gbp": invested_gbp,
             "matched": matched, "skipped": skipped}
+
+
+def holdings_as_of(transactions: list, cutoff) -> list:
+    """Replay FIFO up to (and including) cutoff date -> holdings then."""
+    buy_lots: dict[str, list] = {}
+    for t in transactions:
+        d = t["date"].date() if hasattr(t["date"], "date") else t["date"]
+        if d > cutoff:
+            break
+        if t["type"] == "BUY":
+            q = t["quantity"] or 0.0
+            cps = (t["value_gbp"] / q) if q > 0 else 0.0
+            buy_lots.setdefault(t["ticker"], []).append(
+                {**t, "cost_per_share_base": cps})
+        elif t["type"] == "SELL":
+            shares = t["quantity"] or 0.0
+            lots = buy_lots.get(t["ticker"])
+            if not lots:
+                continue
+            while shares > 0 and lots:
+                lot = lots[0]
+                sold = min(shares, lot["quantity"])
+                lot["quantity"] -= sold
+                shares -= sold
+                if lot["quantity"] < 1e-9:
+                    lots.pop(0)
+    out = []
+    for ticker, lots in buy_lots.items():
+        qty = sum(l["quantity"] for l in lots)
+        if qty > 1e-9:
+            out.append({"ticker": ticker, "quantity": qty,
+                        "currency": lots[0]["currency"]})
+    return out
+
+
+def window_flows(transactions: list, start, end) -> list:
+    """Invested-sleeve external flows inside (start, end]: +BUY value,
+    -SELL value, with dates (for Modified Dietz weighting)."""
+    out = []
+    for t in transactions:
+        if t["type"] not in ("BUY", "SELL") or not t.get("value_gbp"):
+            continue
+        d = t["date"].date() if hasattr(t["date"], "date") else t["date"]
+        if start < d <= end:
+            out.append({"date": d,
+                        "amount": t["value_gbp"] if t["type"] == "BUY"
+                        else -t["value_gbp"]})
+    return out
+
+
+def modified_dietz(v0: float, v1: float, flows: list, start, end) -> float | None:
+    """Industry-standard flow-adjusted return over a window without daily
+    valuations: (V1 - V0 - F) / (V0 + sum(w_i * f_i)), w = time remaining."""
+    total_days = (end - start).days or 1
+    F = sum(f["amount"] for f in flows)
+    weighted = sum(f["amount"] * ((end - f["date"]).days / total_days)
+                   for f in flows)
+    denom = v0 + weighted
+    if denom <= 0:
+        return None
+    return (v1 - v0 - F) / denom

@@ -111,6 +111,22 @@ def benchmark_history():
     return out
 
 
+@st.cache_data(ttl=3600 * 6)
+def close_on(sym: str, day_iso: str) -> float | None:
+    """Close on/just before a date (one cached call per ticker+date)."""
+    try:
+        from datetime import date as _d, timedelta as _td
+        d = _d.fromisoformat(day_iso)
+        r = requests.get(f"{FMP}/historical-price-full/{sym}",
+                         params={"serietype": "line",
+                                 "from": str(d - _td(days=10)), "to": day_iso,
+                                 "apikey": FMP_KEY}, timeout=20)
+        hist = (r.json() or {}).get("historical", []) if r.ok else []
+        return float(hist[0]["close"]) if hist else None
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=180)
 def spy_day_change():
     try:
@@ -254,6 +270,68 @@ if cmp_:
         f"{cmp_['matched']} trades mirrored at daily prices and GBP/USD rates"
         + (f"; {cmp_['skipped']} skipped for missing history" if cmp_["skipped"] else "")
         + ".</span></div>", unsafe_allow_html=True)
+
+# ── rolling 12-month performance (Modified Dietz + SPY twin over window) ─────
+from datetime import date as _date, timedelta as _td
+
+from pipeline.portfolio import holdings_as_of, modified_dietz, window_flows
+
+yr_end = _date.today()
+yr_start = yr_end - _td(days=365)
+old_holdings = holdings_as_of(state.transactions, yr_start)
+v0 = 0.0
+v0_ok = True
+fx_then = {c: None for c in {h["currency"] for h in old_holdings}}
+gbpusd_then = None
+if bh.get("GBPUSD"):
+    for i in range(8):
+        k = str(yr_start - _td(days=i))
+        if k in bh["GBPUSD"]:
+            gbpusd_then = bh["GBPUSD"][k]
+            break
+for h in old_holdings:
+    px = close_on(h["ticker"], str(yr_start))
+    if px is None:
+        v0_ok = False
+        continue
+    if h["currency"] == "GBX":
+        v0 += h["quantity"] * (px / 100)          # pence -> GBP
+    elif h["currency"] == "GBP":
+        v0 += h["quantity"] * px
+    elif h["currency"] == "USD" and gbpusd_then:
+        v0 += h["quantity"] * px / gbpusd_then
+    elif h["currency"] == "EUR":
+        eur_px = close_on("EURGBP", str(yr_start))
+        v0 += h["quantity"] * px * (eur_px or 0.85)
+    else:
+        v0_ok = False
+
+if v0 > 0:
+    flows = window_flows(state.transactions, yr_start, yr_end)
+    r1y = modified_dietz(v0, total_stock, flows, yr_start, yr_end)
+    spy_then = None
+    for i in range(8):
+        k = str(yr_start - _td(days=i))
+        if k in bh.get("SPY", {}):
+            spy_then = bh["SPY"][k]
+            break
+    spy_1y = (spy_now_px / spy_then - 1) if (spy_then and spy_now_px) else None
+    if r1y is not None:
+        spread = (r1y - spy_1y) * 100 if spy_1y is not None else None
+        tone1 = "#16a34a" if (spread or 0) >= 0 else "#dc2626"
+        st.markdown(
+            f"<div style='background:rgba(128,128,128,.07);border:1px solid "
+            f"rgba(128,128,128,.25);border-radius:10px;padding:12px 16px;margin:2px 0 8px'>"
+            f"<b>Last 12 months (rolling)</b> &nbsp;·&nbsp; "
+            f"Your return: <b>{r1y*100:+.1f}%</b>"
+            + (f" &nbsp;·&nbsp; S&amp;P 500: <b>{spy_1y*100:+.1f}%</b> &nbsp;·&nbsp; "
+               f"<b style='color:{tone1}'>{spread:+.1f}% vs the index</b>"
+               if spy_1y is not None else "")
+            + f"<span style='opacity:.55;font-size:12px'> &nbsp;— flow-adjusted "
+            f"(Modified Dietz): money added or removed during the year is "
+            f"weighted by time invested, so deposits can't count as gains"
+            + ("" if v0_ok else "; some year-ago prices unavailable — treat as approximate")
+            + ".</span></div>", unsafe_allow_html=True)
 
 tab_live, tab_news, tab_movers, tab_realized, tab_all = st.tabs(
     ["Live Portfolio", "Portfolio News", "Day Movers", "Realized Trades",

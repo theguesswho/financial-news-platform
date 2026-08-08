@@ -245,14 +245,15 @@ if cmp_:
         f"<div style='background:rgba(128,128,128,.07);border:1px solid "
         f"rgba(128,128,128,.25);border-radius:10px;padding:12px 16px;margin:6px 0 2px'>"
         f"<b>vs the S&amp;P 500 since day one</b> &nbsp;·&nbsp; "
-        f"Your stocks: <b>{fmt_ccy(total_stock, base)}</b> &nbsp;·&nbsp; "
-        f"The same money, same days, in SPY: <b>{fmt_ccy(shadow, base)}</b> &nbsp;·&nbsp; "
+        f"Your invested holdings (cash excluded): <b>{fmt_ccy(total_stock, base)}</b> &nbsp;·&nbsp; "
+        f"Same pounds, same days, in SPY: <b>{fmt_ccy(shadow, base)}</b> &nbsp;·&nbsp; "
         f"<b style='color:{tone}'>{rel:+.1f}% vs the index</b>"
-        f"<span style='opacity:.55;font-size:12px'> &nbsp;(every buy and sell "
-        f"mirrored into SPY at that day's price and exchange rate; "
-        f"{cmp_['matched']} trades matched"
-        + (f", {cmp_['skipped']} skipped for missing history" if cmp_["skipped"] else "")
-        + ")</span></div>", unsafe_allow_html=True)
+        f"<span style='opacity:.55;font-size:12px'> &nbsp;— deposits never count as gains: "
+        f"money enters this race only when invested, and the identical amount buys SPY "
+        f"in the twin the same day (sells leave both sides the same day too). "
+        f"{cmp_['matched']} trades mirrored at daily prices and GBP/USD rates"
+        + (f"; {cmp_['skipped']} skipped for missing history" if cmp_["skipped"] else "")
+        + ".</span></div>", unsafe_allow_html=True)
 
 tab_live, tab_news, tab_movers, tab_realized, tab_all = st.tabs(
     ["Live Portfolio", "Portfolio News", "Day Movers", "Realized Trades",

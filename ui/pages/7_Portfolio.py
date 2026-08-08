@@ -338,6 +338,10 @@ tab_live, tab_news, tab_movers, tab_realized, tab_all = st.tabs(
      "All Transactions"])
 
 with tab_live:
+    # Lifetime attribution: realized P/L banked per ticker across ALL history
+    realized_by_ticker = {}
+    for l in state.realized_log:
+        realized_by_ticker[l["ticker"]] = realized_by_ticker.get(l["ticker"], 0) + l["pnl"]
     display = sorted(rows, key=lambda r: -r["value"])
     table = [{"Ticker": f'{r["ticker"]}  ({r["currency"]})',
               "Day's Change": f'{r["day_pct"]:+.2f}%',
@@ -350,11 +354,17 @@ with tab_live:
               # live in the Realized P/L card — counting them here too would
               # double-count on one page (user protocol decision 2026-08-09).
               "Gain/Loss": (f'{(r["unrealized"]/r["cost_basis_base"]*100):+.1f}%'
-                            if r.get("cost_basis_base") else "—")} for r in display]
+                            if r.get("cost_basis_base") else "—"),
+              # Attribution view: everything this ticker has ever made —
+              # open profit on current shares + banked profit from sells.
+              "Lifetime P/L (incl. sold)": fmt_ccy(
+                  r["unrealized"] + realized_by_ticker.get(r["ticker"], 0), base)}
+             for r in display]
     table.insert(0, {"Ticker": "Cash", "Day's Change": "—", "Quantity": "—",
                      f"Market Value ({base})": fmt_ccy(state.cash, base),
                      "% of Portfolio": f'{(state.cash/total_value*100 if total_value else 0):.2f}%',
-                     "Unrealized P/L": "—", "Gain/Loss": "—"})
+                     "Unrealized P/L": "—", "Gain/Loss": "—",
+                     "Lifetime P/L (incl. sold)": "—"})
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 with tab_news:

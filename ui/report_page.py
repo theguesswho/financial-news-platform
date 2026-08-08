@@ -238,8 +238,11 @@ def render_report(engine):
                 p = {**p, **{k: v for k, v in live.items() if v is not None}}
             parts.append('<div class="mr-kicker">Hidden Gems · Morning Report</div>')
             parts.append(f'<div class="mr-h1">{d:%A, %B %-d, %Y}</div>')
+            ch = p.get("changes_breakdown")
             chips = [f"<span class='mr-chip'><b>{p.get('board')}</b> stocks rated Buy or better</span>",
-                     f"<span class='mr-chip'><b>{p.get('changes')}</b> changes overnight</span>"]
+                     f"<span class='mr-chip'><b>{p.get('changes')}</b> changes overnight"
+                     + (f" <span style='opacity:.6'>({_esc(ch)})</span>" if ch else "")
+                     + "</span>"]
             us, spy = p.get("us_pct"), p.get("spy_pct")
             if us is not None and spy is not None:
                 chips.append(f"<span class='mr-chip'>Our picks <b class='mr-up'>{us:+.1f}%</b>"
@@ -263,6 +266,10 @@ def render_report(engine):
                 parts.append(hdr)
                 if sub:
                     parts.append(f'<div class="mr-sub">{sub}</div>')
+            if kind == "ledger":
+                parts.append(f'<div class="mr-also" style="padding:2px 4px 10px">'
+                             f'<b>{_esc(headline)}:</b> {_esc(body)}</div>')
+                continue
             badge = BADGE_LABEL.get(kind or "")
             b_html = f'<span class="mr-badge {kind}">{badge}</span>' if badge else ""
             st_full = (standings.get(symbol) or {}).get("full") if symbol else None

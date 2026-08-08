@@ -456,8 +456,18 @@ def generate_report(engine, for_date: date | None = None) -> dict:
                      "payload": json.dumps(payload, default=str) if payload else None})
         pos += 1
 
+    # Headline accountability (user 2026-08-08): the chip count covers only
+    # REAL moves and carries its breakdown; every move appears below —
+    # storied if it matters, in the one-line ledger if it doesn't.
+    kinds = {}
+    for m in real_moves:
+        kinds[m["kind"]] = kinds.get(m["kind"], 0) + 1
+    breakdown = " · ".join(f"{v} {k}{'s' if v > 1 and not k.endswith('s') else ''}"
+                           for k, v in sorted(kinds.items()))
     add("masthead", {"headline": "Morning Report"},
-        payload={**masthead, "week_dates": week.get("week_dates")})
+        payload={**masthead, "changes": len(real_moves),
+                 "changes_breakdown": breakdown,
+                 "week_dates": week.get("week_dates")})
     watch_lines = {w.get("symbol"): w.get("watch")
                    for w in phrased.get("week_ahead") or [] if isinstance(w, dict)}
     for w in week["notable"]:
@@ -476,8 +486,20 @@ def generate_report(engine, for_date: date | None = None) -> dict:
         add("stories", s)
     add("stories", {"headline": "Shadow test", "kind": "info",
                     "body": stories["shadow"]}) if stories["shadow"] else None
+    # Full-accountability ledger: any real move the stories above didn't
+    # cover gets one compact line — the masthead count is always auditable.
+    storied = {s.get("symbol") for s in (phrased.get("moves") or [])} \
+        | {(phrased.get("top_story") or {}).get("symbol")}
+    unstoried = [m for m in real_moves if m["symbol"] not in storied]
+    if unstoried:
+        add("moves", {"headline": "Also moved", "kind": "ledger",
+                      "body": " · ".join(
+                          f"{m['symbol']} {m['from'] or 'off board'}→"
+                          f"{m['to'] or 'off board'} "
+                          f"({m['score_from']}→{m['score_to']})"
+                          for m in unstoried)})
     if bookkeeping:
-        add("moves", {"headline": "Bookkeeping", "kind": "info",
+        add("moves", {"headline": "Bookkeeping", "kind": "ledger",
                       "body": "Stamp-only adjustments (no new information): "
                               + ", ".join(m["symbol"] for m in bookkeeping)})
     add("radar", {"headline": f"{stories['queue_pending']} candidates in review",

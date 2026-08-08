@@ -96,6 +96,20 @@ def _esc(s):
     return html.escape(str(s)) if s else ""
 
 
+def _live_race(engine) -> dict | None:
+    """Live scorecard for the race chips — the stored masthead value is the
+    6am snapshot and drifts stale during the day (user 2026-08-08). Only
+    used for the LATEST report; archived dates keep their morning numbers."""
+    try:
+        from pipeline.track_record import get_scorecard
+        sc = get_scorecard(engine) or {}
+        return {"us_pct": sc.get("portfolio_return_pct"),
+                "spy_pct": sc.get("spy_return_pct"),
+                "positions": sc.get("open_lots", sc.get("n_lots"))}
+    except Exception:
+        return None
+
+
 def _load_standings(engine) -> dict:
     """symbol -> 'Buy · 3.5 · #15' from the latest board snapshot; stocks
     off the board show score only."""
@@ -207,6 +221,7 @@ def render_report(engine):
                             format_func=lambda x: f"{x:%a %b %-d, %Y}")
     if pick != d:
         d, rows, dates = _load(engine, pick)
+    live = _live_race(engine) if d == dates[0] else None
 
     parts = ['<div class="mr-wrap">']
     week_rows, deferred = [], []
@@ -219,6 +234,8 @@ def render_report(engine):
 
     for section, kind, symbol, headline, body, p in deferred:
         if section == "masthead":
+            if live:
+                p = {**p, **{k: v for k, v in live.items() if v is not None}}
             parts.append('<div class="mr-kicker">Hidden Gems · Morning Report</div>')
             parts.append(f'<div class="mr-h1">{d:%A, %B %-d, %Y}</div>')
             chips = [f"<span class='mr-chip'><b>{p.get('board')}</b> stocks rated Buy or better</span>",
@@ -254,6 +271,8 @@ def render_report(engine):
                          f'<h3>{_esc(headline)}{b_html}{chip}</h3>'
                          f'<p>{_esc(body)}</p></div>')
         elif section == "scoreboard":
+            if live:
+                p = {**p, **{k: v for k, v in live.items() if v is not None}}
             parts.append('<div class="mr-h2">How we\'re doing vs the market</div>')
             us, spy = p.get("us_pct"), p.get("spy_pct")
             if us is not None and spy is not None:

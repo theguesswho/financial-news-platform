@@ -209,3 +209,18 @@ the new position rules. Change: when filings within 12 months disclose a
 divestiture/spin-off, the automatic growth penalties stand down; judgment
 falls to the qual assessor (summoned by the score-change trigger anyway).
 User approved 2026-08-06 ("Yes to both").
+
+## 2026-08-07 — Component floor 0.05 on value/quality (APPROVED, shipped; WATCH)
+Peer-bucket percentiles guarantee a bottom stock; the multiplicative gem
+turned bottom-percentile value into a hard zero (XOM/AWK/STZ/PLTR case).
+Floor 0.05 on both components keeps worst-percentile stocks low, never
+annihilated. WATCH: if bottom-bucket churn ever matters near the board,
+revisit percentiles-vs-z-scores properly (shadow-lane A/B candidate).
+
+## 2026-08-07 — Universe hygiene: 12 delisted tickers removed, BK->BNY renamed
+M&A-wave zombies (JNPR/ANSS/HES/PARA/WBA/IPG/K/DAY/MMC/HOLX/FI/CTRA) had
+stopped trading months ago but were still fetched (daily 404s) and scored
+off stale prices (BK showed 1.9 on a 3-week-old close). Fundamentals rows
+archived to fundamentals_delisted_archive, then removed. History (prices,
+filings) retained. TODO monthly: staleness check — no price 10+ trading
+days -> report bookkeeping line.

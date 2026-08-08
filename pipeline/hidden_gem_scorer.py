@@ -885,6 +885,20 @@ def score_all_stocks(engine=None) -> list:
     fund_map = {r[0]: r for r in fund_rows}
     all_symbols = set(narrative) | set(value) | set(quality)
 
+    # Zombie guard (2026-08-07): a symbol with no trade for 15+ days is
+    # delisted/renamed (the JNPR/ANSS/HES M&A-wave lesson — ghosts were
+    # being scored off months-old closes). Skip them; the universe cleanup
+    # removes them at the source, this catches the next wave automatically.
+    with engine.connect() as conn:
+        fresh = {r[0] for r in conn.execute(text("""
+            SELECT symbol FROM eod_prices GROUP BY symbol
+            HAVING MAX(date) >= CURRENT_DATE - 15""")).fetchall()}
+    stale = all_symbols - fresh
+    if stale:
+        print(f"  zombie guard: skipping {len(stale)} stale-price symbols: "
+              f"{sorted(stale)[:8]}{'...' if len(stale) > 8 else ''}")
+    all_symbols &= fresh
+
     # Percentile helper for the priced-in analyst-crowding term
     import bisect
     an_sorted = sorted(float(r[11]) for r in fund_rows if r[11] is not None)
@@ -919,6 +933,14 @@ def score_all_stocks(engine=None) -> list:
         if sym in neg_velocity:
             unpriced = min(unpriced, 0.5)
 
+        # Component floor (user-approved 2026-08-07, V2_CONSIDERATIONS):
+        # value/quality are peer-bucket percentiles, so someone is always
+        # at the bottom — and the multiplicative form turned "worst value
+        # in sector" into "total zero regardless of quality". Floor keeps
+        # worst-percentile stocks LOW, not annihilated. Watch item: revisit
+        # vs z-scores if bottom-bucket churn ever matters near the board.
+        v = max(v, 0.05)
+        q = max(q, 0.05)
         ng = n * unpriced
         gem = (v * q) ** 0.5 * (ng ** 0.75) if (v > 0 and q > 0 and ng > 0) else 0.0
 

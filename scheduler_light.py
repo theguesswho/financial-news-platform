@@ -252,6 +252,12 @@ def _process_job_queue():
             elif jtype == "birth_queue":
                 from pipeline.company_narrative import process_birth_queue
                 rep = process_birth_queue(eng, limit=_json.loads(payload) if payload else 2)
+            elif jtype == "fmp_backfill":
+                from pipeline.fmp_canonical import backfill_universe
+                rep = backfill_universe(eng)
+            elif jtype == "fmp_ttm_sweep":
+                from pipeline.fmp_canonical import ttm_sweep
+                rep = ttm_sweep(eng)
             elif jtype == "negative_controls":
                 # Amendment 2026-08-05: job name kept for queue compat;
                 # the audit measures evidence-grounding, not story-scarcity.

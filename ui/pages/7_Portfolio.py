@@ -246,22 +246,22 @@ with tab_all:
     st.caption("Add trades and cash movements with the **➕ Add** button at "
                "the top of the page.")
     txs = sorted(state.transactions, key=lambda t: t["date"], reverse=True)
-    st.dataframe([{"Date": t["date"].strftime("%d %b %Y"),
-                   "Type": t["type"], "Ticker": t["ticker"] or "CASH",
-                   "Quantity": f'{t["quantity"]:,.4f}' if t["quantity"] else "—",
-                   f"Value ({base})": fmt_ccy(t["value_gbp"] or 0, base),
-                   "Source": t["source"], "ID": t["id"]} for t in txs],
-                 use_container_width=True, hide_index=True, height=520)
-
-    with st.expander("🗑 Remove a transaction"):
-        recent = txs[:80]
-        label = {f'{t["date"]:%d %b %Y} · {t["type"]} · {t["ticker"] or "CASH"} · '
-                 f'{fmt_ccy(t["value_gbp"] or 0, base)} · {t["id"][:8]}': t["id"]
-                 for t in recent}
-        pick = st.selectbox("Select (most recent 80 shown)", list(label))
-        if st.button("Remove selected", type="secondary"):
-            if delete_transaction(engine, label[pick]):
-                st.success("Removed (kept in the audit archive).")
+    st.caption("Click a row to select it — a delete option appears below.")
+    tx_rows = [{"Date": t["date"].strftime("%d %b %Y"),
+                "Type": t["type"], "Ticker": t["ticker"] or "CASH",
+                "Quantity": f'{t["quantity"]:,.4f}' if t["quantity"] else "—",
+                f"Value ({base})": fmt_ccy(t["value_gbp"] or 0, base),
+                "Source": t["source"]} for t in txs]
+    sel = st.dataframe(tx_rows, use_container_width=True, hide_index=True,
+                       height=520, on_select="rerun", selection_mode="single-row")
+    picked = (sel.selection.rows or [None])[0] if sel and sel.selection else None
+    if picked is not None:
+        t = txs[picked]
+        dc1, dc2 = st.columns([4, 1])
+        dc1.info(f'Selected: {t["date"]:%d %b %Y} · {t["type"]} · '
+                 f'{t["ticker"] or "CASH"} · {fmt_ccy(t["value_gbp"] or 0, base)}')
+        if dc2.button("🗑 Delete", type="primary", use_container_width=True):
+            if delete_transaction(engine, t["id"]):
                 st.cache_data.clear()
                 st.rerun()
             else:

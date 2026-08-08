@@ -344,11 +344,17 @@ with tab_live:
               "Quantity": f'{r["quantity"]:,.4f}',
               f"Market Value ({base})": fmt_ccy(r["value"], base),
               "% of Portfolio": f'{(r["value"]/total_value*100 if total_value else 0):.2f}%',
-              "Unrealized P/L": fmt_ccy(r["unrealized"], base)} for r in display]
+              "Unrealized P/L": fmt_ccy(r["unrealized"], base),
+              # Rebased on CURRENT exposure: value vs cost basis of the
+              # remaining shares only. Crystallized gains from earlier sells
+              # live in the Realized P/L card — counting them here too would
+              # double-count on one page (user protocol decision 2026-08-09).
+              "Gain/Loss": (f'{(r["unrealized"]/r["cost_basis_base"]*100):+.1f}%'
+                            if r.get("cost_basis_base") else "—")} for r in display]
     table.insert(0, {"Ticker": "Cash", "Day's Change": "—", "Quantity": "—",
                      f"Market Value ({base})": fmt_ccy(state.cash, base),
                      "% of Portfolio": f'{(state.cash/total_value*100 if total_value else 0):.2f}%',
-                     "Unrealized P/L": "—"})
+                     "Unrealized P/L": "—", "Gain/Loss": "—"})
     st.dataframe(table, use_container_width=True, hide_index=True)
 
 with tab_news:

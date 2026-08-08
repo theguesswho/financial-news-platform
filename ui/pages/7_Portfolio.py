@@ -131,8 +131,55 @@ total_value = state.cash + total_stock
 day_pct = sum((r["value"] / total_stock) * r["day_pct"] for r in rows) if total_stock else 0.0
 unrealized = total_stock - sum(r["cost_basis_base"] for r in rows)
 
+# ── add-transaction modal (mirrors the React app's header Add button) ────────
+@st.dialog("Add Transaction")
+def add_dialog():
+    ttype = st.selectbox("Transaction type",
+                         ["BUY", "SELL", "DEPOSIT", "WITHDRAW"],
+                         format_func=lambda t: {"BUY": "Buy stock",
+                                                "SELL": "Sell stock",
+                                                "DEPOSIT": "Deposit cash",
+                                                "WITHDRAW": "Withdraw cash"}[t])
+    if ttype in ("BUY", "SELL"):
+        fc1, fc2 = st.columns(2)
+        tk = fc1.text_input("Stock ticker", placeholder="e.g. AAPL").strip().upper()
+        qty = fc2.number_input("Quantity", min_value=0.0, step=1.0, format="%.4f")
+        fc3, fc4 = st.columns(2)
+        px = fc3.number_input("Price per share", min_value=0.0, format="%.4f")
+        ccy = fc4.selectbox("Currency", ["USD", "EUR", "GBP", "GBX"])
+        auto = fx_rate("GBP" if ccy == "GBX" else ccy, base)
+        rate = st.number_input(f"Exchange rate ({ccy} → {base})",
+                               value=float(auto), format="%.6f",
+                               help="Fetched live; override if needed")
+        if st.button("Add", type="primary", use_container_width=True):
+            if tk and qty > 0 and px > 0:
+                px_units = px / 100 if ccy == "GBX" else px
+                value = qty * px_units * rate
+                add_transaction(engine, type=ttype, ticker=tk, quantity=qty,
+                                price=px, currency=ccy, value_gbp=value)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Ticker, quantity, and price are all required.")
+    else:
+        amt = st.number_input(f"Amount ({base})", min_value=0.0, format="%.2f")
+        if st.button("Add", type="primary", use_container_width=True):
+            if amt > 0:
+                add_transaction(engine, type=ttype, ticker=None, quantity=None,
+                                price=None, currency=base, value_gbp=amt)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Enter an amount.")
+
+
 # ── header + stat cards ──────────────────────────────────────────────────────
-st.title("Portfolio")
+h1, h2 = st.columns([5, 1])
+h1.title("Portfolio")
+with h2:
+    st.write("")
+    if st.button("➕  Add", type="primary", use_container_width=True):
+        add_dialog()
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Portfolio Value", fmt_ccy(total_value, base))
 c2.metric("Day's Performance", f"{day_pct:+.2f}%")
@@ -196,38 +243,8 @@ with tab_realized:
                  use_container_width=True, hide_index=True, height=600)
 
 with tab_all:
-    with st.expander("➕ Add transaction"):
-        ttype = st.selectbox("Type", ["BUY", "SELL", "DEPOSIT", "WITHDRAW"])
-        with st.form("add_tx", clear_on_submit=True):
-            if ttype in ("BUY", "SELL"):
-                fc1, fc2 = st.columns(2)
-                tk = fc1.text_input("Stock ticker", placeholder="e.g. AAPL").strip().upper()
-                qty = fc2.number_input("Quantity", min_value=0.0, step=1.0, format="%.4f")
-                fc3, fc4 = st.columns(2)
-                px = fc3.number_input("Price per share", min_value=0.0, format="%.4f")
-                ccy = fc4.selectbox("Currency", ["USD", "EUR", "GBP", "GBX"])
-                auto_rate = fx_rate("GBP" if ccy == "GBX" else ccy, base)
-                rate_in = st.number_input(f"Exchange rate ({ccy} → {base})",
-                                          value=float(auto_rate), format="%.6f")
-                submitted = st.form_submit_button("Add")
-                if submitted and tk and qty > 0 and px > 0:
-                    px_base_units = px / 100 if ccy == "GBX" else px
-                    value = qty * px_base_units * rate_in
-                    add_transaction(engine, type=ttype, ticker=tk, quantity=qty,
-                                    price=px, currency=ccy, value_gbp=value)
-                    st.success(f"{ttype} {qty:g} {tk} recorded ({fmt_ccy(value, base)}).")
-                    st.cache_data.clear()
-                    st.rerun()
-            else:
-                amt = st.number_input(f"Amount ({base})", min_value=0.0, format="%.2f")
-                submitted = st.form_submit_button("Add")
-                if submitted and amt > 0:
-                    add_transaction(engine, type=ttype, ticker=None, quantity=None,
-                                    price=None, currency=base, value_gbp=amt)
-                    st.success(f"{ttype} of {fmt_ccy(amt, base)} recorded.")
-                    st.cache_data.clear()
-                    st.rerun()
-
+    st.caption("Add trades and cash movements with the **➕ Add** button at "
+               "the top of the page.")
     txs = sorted(state.transactions, key=lambda t: t["date"], reverse=True)
     st.dataframe([{"Date": t["date"].strftime("%d %b %Y"),
                    "Type": t["type"], "Ticker": t["ticker"] or "CASH",

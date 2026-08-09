@@ -25,6 +25,17 @@ if live:
           f"Wait for it to finish, or DEPLOY_ANYWAY=1 git push for emergencies.")
     sys.exit(1)
 
+# 1b. queue job running? (the bridge-weekly lesson, 2026-08-09)
+with get_engine().connect() as c:
+    qjob = c.execute(text("""
+        SELECT job_type FROM job_queue WHERE status='running'
+        UNION ALL SELECT 'onboarding' FROM onboarding_queue WHERE status='running'
+        LIMIT 1""")).fetchone()
+if qjob:
+    print(f"\nDEPLOY BLOCKED: queue job '{qjob[0]}' is running on Railway "
+          f"(a deploy would kill it). Wait for it, or DEPLOY_ANYWAY=1.")
+    sys.exit(1)
+
 # 2. slot starting within 10 minutes? (06:00 daily; 13:00/21:00 Mon-Fri)
 slots = [(6, 0, "daily", range(7)), (13, 0, "midday", range(5)),
          (21, 0, "after_close", range(5)),

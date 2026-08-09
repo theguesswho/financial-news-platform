@@ -271,17 +271,18 @@ def _story_facts(engine) -> dict:
             "queue_pending": pending, "library_total": total, "shadow": shadow}
 
 
-def _trading_week() -> list:
-    """Mon-Fri of the CURRENT trading week; from Saturday morning the
-    window rolls to next week's five days (user 2026-08-07)."""
+def _trading_week(session=None) -> list:
+    """Mon-Fri relative to the SESSION being reported: a Friday session's
+    report (read over the weekend) previews NEXT week; weekday sessions
+    show their own week (user 2026-08-09)."""
     from datetime import date as _d, timedelta as _td
-    today = _d.today()
-    wd = today.weekday()
-    monday = today + _td(days=7 - wd) if wd >= 5 else today - _td(days=wd)
+    ref = session or _d.today()
+    wd = ref.weekday()
+    monday = ref + _td(days=7 - wd) if wd >= 4 else ref - _td(days=wd)
     return [monday + _td(days=i) for i in range(5)]
 
 
-def _week_ahead(engine) -> dict:
+def _week_ahead(engine, session=None) -> dict:
     """User 2026-08-06: ALL universe earnings this week, with 'what we're
     looking out for' on the ones we have a stake in (board tier, held
     position, open predictions, story under review); the rest compressed
@@ -307,7 +308,7 @@ def _week_ahead(engine) -> dict:
             "SELECT symbol FROM narrative_birth_queue WHERE status='pending'")).fetchall()}
     cp_map = {r[0]: {"due": str(r[1]), "count": r[2], "claim": r[3]} for r in cps}
 
-    week = _trading_week()
+    week = _trading_week(session)
     earnings = []
     try:
         from pipeline.earningscall_source import fetch_calendar
@@ -388,16 +389,22 @@ SIG_ORDER = {"exit": 0, "entry": 1, "upgrade": 2, "verdict": 3, "birth": 4,
 
 
 def generate_report(engine, for_date: date | None = None) -> dict:
-    """Assemble facts, phrase once, store rows. Idempotent per day."""
+    """Assemble facts, phrase once, store rows — one report per US TRADING
+    SESSION (user redesign 2026-08-09): generated right after that
+    session's close is ingested, stamped with the SESSION date. Weekends
+    produce nothing (no session, no report)."""
     from anthropic import Anthropic
     from pipeline.llm_usage import record_usage
 
     create_table(engine)
     for_date = for_date or date.today()
+    if for_date.weekday() >= 5:
+        print(f"daily report: {for_date} is not a trading session — skipped")
+        return {"status": "skipped_weekend"}
     moves = _board_moves(engine)
     coverage = _coverage_facts(engine)
     stories = _story_facts(engine)
-    week = _week_ahead(engine)
+    week = _week_ahead(engine, for_date)
     masthead = _masthead(engine, moves)
 
     real_moves = [m for m in moves if not m.get("bookkeeping")]

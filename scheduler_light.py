@@ -564,16 +564,9 @@ def daily_data_update():
     except Exception as e:
         _err("Daily brief failed", e)
 
-    _step("9b", "Morning Report (shadow phase — stored, not yet on Home)")
-    try:
-        from pipeline.daily_report import generate_report
-        from pipeline.hidden_gem_scorer import get_engine as _ge9b
-        _e9b = _ge9b()
-        r = generate_report(_e9b)
-        _e9b.dispose()
-        _ok(f"Morning Report: {r}")
-    except Exception as e:
-        _err("Morning Report failed", e)
+    # Morning Report generation moved to the after-close job (session-
+    # indexed reports, user redesign 2026-08-09): each edition covers one
+    # US trading session and generates right after its close is ingested.
 
     _step(10, "Filing synopses")
     try:
@@ -850,6 +843,18 @@ def after_close_refresh():
     except Exception as e:
         _err("Daily brief failed", e)
 
+    _step(8, "Session report (this session's Morning Report edition)")
+    try:
+        from datetime import date as _rd
+        from pipeline.daily_report import generate_report
+        from pipeline.hidden_gem_scorer import get_engine as _ge8r
+        _e8r = _ge8r()
+        r = generate_report(_e8r, for_date=_rd.today())
+        _e8r.dispose()
+        _ok(f"Session report: {r}")
+    except Exception as e:
+        _err("Session report failed", e)
+
     _banner("AFTER-CLOSE REFRESH COMPLETE")
 
 
@@ -1063,6 +1068,19 @@ def weekly_deep_refresh():
         _process_job_queue()
     except Exception as e:
         _err("Job queue failed", e)
+
+    _step("F", "Regenerate Friday's session report with weekly results")
+    try:
+        from datetime import date as _wd, timedelta as _wtd
+        from pipeline.daily_report import generate_report
+        from pipeline.hidden_gem_scorer import get_engine as _gewr
+        _ewr = _gewr()
+        friday = _wd.today() - _wtd(days=(_wd.today().weekday() - 4) % 7)
+        r = generate_report(_ewr, for_date=friday)
+        _ewr.dispose()
+        _ok(f"Friday edition regenerated with weekly output: {r}")
+    except Exception as e:
+        _err("Friday-edition regeneration failed", e)
 
     _banner("WEEKLY DEEP REFRESH COMPLETE")
 

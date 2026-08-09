@@ -518,21 +518,34 @@ def run_qual_assessment(top_n: int = TOP_N, symbol: str = None,
         store_assessment(engine, gem, result)
         return gem, result
 
+    # Cache warm-up (2026-08-09): with a cold cache, the first MAX_WORKERS
+    # parallel calls all race and all MISS before any writes the shared
+    # system block (measured 55% hit rate vs ~85% achievable). Run ONE
+    # assessment synchronously to write the cache, then fan out.
+    def _tally(gem, result):
+        nonlocal completed
+        with lock:
+            completed += 1
+            direction = result.get("direction", "hold")
+            adj_tier = result.get("adjusted_tier", gem["_raw_tier"])
+            arrow = "⬆" if direction == "upgrade" else "⬇" if direction == "downgrade" else "–"
+            if direction != "hold":
+                changes.append((gem["symbol"], gem["_raw_tier"], adj_tier,
+                                direction, result.get("rationale", "")))
+            print(f"  [{completed:2d}/{len(gems)}] {gem['symbol']:<6} {arrow} "
+                  f"{gem['_raw_tier']} → {adj_tier}  "
+                  f"{result.get('rationale','')[:70]}")
+
+    if len(gems) > 1:
+        first, *rest = gems
+        _tally(*process(first))
+    else:
+        rest = gems
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(process, g): g for g in gems}
+        futures = {executor.submit(process, g): g for g in rest}
         for future in as_completed(futures):
             gem, result = future.result()
-            with lock:
-                completed += 1
-                direction  = result.get("direction", "hold")
-                adj_tier   = result.get("adjusted_tier", gem["_raw_tier"])
-                arrow      = "⬆" if direction == "upgrade" else "⬇" if direction == "downgrade" else "–"
-                if direction != "hold":
-                    changes.append((gem["symbol"], gem["_raw_tier"], adj_tier,
-                                    direction, result.get("rationale", "")))
-                print(f"  [{completed:2d}/{len(gems)}] {gem['symbol']:<6} {arrow} "
-                      f"{gem['_raw_tier']} → {adj_tier}  "
-                      f"{result.get('rationale','')[:70]}")
+            _tally(gem, result)
 
     print(f"\n{'='*70}")
     print(f"SUMMARY — {len(changes)} adjustment(s) from {len(gems)} assessed\n")

@@ -139,6 +139,27 @@ def backfill_universe(engine, symbols=None, skip_existing: bool = True) -> dict:
     return stats
 
 
+def sync_to_fundamentals(engine, symbols=None) -> int:
+    """P2 canonicalization (user go 2026-08-09): the live `fundamentals`
+    table's statement-derived fields become mirrors of the canonical TTM
+    values. Every consumer (scorer, assessor, override screen) reads the
+    same FMP-defined numbers; the crude in-house ROIC is dead."""
+    cond = "AND t.symbol = ANY(:syms)" if symbols else ""
+    with engine.begin() as conn:
+        res = conn.execute(text(f"""
+            UPDATE fundamentals f SET
+                roic             = COALESCE(t.roic, f.roic),
+                roe              = COALESCE(t.roe, f.roe),
+                gross_margin     = COALESCE(t.gross_margin, f.gross_margin),
+                operating_margin = COALESCE(t.op_margin, f.operating_margin),
+                net_margin       = COALESCE(t.net_margin, f.net_margin),
+                debt_to_equity   = COALESCE(t.debt_to_equity, f.debt_to_equity)
+            FROM fundamentals_ttm t
+            WHERE t.symbol = f.symbol {cond}
+        """), {"syms": symbols} if symbols else {})
+    return res.rowcount
+
+
 def ttm_sweep(engine, symbols=None) -> dict:
     """TTM snapshot for the universe: key-metrics-ttm + ratios-ttm."""
     create_tables(engine)
@@ -179,6 +200,7 @@ def ttm_sweep(engine, symbols=None) -> dict:
         stats["written"] += 1
         if (i + 1) % 100 == 0:
             print(f"  ttm {i+1}/{len(symbols)}", flush=True)
+    stats["synced"] = sync_to_fundamentals(engine, symbols if symbols else None)
     print(f"ttm sweep done: {stats}")
     return stats
 

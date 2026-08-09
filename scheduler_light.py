@@ -758,6 +758,16 @@ def after_close_refresh():
             from pipeline.fundamentals import fetch_fundamentals
             s = get_session()
             fetch_fundamentals(s, dirty)
+            # Canonical TTM refresh for the same symbols so statement
+            # fields stay FMP-owned even between weekly sweeps (P2).
+            try:
+                from pipeline.fmp_canonical import ttm_sweep
+                from pipeline.hidden_gem_scorer import get_engine as _ged
+                _ed = _ged()
+                ttm_sweep(_ed, symbols=dirty)
+                _ed.dispose()
+            except Exception as _e:
+                _err("Canonical TTM refresh failed", _e)
             s.close()
             _ok(f"Dirty re-fetch: {len(dirty)} just-reported symbols: {', '.join(dirty[:10])}")
         else:
@@ -1023,6 +1033,17 @@ def weekly_deep_refresh():
         _ok(f"Historical metrics: {r}")
     except Exception as e:
         _err("Historical metrics failed", e)
+
+    _step("6b", "Canonical TTM sweep (weekly full universe, FMP)")
+    try:
+        from pipeline.fmp_canonical import ttm_sweep
+        from pipeline.hidden_gem_scorer import get_engine as _ge6b
+        _e6b = _ge6b()
+        r = ttm_sweep(_e6b)
+        _e6b.dispose()
+        _ok(f"Canonical TTM: {r}")
+    except Exception as e:
+        _err("Canonical TTM sweep failed", e)
 
     _step(7, "Fundamentals history refresh (annual + quarterly)")
     try:

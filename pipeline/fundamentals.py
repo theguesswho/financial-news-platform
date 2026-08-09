@@ -221,15 +221,13 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             fcf_margin   = round(fcf_ttm / revenue_ttm, 4) if fcf_ttm and revenue_ttm else None
 
             # ROIC approx = NOPAT / (equity + debt)
-            # NOPAT ≈ operating income × (1 - tax rate), use net income as proxy here
-            net_inc   = _safe(info.get("netIncomeToCommon"))
-            total_eq  = _safe(info.get("bookValue"))      # per share
-            shares    = _safe(info.get("sharesOutstanding"))
-            total_dbt = _safe(info.get("totalDebt"))
-            equity_abs = (total_eq * shares) if total_eq and shares else None
-            roic = round(net_inc / (equity_abs + total_dbt), 4) \
-                if net_inc and equity_abs and total_dbt and (equity_abs + total_dbt) > 0 \
-                else None
+            # ROIC: RETIRED here (2026-08-09, QUALITY_DURABILITY_SPEC P2).
+            # The crude net-income/(equity+debt) formula produced nonsense
+            # for non-standard balance sheets (ASML read 436%). The field
+            # is now owned by the canonical FMP TTM sync
+            # (fmp_canonical.sync_to_fundamentals); this fetch never
+            # touches it.
+            roic = None
 
             # Price vs 52-week high
             price  = _safe(info.get("currentPrice") or info.get("regularMarketPrice"))
@@ -270,7 +268,8 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.ev_to_ebitda        = _safe(info.get("enterpriseToEbitda"))
             row.ev_to_fcf           = ev_to_fcf
             row.roe                 = _pct(info.get("returnOnEquity"))
-            row.roic                = roic
+            # roic deliberately NOT written — canonical sync owns it; a
+            # None here must never clobber the FMP value (P2 2026-08-09).
             # Use TTM margins (last 4 quarters) instead of yfinance.info FY figures
             # This avoids stale data and the 100% gross margin bug for financial services
             row.gross_margin        = ttm_margins.get("gross_margin") or _pct(info.get("grossMargins"))

@@ -112,6 +112,19 @@ straight — "the market has already priced about half this story", "narrative
 exposure is strong", "standalone value is high". Quote scores on a 10-POINT
 scale (a 0.55 input is "5.5 out of 10").
 
+METRIC DISCIPLINE (three views, always reconciled): the data gives you a
+10-year annual road, the last fiscal year, and trailing-twelve-month
+figures. Never quote a single flattering number as if it were the company —
+locate the TTM against the road. Say plainly whether a metric's history is
+STEADY, GENUINELY IMPROVING (multi-year path, like a compounder), or
+CYCLICAL (oscillating with booms and busts — check whether today's level
+is merely recovering toward a prior peak). For cyclical businesses the
+platform's doctrine applies: they are interesting when punished and
+written off, not when things are going well — a strong year near a cycle
+high is a WARNING for the thesis, not support. One weak year in an
+otherwise steady decade is a blip, not a trend; say so rather than
+overreacting.
+
 Respond in valid JSON only:
 {{
   "direction": "upgrade" | "downgrade" | "hold",
@@ -135,7 +148,7 @@ ASSESSMENT_USER = """QUANTITATIVE SCORES:
   Symbol: {symbol}
   Gem score: {gem_score} → Raw tier: {raw_tier}
   Exposure E: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Priced-in P: {priced_in} | NG: {ng_score}
-  PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC: {roic}
+  PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC (TTM): {roic}
 
 TOP THEMES (from filings + earnings calls):
 {themes}
@@ -149,7 +162,7 @@ MOST RECENT EARNINGS CALL ({last_call_date}):
 MOST RECENT 10-K/10-Q:
   Narrative strength: {filing_narrative_strength} | Trajectory: {filing_trajectory} | Tone: {filing_tone}
 
-5-YEAR FUNDAMENTAL TREND (annual, oldest → newest):
+10-YEAR ROAD (annual, oldest → newest — canonical figures; reconcile TTM stats above against this history):
 {fundamental_trend}
 {trigger_context}
 
@@ -193,14 +206,16 @@ def get_stock_context(engine, symbol: str) -> dict:
             FROM fundamentals WHERE symbol = :sym
         """), {"sym": symbol}).fetchone()
 
-        # 5-year annual trend from fundamentals_history
+        # 10-year annual road from the CANONICAL tables (P2 2026-08-09) —
+        # long enough to see a full cycle, single FMP definitions
         trend_rows = conn.execute(text("""
-            SELECT period_end, revenue, gross_margin, op_margin, net_margin, fcf, roic
-            FROM fundamentals_history
-            WHERE symbol = :sym AND period_type = 'A'
-            ORDER BY period_end ASC
-            LIMIT 6
-        """), {"sym": symbol}).fetchall()
+            SELECT fiscal_year, revenue, gross_margin, op_margin, net_margin,
+                   fcf, roic
+            FROM fundamentals_annual
+            WHERE symbol = :sym
+            ORDER BY fiscal_year DESC
+            LIMIT 10
+        """), {"sym": symbol}).fetchall()[::-1]
 
     return {
         "call":       call,
@@ -267,7 +282,7 @@ def build_prompt(gem: dict, ctx: dict) -> str:
     filing_traj = filing[1] if filing else "n/a"
     filing_tone = filing[2] if filing else "n/a"
 
-    # Format 5-year trend table
+    # Format 10-year road table
     if trend_rows:
         trend_lines = ["  Year       Revenue     Gross%   OpMgn%   NetMgn%   FCF        ROIC%"]
         for r in trend_rows:

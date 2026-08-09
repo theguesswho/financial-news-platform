@@ -6,6 +6,7 @@ Pushes restart Railway services and KILL live scheduler runs. Rules:
    - daily:       06:00 UTC (~50 min) — 2pm Singapore — EVERY day
    - midday:      13:00 UTC (~5 min)  — Mon-Fri
    - after-close: 21:00 UTC (~30 min) — Mon-Fri
+   - weekly:      18:00 UTC Sunday (~60 min) — 2am Monday Singapore
 2. The pre-push gate (.githooks/pre-push -> scripts/deploy_gate.py)
    enforces this mechanically. DEPLOY_ANYWAY=1 only for emergencies.
 3. Batch pushes; two rebuilds back-to-back once broke the live site.

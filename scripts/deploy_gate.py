@@ -27,7 +27,8 @@ if live:
 
 # 2. slot starting within 10 minutes? (06:00 daily; 13:00/21:00 Mon-Fri)
 slots = [(6, 0, "daily", range(7)), (13, 0, "midday", range(5)),
-         (21, 0, "after_close", range(5))]
+         (21, 0, "after_close", range(5)),
+         (18, 0, "weekly", (6,))]   # Sunday 18:00 UTC = 2am Mon SGT, ~60 min
 for h, m, name, days in slots:
     slot = now.replace(hour=h, minute=m, second=0, microsecond=0)
     for d in (slot, slot + timedelta(days=1)):

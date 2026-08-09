@@ -37,6 +37,8 @@ VOICE = """You write the Morning Report for an investment platform that finds qu
 Voice rules (strict):
 - Plain language a smart non-specialist understands. Never use internal jargon: no "E score", "NG", "qual", "v2", "checkpoint", "override", "narrative score". Say "our score", "a prediction we made", "our assessment", "how much is already priced in".
 - Scores are on a 10-point scale, one decimal ("5.2"). Company names alongside tickers on first mention.
+- NEWS HIERARCHY: order every list Strong-Buy-related items first, then Buy-related, then others. A Strong Buy gained, lost, or moving is always the bigger story.
+- VOCABULARY LOCK: "value" moving UP always means the stock got CHEAPER relative to peers (bullish); never write "richens" for a value increase. The cause strings carry the direction in words — copy their meaning exactly.
 - Every board move must state its CAUSE from the provided decomposition — never report a move without its why. Component semantics (get these RIGHT): priced_in UP = the market caught up, less opportunity left (bearish for us); priced_in DOWN = the market backed off, more opportunity (bullish for us); value UP = the stock got CHEAPER relative to peers (bullish); value DOWN = the valuation richened (bearish); story_exposure UP/DOWN = filings strengthened/weakened the link to its story. If the components conflict with the direction of the move, the score and thresholds decide — say "despite X, Y dominated".
 - "Position" means a HELD tracked lot only. Stocks on the board that we don't hold are picks or ratings, never positions.
 - Never treat price moves or analyst opinions as evidence about a business. A price move is only opportunity ("the market just made it cheaper") or crowding ("the market caught up").
@@ -164,26 +166,19 @@ def _board_moves(engine) -> list:
     return moves
 
 
-def _pick_top_story(moves, story_facts) -> dict | None:
-    """Deterministic (user 2026-08-06): ladder exit > entry > SB upgrade >
-    prediction verdict > birth; |score change| breaks ties. Bookkeeping-only
-    moves never lead."""
+def _pick_top_story(moves, story_facts, held: set) -> dict | None:
+    """Deterministic, hierarchy-first (user 2026-08-09): the most
+    significant Strong-Buy/held event leads; Buy events next; prediction
+    verdicts and births beat tier-3 noise."""
     real = [m for m in moves if not m.get("bookkeeping")]
-    delta = lambda m: abs((m.get("score_to") or 0) - (m.get("score_from") or 0))
-    for kind in ("exit", "entry"):
-        cand = sorted((m for m in real if m["kind"] == kind), key=delta, reverse=True)
-        if cand:
-            return {"type": "move", **cand[0]}
-    ups = sorted((m for m in real if m["kind"] == "upgrade"
-                  and m.get("to") == "Strong Buy"), key=delta, reverse=True)
-    if ups:
-        return {"type": "move", **ups[0]}
+    ranked = sorted(real, key=lambda m: _significance(m, held))
+    if ranked and _significance(ranked[0], held)[0] <= 1:
+        return {"type": "move", **ranked[0]}
     if story_facts["verdicts"]:
         return {"type": "verdict", **story_facts["verdicts"][0]}
     if story_facts["births"]:
         return {"type": "birth", **story_facts["births"][0]}
-    rest = sorted(real, key=delta, reverse=True)
-    return {"type": "move", **rest[0]} if rest else None
+    return {"type": "move", **ranked[0]} if ranked else None
 
 
 def _coverage_facts(engine) -> list:
@@ -396,6 +391,33 @@ def _masthead(engine, moves) -> dict:
 SIG_ORDER = {"exit": 0, "entry": 1, "upgrade": 2, "verdict": 3, "birth": 4,
              "downgrade": 5, "info": 6}
 
+BIG_ACCEL = 1.0   # 10-scale: tier-3 stocks are storied only above this
+
+
+def _held_symbols(engine) -> set:
+    with engine.connect() as conn:
+        return {r[0] for r in conn.execute(text("""
+            SELECT DISTINCT symbol FROM track_lots
+            WHERE COALESCE(era,'v1')='v2' AND NOT COALESCE(voided, FALSE)
+              AND exit_date IS NULL""")).fetchall()}
+
+
+def _significance(m, held: set) -> tuple:
+    """News hierarchy (user 2026-08-09): Strong Buy events first, Buy
+    events second, everything else only if hugely accelerating. Held
+    positions are honorary tier-1. Returns a sort key (lower = higher)."""
+    delta = abs((m.get("score_to") or 0) - (m.get("score_from") or 0))
+    tiers = {m.get("from"), m.get("to")}
+    if "Strong Buy" in tiers or m["symbol"] in held:
+        rank = 0
+    elif "Buy" in tiers:
+        rank = 1
+    elif delta >= BIG_ACCEL:
+        rank = 2
+    else:
+        rank = 3   # ledger-only territory
+    return (rank, SIG_ORDER.get(m["kind"], 9), -delta)
+
 
 def generate_report(engine, for_date: date | None = None, force: bool = False) -> dict:
     """Assemble facts, phrase once, store rows — one report per US TRADING
@@ -429,23 +451,15 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
                      FROM track_lots
                      WHERE exit_date > CURRENT_DATE - 2
                        AND COALESCE(era,'v1') = 'v2'""")).fetchall()]
-    top_pick = _pick_top_story(real_moves, stories)
+    held = _held_symbols(engine)
+    top_pick = _pick_top_story(real_moves, stories, held)
     # Re-rating days can produce 30+ moves: the writer stories only the 10
     # most significant; the remainder land in the deterministic ledger
     # (max_tokens lesson #4 — the giant P4 diff overflowed phrasing and
     # failed the whole report closed, 2026-08-09).
-    def _mag(m):
-        return -abs((m.get("score_to") or 0) - (m.get("score_from") or 0))
-    by_kind = {}
-    for m in sorted(real_moves, key=_mag):
-        by_kind.setdefault(m["kind"], []).append(m)
-    # Balanced quotas (user 2026-08-09): a 31-exit day must not silence
-    # entries and upgrades — every category gets representation, remaining
-    # slots fill by magnitude.
-    storied_moves = (by_kind.get("entry", [])[:3] + by_kind.get("exit", [])[:3]
-                     + by_kind.get("upgrade", [])[:2] + by_kind.get("downgrade", [])[:2])
-    leftovers = [m for m in sorted(real_moves, key=_mag) if m not in storied_moves]
-    storied_moves += leftovers[:10 - len(storied_moves)]
+    ranked = sorted(real_moves, key=lambda m: _significance(m, held))
+    storyworthy = [m for m in ranked if _significance(m, held)[0] < 3]
+    storied_moves = storyworthy[:10]
     facts = {"top_story_pick": top_pick, "board_moves": storied_moves,
              "position_sales": sales,
              "week_ahead": week["notable"], "coverage": coverage,
@@ -509,8 +523,10 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
         add("week_ahead", {"kind": "other"}, payload=o)
     if phrased.get("top_story"):
         add("top_story", phrased["top_story"])
+    sig_by_symbol = {m["symbol"]: _significance(m, held) for m in real_moves}
     for m in sorted(phrased.get("moves") or [],
-                    key=lambda x: SIG_ORDER.get(x.get("kind"), 9)):
+                    key=lambda x: sig_by_symbol.get(x.get("symbol"),
+                                                    (9, 9, 0))):
         add("moves", m)
     for c in phrased.get("coverage") or []:
         add("coverage", c)

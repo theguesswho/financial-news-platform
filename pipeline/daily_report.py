@@ -414,7 +414,15 @@ def generate_report(engine, for_date: date | None = None) -> dict:
                      WHERE exit_date > CURRENT_DATE - 2
                        AND COALESCE(era,'v1') = 'v2'""")).fetchall()]
     top_pick = _pick_top_story(real_moves, stories)
-    facts = {"top_story_pick": top_pick, "board_moves": real_moves,
+    # Re-rating days can produce 30+ moves: the writer stories only the 10
+    # most significant; the remainder land in the deterministic ledger
+    # (max_tokens lesson #4 — the giant P4 diff overflowed phrasing and
+    # failed the whole report closed, 2026-08-09).
+    storied_moves = sorted(real_moves,
+                           key=lambda m: (SIG_ORDER.get(m["kind"], 9),
+                                          -abs((m.get("score_to") or 0)
+                                               - (m.get("score_from") or 0))))[:10]
+    facts = {"top_story_pick": top_pick, "board_moves": storied_moves,
              "position_sales": sales,
              "week_ahead": week["notable"], "coverage": coverage,
              "story_events": {k: stories[k] for k in ("births", "verdicts")},
@@ -428,7 +436,7 @@ def generate_report(engine, for_date: date | None = None) -> dict:
     for attempt in range(3):
         try:
             resp = client.messages.create(
-                model=SONNET, max_tokens=3000, timeout=120,
+                model=SONNET, max_tokens=5000, timeout=180,
                 system=[{"type": "text", "text": VOICE,
                          "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content":

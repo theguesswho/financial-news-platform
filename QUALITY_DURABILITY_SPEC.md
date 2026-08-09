@@ -129,3 +129,16 @@ normal companies; JPMorgan is not).
   story/price layers may still justify them — watch the diff for
   over-punishment.
 - No new LLM cost; API one-time backfill + weekly TTM sweep within quota.
+
+## 4c. Hierarchical shrinkage for value percentiles (user-approved 2026-08-09)
+
+The Hubbell case: 39% of the universe (320/830) sits in industry buckets
+under 8 members; one new entrant in a 5-name bucket moved a value score
+25+ points and nearly force-sold a position. Perfect scores in 3-member
+buckets are equally misleading in the flattering direction (Erie, NiSource
+at 1.00). Fix: every stock gets industry AND sector percentiles, blended
+by bucket size — weight = n/(n+8). Continuous (no cliffs), explainable
+(buckets stay named), and a single niche entrant moves the blend by less
+than half. Offline simulation 2026-08-09: mean |shift| 0.127, 304 stocks
+>0.10 — this is the largest single correction in the P3 package and the
+reason P3 ships as ONE re-rating, not piecemeal.

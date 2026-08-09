@@ -93,6 +93,7 @@ def backfill_symbol(engine, sym: str) -> int:
             "gm": m(r.get("grossProfit")), "om": m(r.get("operatingIncome")),
             "nm": m(r.get("netIncome")),
             "fcf": (cf_by.get(r["date"], {}) or {}).get("freeCashFlow"),
+            "da": (cf_by.get(r["date"], {}) or {}).get("depreciationAndAmortization"),
             "roic": k.get("roic"), "roe": k.get("roe"),
             "dte": k.get("debtToEquity")})
     if not rows:
@@ -101,13 +102,14 @@ def backfill_symbol(engine, sym: str) -> int:
         conn.execute(text("""
             INSERT INTO fundamentals_annual
                 (symbol, fiscal_year, revenue, gross_margin, op_margin,
-                 net_margin, fcf, roic, roe, debt_to_equity)
-            VALUES (:s, :fy, :rev, :gm, :om, :nm, :fcf, :roic, :roe, :dte)
+                 net_margin, fcf, roic, roe, debt_to_equity, da)
+            VALUES (:s, :fy, :rev, :gm, :om, :nm, :fcf, :roic, :roe, :dte, :da)
             ON CONFLICT (symbol, fiscal_year) DO UPDATE SET
                 revenue=EXCLUDED.revenue, gross_margin=EXCLUDED.gross_margin,
                 op_margin=EXCLUDED.op_margin, net_margin=EXCLUDED.net_margin,
                 fcf=EXCLUDED.fcf, roic=EXCLUDED.roic, roe=EXCLUDED.roe,
-                debt_to_equity=EXCLUDED.debt_to_equity, fetched_at=NOW()
+                debt_to_equity=EXCLUDED.debt_to_equity, da=EXCLUDED.da,
+                fetched_at=NOW()
         """), rows)
     return len(rows)
 

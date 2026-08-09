@@ -72,15 +72,48 @@ punishes legitimate growth paths; validated on GDDY vs EVR):
   the same percentile slot the scorer already consumes; the 0.05 floor
   stands).
 
+## 4b. Sector metric profiles (user-approved addition 2026-08-09)
+
+The P1 audit found ~180 structurally-broken rows concentrated in Financial
+Services (77) and Real Estate (48): gross profit and invested capital are
+not real concepts for banks; REIT earnings are depreciation-distorted.
+The fix is SUBSTITUTION, not exclusion-as-penalty: every industry gets a
+metric applicability map; quality/value are composed from the metrics that
+are meaningful there, weights renormalized. No arbitrary zeros, no garbage
+inflation. Keyed off INDUSTRY, not sector (Evercore and BlackRock are
+normal companies; JPMorgan is not).
+
+- Profile STANDARD (default): current metric set, trend-fit as §4.
+- Profile BANK / INSURER (banks, insurers, credit): quality = ROE (level/
+  slope/consistency, 15y), net margin, revenue growth, efficiency (1-op
+  margin trend); EXCLUDED: ROIC, gross margin, D/E-as-risk. Value = fwd
+  P/E + price-to-book (EV/EBITDA and P/FCF excluded).
+- Profile REIT: quality = FFO growth + consistency (FFO approximated as
+  net income + D&A from cash-flow statements — one added column in the
+  canonical backfill), revenue growth; EXCLUDED: ROIC, ROE, gross margin.
+  Value = price-to-FFO (P/E and EV/EBITDA excluded).
+- Percentiles computed WITHIN profile groups (banks ranked against banks
+  on bank metrics). The qual assessor receives the profile and is
+  instructed to reason in its terms (ROE/book value for banks, FFO for
+  REITs) — never to quote excluded metrics.
+- Data addition to P1 tables: depreciation & amortization column in
+  fundamentals_annual + _ttm (from cash-flow endpoint, backfill re-run is
+  idempotent and cheap). ~90-100 universe names affected.
+- Winsorize guards stand for all profiles: |ROIC| > 150% or non-positive
+  equity -> metric treated as not-applicable for that row.
+
 ## 5. Rollout ritual (each gate = explicit user go)
 
 - **P1 — Backfill + canonical tables** (data only; zero scoring impact).
 - **P2 — Metric canonicalization**: assessor + UI fed the triptych from
   canonical tables; ROIC bug retired. (Prompt change — reviewed with user.)
-- **P3 — Quality v3 offline**: compute for full universe; deliver
+- **P3 — Quality v3 offline**: compute for full universe (incl. sector
+  metric profiles §4b and the cyclical entry doctrine); deliver
   before/after board diff (named test cases: EVR should fall / carry a
   cyclicality flag; GDDY-class compounders should hold or rise; steady
-  industrials should be unmoved). User picks weights from evidence.
+  industrials should be unmoved; banks/REITs re-scored on their proper
+  metrics — watch for newly-visible quality among the ~90-100 names
+  currently mis-scored). User picks weights from evidence.
 - **P4 — Cutover** on sign-off; V2_CONSIDERATIONS logged; SPY-twin record
   continues unbroken (no era reset — quality internals changed, thesis
   did not).

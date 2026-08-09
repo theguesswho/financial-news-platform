@@ -100,6 +100,15 @@ COMPONENT DEFINITIONS (v2 formula: gem = sqrt(Value x Quality) x NG^0.75):
   safety.
 
 
+BAND-TRANSITION RULE: if this stock crossed a rating band within the last
+~10 days (see TIER BAND HISTORY) — especially into or out of Strong Buy —
+your rationale MUST place the current band against the prior one: name the
+prior band, state plainly why it ended (including when the cause was OUR
+measurement being corrected — e.g. "the earlier Strong Buy rested on a
+quality score the old formula inflated"), and state what would move it
+back ("Strong Buy is 0.6 away; the path back is X"). A band change may
+never silently become the new normal after one assessment.
+
 CONTINUITY REQUIREMENT: your analysis is a LIVING VIEW, not a fresh take.
 Read your previous assessment in the provided data and frame this one explicitly as
 BUILDING on it, REINFORCING it, SHIFTING it, or DIVERGING from it — and say
@@ -167,6 +176,9 @@ MOST RECENT 10-K/10-Q:
 {trigger_context}
 
 YOUR PREVIOUS ASSESSMENT ({prev_date}): {prev_verdict}
+TIER BAND HISTORY (recent rating-band changes with their causes — continuity
+is chain-deep, not just vs the last assessment):
+{band_history}
 {prev_rationale}"""
 
 
@@ -243,12 +255,27 @@ def get_stock_context(engine, symbol: str) -> dict:
             LIMIT 10
         """), {"sym": symbol}).fetchall()[::-1]
 
+    with engine.connect() as conn:
+        hist_rows = conn.execute(text("""
+            SELECT assessed_at::date, adjusted_tier, LEFT(rationale, 140)
+            FROM qual_history WHERE symbol = :sym
+            ORDER BY assessed_at DESC LIMIT 8"""), {"sym": symbol}).fetchall()
+    band_changes = []
+    prev_tier = None
+    for d, tier, why in reversed(hist_rows):   # chronological
+        if tier != prev_tier and prev_tier is not None:
+            band_changes.append(f"- {d}: {prev_tier} -> {tier}: {why}")
+        prev_tier = tier
+    band_history = "\n".join(band_changes[-3:]) if band_changes \
+        else "(no band changes on record)"
+
     return {
         "call":       call,
         "filing":     filing,
         "fund":       fund,
         "trend_rows": trend_rows,
         "prev":       prev,
+        "band_history": band_history,
         "platform_notes": _platform_notes(engine),
     }
 
@@ -359,6 +386,7 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         prev_verdict         = (f"{ctx['prev'][0]} ({ctx['prev'][1]})"
                                 if ctx.get("prev") else "FIRST ASSESSMENT — no prior view"),
         prev_rationale       = (ctx["prev"][2] or "")[:600] if ctx.get("prev") else "",
+        band_history         = ctx.get("band_history", "(no band changes on record)"),
         trigger_context      = (
             f"{ctx.get('platform_notes', '')}"
             f"\nWHY YOU ARE BEING ASKED NOW: {gem['_trigger']}\n"

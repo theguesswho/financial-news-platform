@@ -315,6 +315,7 @@ def census(engine) -> dict:
 def run_structure_pass(engine) -> dict:
     ensure_schema(engine)
     out = {"taxonomy": classify_scopes(engine)}
+    out["parenting"] = assign_parents(engine)
     out["merge"] = adjudicate_and_merge(engine, find_merge_clusters(engine))
     out["census"] = census(engine)
     return out
@@ -328,3 +329,54 @@ if __name__ == "__main__":
     load_dotenv(Path(__file__).parent.parent / ".env", override=True)
     from pipeline.hidden_gem_scorer import get_engine
     run_structure_pass(get_engine())
+
+
+def assign_parents(engine) -> dict:
+    """Parent every active non-macro narrative into the hierarchy
+    (meta -> sector -> subsector). One batched Sonnet call for all
+    orphans; runs in the weekly structure pass so nothing orphans again.
+    (2026-08-09: 81 of 122 non-macro narratives had no parent — the
+    Themes page rendered them as an unlabeled pile.)"""
+    import json as _json
+    from anthropic import Anthropic
+
+    from pipeline.llm_usage import record_usage
+    with engine.connect() as conn:
+        parents = conn.execute(text("""
+            SELECT id, name, tier, LEFT(thesis, 120) FROM narratives
+            WHERE status = 'active' AND tier IN ('macro', 'sector')
+            ORDER BY (tier = 'macro') DESC, id""")).fetchall()
+        orphans = conn.execute(text("""
+            SELECT id, name, LEFT(thesis, 160) FROM narratives
+            WHERE status = 'active' AND parent_id IS NULL
+              AND tier NOT IN ('macro') AND COALESCE(scope,'') != 'company'
+            ORDER BY id""")).fetchall()
+    if not orphans:
+        return {"assigned": 0}
+    plist = "\n".join(f"{p[0]}. [{p[2]}] {p[1]}: {p[3]}" for p in parents)
+    olist = "\n".join(f"{o[0]}. {o[1]}: {o[2]}" for o in orphans)
+    prompt = (
+        "Assign each CHILD narrative to its most natural PARENT from the list "
+        "(a sector narrative belongs under a macro force; an industry/subsector "
+        "narrative belongs under the closest sector, or directly under a macro "
+        "when no sector fits). Every child gets exactly one parent id from the "
+        "parent list. Return ONLY JSON: {\"<child_id>\": <parent_id>, ...}\n\n"
+        f"PARENTS:\n{plist}\n\nCHILDREN:\n{olist}")
+    client = Anthropic()
+    resp = client.messages.create(model="claude-sonnet-4-6", max_tokens=3000,
+                                  timeout=120,
+                                  messages=[{"role": "user", "content": prompt}])
+    record_usage(engine, "narrative_structure", "claude-sonnet-4-6", resp.usage)
+    raw = resp.content[0].text.strip()
+    mapping = _json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+    valid_parents = {p[0] for p in parents}
+    n = 0
+    with engine.begin() as conn:
+        for cid, pid in mapping.items():
+            if int(pid) in valid_parents:
+                conn.execute(text(
+                    "UPDATE narratives SET parent_id = :p WHERE id = :c AND parent_id IS NULL"),
+                    {"p": int(pid), "c": int(cid)})
+                n += 1
+    print(f"assign_parents: {n} narratives parented")
+    return {"assigned": n}

@@ -797,8 +797,17 @@ def score_all_stocks(engine=None) -> list:
         engine = get_engine()
 
     narrative = compute_narrative_score(engine)
-    value     = compute_value_score(engine)
-    quality   = compute_quality_score(engine)
+    # ── P4 cutover (QUALITY_DURABILITY_SPEC, user-approved 2026-08-09) ──────
+    # Value: hierarchical shrinkage (industry+sector blend, w=n/(n+8)).
+    # Quality: 10y trend-fit (level/slope/consistency/cycle) with sector
+    # metric profiles (BANK/REIT/STANDARD). Cyclical entry doctrine applied
+    # at composition below. Legacy v2 functions retained for reference.
+    from pipeline.quality_v3 import compute_p3_universe
+    _p3 = compute_p3_universe(engine)
+    value   = {s: d["value_v3"] for s, d in _p3.items() if d.get("value_v3") is not None}
+    quality = {s: d["quality_v3"] for s, d in _p3.items() if d.get("quality_v3") is not None}
+    cyclical_open = {s for s, d in _p3.items()
+                     if d.get("cyclical") and not d.get("punished")}
     gap       = compute_gap_score(engine)
     call_gap  = compute_call_vs_filing_gap(engine)  # for display in results
 
@@ -943,6 +952,14 @@ def score_all_stocks(engine=None) -> list:
         q = max(q, 0.05)
         ng = n * unpriced
         gem = (v * q) ** 0.5 * (ng ** 0.75) if (v > 0 and q > 0 and ng > 0) else 0.0
+
+        # Cyclical entry doctrine (user 2026-08-09): a cyclical that is NOT
+        # currently punished cannot enter the board — we buy cyclicals when
+        # they are written off, never when things are going well. The score
+        # is capped just under the Watch line (visible, ineligible); the
+        # supercycle exception arrives via the story layer in P4b.
+        if sym in cyclical_open:
+            gem = min(gem, 0.33)
 
         # ── Fundamental momentum gate (divestiture guard 2026-08-06) ─────────
         divest_flag = sym in divested

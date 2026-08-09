@@ -224,3 +224,15 @@ off stale prices (BK showed 1.9 on a 3-week-old close). Fundamentals rows
 archived to fundamentals_delisted_archive, then removed. History (prices,
 filings) retained. TODO monthly: staleness check — no price 10+ trading
 days -> report bookkeeping line.
+
+## 2026-08-09 — P4 CUTOVER: quality v3 + shrunk value + profiles + doctrine
+QUALITY_DURABILITY_SPEC shipped end-to-end (user-approved at every gate):
+canonical FMP data (P1), single-definition metrics + triptych assessor
+(P2), and now live scoring on 10y trend-fit quality (40 level / 20 slope /
+30 consistency / 10 cycle), sector profiles (BANK/REIT), hierarchical
+value shrinkage (w=n/(n+8)), and the cyclical entry doctrine (flag at
+nmad>0.15; unpunished cyclicals capped below Watch). Board ~65 -> ~48 by
+merit. Held positions LHX (quality re-read: post-merger economics) and
+HUBB (shrunk value mid-pack) go through the normal machinery — no
+special-casing, user directive. No era reset: thesis unchanged, its
+measurement improved.

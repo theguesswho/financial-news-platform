@@ -26,7 +26,7 @@ from statistics import median
 from sqlalchemy import text
 
 SHRINK_K = 8
-CYCLICAL_MAD_THRESHOLD = 0.35   # normalized residual vol above this = cyclical
+CYCLICAL_MAD_THRESHOLD = 0.15   # normalized residual vol above this = cyclical (user lean 2026-08-09: EVR-class oscillation must flag)
 PUNISHED_RANGE_POSITION = 0.33  # TTM in bottom third of own 10y range
 
 BANK_INDUSTRIES = ("Banks", "Bank", "Insurance", "Credit Services",
@@ -104,7 +104,15 @@ def compute_p3_universe(engine) -> dict:
 
     out = {}
     for sym, f in fund.items():
-        rows = annual.get(sym, [])[-10:]
+        # Drop merger-era stub rows (no revenue = not a real fiscal year;
+        # LHX carried two all-zero rows from the 2019 L3/Harris transition
+        # that poisoned its trend as fake-zero ROIC years) and dedupe by
+        # calendar year, keeping the row WITH revenue.
+        raw_rows = [r for r in annual.get(sym, []) if r[2] and float(r[2]) > 0]
+        by_year = {}
+        for r in raw_rows:
+            by_year[str(r[1])[:4]] = r
+        rows = [by_year[y] for y in sorted(by_year)][-10:]
         if not rows:
             continue
         t = ttm.get(sym)

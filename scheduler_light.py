@@ -1073,6 +1073,11 @@ def weekly_deep_refresh():
 # ON CONFLICT, 18h qual guards), so a catch-up can never double-apply.
 
 CATCHUP_LOOKBACK_MIN = 45
+# Dead-run rescue (2026-08-09): a run that STARTED but never finished —
+# typically killed by a mid-run deploy — is invisible to the 45-minute
+# catch-up window. Look back a full day for those; the Saturday 06:00 run
+# died this way and nothing rescued it.
+DEADRUN_LOOKBACK_MIN = 1200
 
 def _record_run(job_id: str, slot_ts, phase: str):
     from pipeline.hidden_gem_scorer import get_engine
@@ -1159,8 +1164,21 @@ def _catchup_missed_slots(jobs: dict):
                 )"""))
         for job_id, fn in jobs.items():
             slot = _last_slot(job_id, now)
-            if slot is None or now - slot > timedelta(minutes=CATCHUP_LOOKBACK_MIN):
+            if slot is None:
                 continue
+            age_min = (now - slot).total_seconds() / 60
+            if age_min > CATCHUP_LOOKBACK_MIN:
+                # Beyond the normal window — but a run that STARTED and never
+                # finished within the dead-run window was killed by a deploy
+                # and still deserves rescue (Saturday 06:00, 2026-08-08).
+                with eng.connect() as conn:
+                    dead = conn.execute(text("""
+                        SELECT 1 FROM scheduler_runs
+                        WHERE job_id = :j AND slot_ts = :s
+                          AND started_at IS NOT NULL AND finished_at IS NULL
+                    """), {"j": job_id, "s": slot}).fetchone()
+                if not (dead and age_min <= DEADRUN_LOOKBACK_MIN):
+                    continue
             # A run must have FINISHED to count. At startup, any started-but-
             # unfinished row is guaranteed dead — the restart killed the process
             # that stamped it (proven live 2026-07-31: deploy at 13:00:26 killed

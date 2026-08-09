@@ -170,6 +170,32 @@ YOUR PREVIOUS ASSESSMENT ({prev_date}): {prev_verdict}
 {prev_rationale}"""
 
 
+_NOTES_CACHE: dict = {}
+
+
+def _platform_notes(engine) -> str:
+    """Active platform-event notes injected into EVERY assessment while
+    live (user 2026-08-09: methodology/data changes must never be narrated
+    as company news). Cached per process."""
+    if "v" in _NOTES_CACHE:
+        return _NOTES_CACHE["v"]
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS platform_notes (
+                    id SERIAL PRIMARY KEY, note TEXT NOT NULL,
+                    active_from DATE NOT NULL, active_to DATE NOT NULL)"""))
+            rows = conn.execute(text("""
+                SELECT note FROM platform_notes
+                WHERE CURRENT_DATE BETWEEN active_from AND active_to""")).fetchall()
+        _NOTES_CACHE["v"] = ("".join(
+            f"\nPLATFORM NOTE (this is about OUR measurement, NOT the company): {r[0]}\n"
+            for r in rows)) if rows else ""
+    except Exception:
+        _NOTES_CACHE["v"] = ""
+    return _NOTES_CACHE["v"]
+
+
 def get_stock_context(engine, symbol: str) -> dict:
     """Pull all context needed for qual assessment from DB."""
     with engine.connect() as conn:
@@ -223,6 +249,7 @@ def get_stock_context(engine, symbol: str) -> dict:
         "fund":       fund,
         "trend_rows": trend_rows,
         "prev":       prev,
+        "platform_notes": _platform_notes(engine),
     }
 
 
@@ -333,10 +360,11 @@ def build_prompt(gem: dict, ctx: dict) -> str:
                                 if ctx.get("prev") else "FIRST ASSESSMENT — no prior view"),
         prev_rationale       = (ctx["prev"][2] or "")[:600] if ctx.get("prev") else "",
         trigger_context      = (
+            f"{ctx.get('platform_notes', '')}"
             f"\nWHY YOU ARE BEING ASKED NOW: {gem['_trigger']}\n"
             "Your rationale MUST open by stating whether this event/move changes "
             "the thesis or is noise — that opinion is the point of this assessment."
-            if gem.get("_trigger") else ""),
+            if gem.get("_trigger") else ctx.get("platform_notes", "")),
     )
 
 

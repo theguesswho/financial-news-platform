@@ -37,9 +37,9 @@ if qjob:
     sys.exit(1)
 
 # 2. slot starting within 10 minutes? (06:00 daily; 13:00/21:00 Mon-Fri)
-slots = [(6, 0, "daily", range(7)), (13, 0, "midday", range(5)),
-         (21, 0, "after_close", range(5)),
-         (22, 0, "weekly", (4,))]   # Friday 22:00 UTC = 6am Sat SGT, ~60 min
+slots = [(6, 0, "daily", range(7)),
+         (22, 0, "after_close", range(5)),
+         (23, 30, "weekly", (4,))]   # Fri 23:30 UTC = 7:30am Sat SGT, ~60 min
 for h, m, name, days in slots:
     slot = now.replace(hour=h, minute=m, second=0, microsecond=0)
     for d in (slot, slot + timedelta(days=1)):

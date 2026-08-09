@@ -1135,12 +1135,13 @@ def _last_slot(job_id: str, now):
     for days_back in range(0, 8):
         d = (now - timedelta(days=days_back)).date()
         wd = d.weekday()          # Mon=0 .. Sun=6
-        hour = {"daily": 6, "midday": 13, "after_close": 21, "weekly": 18}[job_id]
-        if job_id in ("midday", "after_close") and wd > 4:
+        hour, minute = {"daily": (6, 0), "after_close": (22, 0),
+                        "weekly": (23, 30)}[job_id]
+        if job_id == "after_close" and wd > 4:
             continue
-        if job_id == "weekly" and wd != 6:
+        if job_id == "weekly" and wd != 4:   # Friday (was Sunday pre-2026-08-09)
             continue
-        slot = datetime(d.year, d.month, d.day, hour, 0, 0)
+        slot = datetime(d.year, d.month, d.day, hour, minute, 0)
         if slot <= now:
             return slot
     return None
@@ -1231,7 +1232,12 @@ def start_scheduler():
         id="daily", name="Daily data update",
         replace_existing=True, misfire_grace_time=3600,
     )
-    scheduler.add_job(
+    # Midday run RETIRED 2026-08-09 (user): it fired at 13:00 UTC = 9am NY,
+    # BEFORE the open — rescoring on stale closes, producing only boundary
+    # noise. The platform does not trade intraday; nothing values an
+    # intraday rescore. Function kept for manual use.
+    _RETIRED = scheduler.add_job  # noqa — preserve indentation shape
+    if False: scheduler.add_job(
         _wrap_job("midday", midday_refresh),
         trigger=CronTrigger(day_of_week="0-4", hour=13, minute=0, timezone="UTC"),
         id="midday", name="Mid-day refresh (Mon–Fri)",
@@ -1239,14 +1245,14 @@ def start_scheduler():
     )
     scheduler.add_job(
         _wrap_job("after_close", after_close_refresh),
-        trigger=CronTrigger(day_of_week="0-4", hour=21, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day_of_week="0-4", hour=22, minute=0, timezone="UTC"),
         id="after_close", name="After-close refresh (Mon–Fri)",
         replace_existing=True, misfire_grace_time=1800,
     )
 
     scheduler.add_job(
         _wrap_job("weekly", weekly_deep_refresh),
-        trigger=CronTrigger(day_of_week="4", hour=22, minute=0, timezone="UTC"),
+        trigger=CronTrigger(day_of_week="4", hour=23, minute=30, timezone="UTC"),
         id="weekly", name="Weekly deep refresh (Fri 22:00 UTC = Sat 6am SGT — after Friday close+ingestion; user 2026-08-09)",
         replace_existing=True, misfire_grace_time=7200,
     )
@@ -1270,7 +1276,7 @@ if __name__ == "__main__":
 
     # V2 #16: if a deploy just ate a cron slot, run the missed job now.
     threading.Thread(target=_catchup_missed_slots, name="catchup", kwargs={
-        "jobs": {"daily": daily_data_update, "midday": midday_refresh,
+        "jobs": {"daily": daily_data_update,
                  "after_close": after_close_refresh, "weekly": weekly_deep_refresh}
     }).start()
 

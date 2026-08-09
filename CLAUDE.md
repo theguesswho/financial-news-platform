@@ -4,9 +4,11 @@
 Pushes restart Railway services and KILL live scheduler runs. Rules:
 1. NEVER push during a scheduler slot or within 10 min of one:
    - daily:       06:00 UTC (~50 min) — 2pm Singapore — EVERY day
-   - midday:      13:00 UTC (~5 min)  — Mon-Fri
-   - after-close: 21:00 UTC (~30 min) — Mon-Fri
-   - weekly:      22:00 UTC Friday (~60 min) — 6am Saturday Singapore
+   - after-close: 22:00 UTC (~40 min) — Mon-Fri — 6am SGT; generates the
+     session report edition at its end
+   - weekly:      23:30 UTC Friday (~60 min) — 7:30am Saturday Singapore;
+     regenerates Friday's edition with weekly results
+   (midday run retired 2026-08-09 — it fired pre-open and produced noise)
 2. The pre-push gate (.githooks/pre-push -> scripts/deploy_gate.py)
    enforces this mechanically. DEPLOY_ANYWAY=1 only for emergencies.
 3. Batch pushes; two rebuilds back-to-back once broke the live site.

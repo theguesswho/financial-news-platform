@@ -252,6 +252,9 @@ def _process_job_queue():
             elif jtype == "birth_queue":
                 from pipeline.company_narrative import process_birth_queue
                 rep = process_birth_queue(eng, limit=_json.loads(payload) if payload else 2)
+            elif jtype == "weekly_deep":
+                weekly_deep_refresh()
+                rep = {"weekly": "completed via queue"}
             elif jtype == "fmp_backfill":
                 from pipeline.fmp_canonical import backfill_universe
                 rep = backfill_universe(eng)
@@ -1225,8 +1228,8 @@ def start_scheduler():
 
     scheduler.add_job(
         _wrap_job("weekly", weekly_deep_refresh),
-        trigger=CronTrigger(day_of_week="6", hour=18, minute=0, timezone="UTC"),
-        id="weekly", name="Weekly deep refresh (Sunday)",
+        trigger=CronTrigger(day_of_week="4", hour=22, minute=0, timezone="UTC"),
+        id="weekly", name="Weekly deep refresh (Fri 22:00 UTC = Sat 6am SGT — after Friday close+ingestion; user 2026-08-09)",
         replace_existing=True, misfire_grace_time=7200,
     )
 

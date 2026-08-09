@@ -248,6 +248,18 @@ def render_report(engine):
                 chips.append(f"<span class='mr-chip'>Our picks <b class='mr-up'>{us:+.1f}%</b>"
                              f" vs S&amp;P 500 <b>{spy:+.1f}%</b></span>")
             parts.append('<div class="mr-chips">' + "".join(chips) + "</div>")
+            leaders = p.get("leaders") or []
+            if leaders:
+                cls_map = {"Strong Buy": "sb", "Buy": "buy"}
+                lead_html = " ".join(
+                    f'<span class="mr-ev" style="display:inline-flex;gap:5px;margin-right:14px">'
+                    f'<span class="mr-sym">{_esc(l["symbol"])}</span>'
+                    f'<span class="mr-mini">{l["score"]:.1f}</span>'
+                    f'<span class="mr-b {cls_map.get(l["tier"], "watch")}">{_esc(l["tier"])}</span></span>'
+                    for l in leaders)
+                parts.append(f'<div style="margin:2px 0 6px"><span class="mr-sub" '
+                             f'style="font-style:normal;margin-right:10px">Board leaders:</span>'
+                             f'{lead_html}</div>')
             if week_rows:
                 parts.append(_week_html(week_rows, p.get("week_dates"), standings))
         elif section == "top_story":

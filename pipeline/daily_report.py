@@ -370,12 +370,21 @@ def _masthead(engine, moves) -> dict:
             SELECT COUNT(*) FROM leaderboard_history
             WHERE date = (SELECT MAX(date) FROM leaderboard_history)
               AND COALESCE(assessed_tier, tier) IN ('Strong Buy', 'Buy')""")).scalar()
+        leaders = [{"symbol": r[0], "score": float(r[1]), "tier": r[2]}
+                   for r in conn.execute(text("""
+            SELECT symbol, ROUND(gem_score*10,1), COALESCE(assessed_tier, tier)
+            FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+              AND COALESCE(assessed_tier, tier) IS NOT NULL
+            ORDER BY CASE COALESCE(assessed_tier, tier)
+                WHEN 'Strong Buy' THEN 0 WHEN 'Buy' THEN 1 ELSE 2 END,
+                gem_score DESC LIMIT 6""")).fetchall()]
     sc = {}
     try:
         sc = get_scorecard(engine) or {}
     except Exception:
         pass
-    return {"board": board_n, "changes": len(moves),
+    return {"board": board_n, "leaders": leaders, "changes": len(moves),
             "us_pct": sc.get("portfolio_return_pct"),
             "spy_pct": sc.get("spy_return_pct"),
             "positions": sc.get("open_lots", sc.get("n_lots")),
@@ -388,7 +397,7 @@ SIG_ORDER = {"exit": 0, "entry": 1, "upgrade": 2, "verdict": 3, "birth": 4,
              "downgrade": 5, "info": 6}
 
 
-def generate_report(engine, for_date: date | None = None) -> dict:
+def generate_report(engine, for_date: date | None = None, force: bool = False) -> dict:
     """Assemble facts, phrase once, store rows — one report per US TRADING
     SESSION (user redesign 2026-08-09): generated right after that
     session's close is ingested, stamped with the SESSION date. Weekends
@@ -398,7 +407,7 @@ def generate_report(engine, for_date: date | None = None) -> dict:
 
     create_table(engine)
     for_date = for_date or date.today()
-    if for_date.weekday() >= 5:
+    if force is False and for_date.weekday() >= 5:
         print(f"daily report: {for_date} is not a trading session — skipped")
         return {"status": "skipped_weekend"}
     moves = _board_moves(engine)
@@ -425,10 +434,18 @@ def generate_report(engine, for_date: date | None = None) -> dict:
     # most significant; the remainder land in the deterministic ledger
     # (max_tokens lesson #4 — the giant P4 diff overflowed phrasing and
     # failed the whole report closed, 2026-08-09).
-    storied_moves = sorted(real_moves,
-                           key=lambda m: (SIG_ORDER.get(m["kind"], 9),
-                                          -abs((m.get("score_to") or 0)
-                                               - (m.get("score_from") or 0))))[:10]
+    def _mag(m):
+        return -abs((m.get("score_to") or 0) - (m.get("score_from") or 0))
+    by_kind = {}
+    for m in sorted(real_moves, key=_mag):
+        by_kind.setdefault(m["kind"], []).append(m)
+    # Balanced quotas (user 2026-08-09): a 31-exit day must not silence
+    # entries and upgrades — every category gets representation, remaining
+    # slots fill by magnitude.
+    storied_moves = (by_kind.get("entry", [])[:3] + by_kind.get("exit", [])[:3]
+                     + by_kind.get("upgrade", [])[:2] + by_kind.get("downgrade", [])[:2])
+    leftovers = [m for m in sorted(real_moves, key=_mag) if m not in storied_moves]
+    storied_moves += leftovers[:10 - len(storied_moves)]
     facts = {"top_story_pick": top_pick, "board_moves": storied_moves,
              "position_sales": sales,
              "week_ahead": week["notable"], "coverage": coverage,

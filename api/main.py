@@ -31,7 +31,9 @@ def health():
     return {"status": "ok", "service": "api", "version": "2.0.0"}
 
 
-# Phase 1: routers for /board, /stocks/{symbol}, /narratives, /reports
-# mount here as they land, e.g.:
-# from api.routers import board
-# app.include_router(board.router)
+from api.routers import board, narratives, reports, stocks  # noqa: E402
+
+app.include_router(board.router)
+app.include_router(stocks.router)
+app.include_router(narratives.router)
+app.include_router(reports.router)

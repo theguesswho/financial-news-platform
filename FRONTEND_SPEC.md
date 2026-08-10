@@ -58,6 +58,15 @@ Postgres (Railway)  ←  pipeline / scheduler        (unchanged)
 
 ## API surface (build in this order)
 
+Boundary conventions (decided 2026-08-10, Phase 1):
+- **Scores cross the API on the 10-point display scale** (the `fmt10`
+  rule applied at the boundary, as numbers, 1dp). Internal 0–1 math
+  never leaves the API; `None` passes through so "no data" stays
+  distinguishable from 0. Helper: `api/deps.py::ten()`.
+- Tier names, momentum words, and direction words pass through verbatim
+  from the DB (already plain-lexicon).
+- Errors: FastAPI HTTPException — 404 for unknown symbol / report date.
+
 Read endpoints first — they carry no risk and unblock all UI work:
 
 - `GET /board` — current leaderboard: symbol, gem (10-pt), tier (final,
@@ -147,7 +156,48 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       First deploy verified: https://web-production-8b767.up.railway.app
       serves the scaffold (HTTP 200). Committed locally after the Phase 0
       push; rides with the Phase 1 push (no doc-only rebuilds).
-- [ ] Phase 1: read API — board, stocks, narratives, reports
+- [x] Phase 1 (2026-08-10): read API for board / stocks / narratives /
+      reports, built as ports of the Streamlit pages' queries and merge
+      logic (single source of truth preserved: leaderboard_history
+      snapshot, never a live re-score). Files: `api/deps.py` (shared
+      engine + 10-pt boundary transform), `api/routers/{board,stocks,
+      narratives,reports}.py`, mounted in `api/main.py`.
+      - `GET /board` — full Hidden-Gems merge: qual layer, narrative-
+        override promotions, data-computed disagreement badges (LHX
+        rule), first-EVER-appearance NEW flag, tier moves + rank deltas
+        vs yesterday's FINAL positions (ACM rule), and `exit_grace`
+        (the countdown state: on board but raw score ≤ WATCH — holding
+        a hysteresis seat). Returns `board` + `off_board` + counts.
+      - `GET /board/scorecard` — track-record lots vs SPY twins
+        (pipeline.track_record.get_scorecard passthrough).
+      - `GET /stocks/{symbol}` — dossier: snapshot scores, score+band
+        history (each history row carries final tier → band-transition
+        memory), qual assessment, fundamentals, `annual_history` (10
+        annual fundamentals_history rows = triptych raw material),
+        earnings calls, 10-K/10-Q, claims, insider decisions (per-
+        person-per-day aggregation, entity filers excluded), full price
+        series, theme alignments, valuation gaps. 404 if not covered.
+      - `GET /narratives` — three-layer JSON: `map` (macros, rollup
+        weights, momentum), `what_moved` (salience-ranked, formula
+        ported verbatim: weight + 2×ledger-changes-7d + accelerating
+        bonus), `library` (full parented tree). Company scope excluded.
+      - `GET /reports/latest`, `GET /reports/{date}` — edition grouped
+        into masthead / top_story / week_ahead / sections / scoreboard
+        + board standings; live race numbers overlaid ONLY on the
+        latest edition (stored masthead is the 6am snapshot).
+      All endpoints verified locally with uvicorn + curl against the
+      live DB (board counts 5/30/12, GDDY dossier full, narratives map
+      4 macros, reports latest + archived + 404s). Also removed junk
+      Finder duplicate `api/__init__ 2.py`. requirements.txt already
+      carries fastapi/uvicorn — no dependency change.
+      CAVEAT for next session: the `api` Railway service does not exist
+      yet — the API runs locally only. Creating it needs: root
+      directory `.` (imports pipeline/ + db/), start command
+      `uvicorn api.main:app --host 0.0.0.0 --port $PORT`, DATABASE_URL
+      + API_CORS_ORIGINS env vars, and watch paths `api/**`,
+      `pipeline/**`, `db/**`, `requirements.txt`. Do NOT add a root
+      railway.json/toml for this — it would hijack the scheduler
+      service's Procfile config (shared repo root).
 - [ ] Phase 2: signature view (2–3 live variants → user picks → tokens
       locked in DESIGN_BRIEF.md) + The Board page
 - [ ] Phase 3: Companies workbench (dossier + events/insiders/filings)

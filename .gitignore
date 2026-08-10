@@ -1,11 +1,15 @@
-# Ignore environment secrets
+# Environment secrets
 .env
 env.yaml
 
-# Ignore state files
+# State files
 seen_filings.txt
 
-# Ignore Python virtual environment
-venv/__pycache__/
+# Python
+venv/
+__pycache__/
 *.pyc
-data/postgres/
+
+# Local database and dumps — machine state, never code.
+# Railway runs its own Postgres; nothing deployed reads this folder.
+data/

@@ -193,26 +193,25 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       Pushed 05:02 UTC (deploy gate clear, 58 min before the daily
       slot); scheduler service redeployed and was back scheduling at
       05:00:35 per its logs — verified healthy before the 06:00 run.
-      HALF-DONE — the `api` Railway service (deploy of this code):
-      created as an EMPTY service (no source connected → inert, nothing
-      runs) with env vars already set: DATABASE_URL, API_CORS_ORIGINS
-      (web prod URL + localhost:3000). Remaining steps are dashboard-
-      only (CLI can't set them; public GraphQL API rejects the CLI's
-      session token; Chrome automation lacks railway.app permission).
-      IN THIS ORDER — the order is a safety property:
-      1. api service → Settings → Deploy → Custom Start Command:
-         `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
-      2. Settings → Watch Paths: `api/**`, `pipeline/**`, `db/**`,
-         `requirements.txt`
-      3. ONLY THEN Settings → Source → connect repo
-         theguesswho/financial-news-platform, branch main, root
-         directory `/` (the API imports pipeline/ and db/).
-      4. Generate a public domain; verify `/health` then `/board`.
-      Connecting the repo FIRST would make the build fall through to
-      the root Procfile (`worker: python scheduler_light.py`) and boot
-      a SECOND live scheduler — never do it. Likewise never add a root
-      railway.json/toml (it would hijack the scheduler service's own
-      config — shared repo root).
+      DEPLOYED — the `api` Railway service is live (user did the
+      dashboard steps; start command + watch paths were staged BEFORE
+      the repo was connected, so the root Procfile never ran):
+      - domain: https://api-production-e885.up.railway.app (port 8080)
+      - start command: `uvicorn api.main:app --host 0.0.0.0 --port 8080`
+        GOTCHA: the PORT is HARDCODED because Railway passes the custom
+        start command without shell expansion — `--port $PORT` reached
+        uvicorn as the literal string and crash-looped. 8080 must match
+        the domain's target port; if the domain is ever regenerated on
+        a different port, change the start command to match.
+      - watch paths: api/**, pipeline/**, db/**, requirements.txt
+      - env: DATABASE_URL, API_CORS_ORIGINS (web prod URL + localhost:3000)
+      - root directory `/` (the API imports pipeline/ and db/); never
+        add a root railway.json/toml — it would hijack the scheduler
+        service's own config (shared repo root).
+      Verified on production 2026-08-10: /health ok; /board returns the
+      2026-08-09 snapshot (counts 5/30/12, GDDY 5.3 Strong Buy #1);
+      /stocks/GDDY, /narratives, /reports/latest, /board/scorecard all
+      return correct payloads. Phase 2 (web/) consumes this base URL.
 - [ ] Phase 2: signature view (2–3 live variants → user picks → tokens
       locked in DESIGN_BRIEF.md) + The Board page
 - [ ] Phase 3: Companies workbench (dossier + events/insiders/filings)

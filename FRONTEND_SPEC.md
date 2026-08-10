@@ -120,6 +120,9 @@ Mutations last, once auth exists:
       CONFIGURED but not yet PROVEN by a web-only push — until a
       web-only push is observed to leave the scheduler alone, the
       deploy gate discipline stays as-is (CLAUDE.md rule 5).
+      First deploy verified: https://web-production-8b767.up.railway.app
+      serves the scaffold (HTTP 200). Committed locally after the Phase 0
+      push; rides with the Phase 1 push (no doc-only rebuilds).
 - [ ] Phase 1: read API — board, stocks, narratives, reports
 - [ ] Phase 2: Home/Report page
 - [ ] Phase 3: Hidden Gems board

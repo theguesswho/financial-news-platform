@@ -2,11 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "finews-ui",
-      "runtimeExecutable": "venv/bin/python",
-      "runtimeArgs": ["-m", "streamlit", "run", "ui/Home.py", "--server.headless", "true"],
-      "port": 8501,
-      "autoPort": false
+      "name": "home-report",
+      "url": "http://localhost:8601",
+      "port": 8601
+    },
+    {
+      "name": "web",
+      "url": "http://localhost:3100",
+      "port": 3100
     }
   ]
 }

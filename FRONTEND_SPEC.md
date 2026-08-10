@@ -88,17 +88,23 @@ Mutations last, once auth exists:
 
 ## Page build order (revised 2026-08-10 per DESIGN_BRIEF.md)
 
-Nav is five nouns: The Board / Companies / Narratives / What Changed /
-Portfolio. Events, insiders, and news dissolve into Companies and What
-Changed — they are not pages.
+Nav is five nouns: Narratives / The Board / Companies / What Changed /
+Portfolio. (FRONT DOOR REVISED 2026-08-10: Narratives is the landing —
+"FASTgraphs is the graphs; we are the narratives." See DESIGN_BRIEF.md
+Landing page section.) Events, insiders, and news dissolve into
+Companies and What Changed — they are not pages.
 
 1. **Signature view + The Board** — the design centerpiece first (2–3
    live variants, user picks, tokens locked into DESIGN_BRIEF.md), then
-   the Board built as that view collapsed to a row per stock. Front door.
+   the Board built as that view collapsed to a row per stock. (Board is
+   no longer the front door but remains the core opportunity-set page —
+   none of this work is wasted.)
 2. **Companies** — the workbench dossier: signature view, band history,
    assessment, triptych, events/insiders/filings in context.
-3. **What Changed** — the daily edition as instrument log.
-4. **Narratives** — port the three-layer map.
+3. **Narratives landing** (PROMOTED) — the front door: forces with
+   company counts, emerging strip, shifts/weakness from the ledger,
+   bridge into the Board; three-layer map behind it.
+4. **What Changed** — the daily edition as instrument log.
 5. **Portfolio** — owner-only; mutations + auth decision.
 
 ## Open decisions (user sign-off before the relevant phase)
@@ -212,11 +218,62 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       2026-08-09 snapshot (counts 5/30/12, GDDY 5.3 Strong Buy #1);
       /stocks/GDDY, /narratives, /reports/latest, /board/scorecard all
       return correct payloads. Phase 2 (web/) consumes this base URL.
-- [ ] Phase 2: signature view (2–3 live variants → user picks → tokens
-      locked in DESIGN_BRIEF.md) + The Board page
-- [ ] Phase 3: Companies workbench (dossier + events/insiders/filings)
-- [ ] Phase 4: What Changed (daily edition as instrument log)
-- [ ] Phase 5: Narratives (port three-layer map)
+- [x] Phase 2 (2026-08-10): signature view chosen + The Board built.
+      Lab route `web/app/signature` (KEPT as the permanent design lab)
+      served live variants A/B/C, then refinements B1/B2/C1/C2; user
+      picked **C1 (position row) + C2's movement language** for Board
+      rows, and **B1 (triptych + band ruler)** as the future Companies
+      dossier hero — full decision + locked design tokens recorded in
+      DESIGN_BRIEF.md (tier = ordinal blue ramp, validated light+dark;
+      up/down and momentum separate roles; momentum orange RESERVED).
+      The Board lives at `web/app/page.tsx` + `components/board/
+      BoardRow.tsx`, consuming GET /board (prod API): tier-grouped
+      sections (news hierarchy), movement cell (NEW / ▲▼ rank / tier
+      moves / grace seat), band strip per row, Q·V·G mini-bars,
+      off-board summarized to names ≥3.0 + count (full universe was a
+      600-symbol wall). Two additions same session (user):
+      - rows EXPAND IN PLACE (client component, aria-expanded) to show
+        the qualitative call — rationale / bull case / bear case in
+        three equal columns (equal weight = honest-surfaces rule),
+        unassessed rows say "not yet through the judgment layer";
+        "full dossier →" link inside the panel (→ /signature until
+        Phase 3, then /companies/[symbol]);
+      - the judgment layer's standing adjustment is a BADGE next to the
+        tier chip, not a footnote: tinted "▲ judgment raised it" /
+        "▼ judgment restrained it" (up/down role), violet "narrative
+        promoted" (gap-accent role); the explanatory line ("data alone
+        says X") stays under the company name. Nav shell in layout.tsx: five nouns, only The
+      Board live. Shared primitives: `components/signature/shared.tsx`
+      (TierChip, BandStrip, Sparkline), `evidence.tsx`, `MiniPath.tsx`,
+      `CompanySwitcher.tsx` (dossier toggle: dropdown in rank order +
+      prev/next — reuse in Phase 3). API client: `web/lib/api.ts`
+      (API_URL env, defaults to prod; fetch no-store).
+      Verified: light+dark, mobile (responsive ROW_GRID: rank/company/
+      tier/score, movement folds under name), hover tooltip on charts,
+      `next build` clean. NOT pushed this session — see caveats.
+      Caveats for next session:
+      - Evidence panes (quality/value/gap) get a DATA PASS in Phase 3
+        before shipping on the company page — agreed direction in
+        DESIGN_BRIEF.md (margin road + ROIC/FCF chips; P/E AND
+        EV/EBITDA vs the NAMED narrative peer set; top narratives with
+        trajectory above the gap bar).
+      - The "full dossier →" link inside the expanded row points at
+        /signature?symbol=X until Phase 3 builds /companies/[symbol];
+        repoint it then.
+      - Dev server: the preview launcher cannot spawn npm (sandboxed
+        cwd, uv_cwd EPERM) — run `npm run dev -- --port 3100` in web/
+        via background shell; .claude/launch.json "web" entry is
+        url-attach to http://localhost:3100.
+      - fundamentals join on the board is by symbol only; company_name
+        missing for a few tickers renders blank — cosmetic, revisit.
+- [ ] Phase 3: Companies workbench — /companies/[symbol] led by B1
+      (triptych + ruler + CompanySwitcher), evidence-pane data pass
+      (per DESIGN_BRIEF.md, needs sign-off), then events/insiders/
+      filings in context; repoint Board row links here
+- [ ] Phase 4: Narratives landing — THE FRONT DOOR (promoted 2026-08-10;
+      DESIGN_BRIEF.md Landing page section is the contract) + three-layer
+      map behind it
+- [ ] Phase 5: What Changed (daily edition as instrument log)
 - [ ] Phase 6: read API remainder; anything the pages still need
 - [ ] Phase 7: auth decision + Portfolio (owner-only; mutations)
 - [ ] Phase 8: single-user product complete — full review pass vs

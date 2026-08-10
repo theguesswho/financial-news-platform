@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
+/* Provisional Phase-2 tokens. Three separate color roles (DESIGN_BRIEF.md):
+   tier ≠ momentum ≠ up/down. Tier is an ordinal blue ramp (conviction =
+   depth) validated light+dark; up/down are the delta tokens; momentum is
+   reserved on orange for the Narratives phase. Locked after the
+   signature-view pick. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #898781;
+  --hairline: #e1e0d9;
+  --baseline: #c3c2b7;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --tier-sb: #104281;
+  --tier-buy: #2a78d6;
+  --tier-watch: #86b6ef;
+
+  --up: #006300;
+  --down: #d03b3b;
+
+  --momentum: #eb6834; /* reserved: narrative momentum only */
+  --gap-accent: #4a3aa7; /* the unpriced-story highlight */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-3: #898781;
+    --hairline: #2c2c2a;
+    --baseline: #383835;
+
+    --tier-sb: #9ec5f4;
+    --tier-buy: #3987e5;
+    --tier-watch: #1c5cab;
+
+    --up: #0ca30c;
+    --down: #e66767;
+
+    --momentum: #d95926;
+    --gap-accent: #9085e9;
   }
 }
 
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-hairline: var(--hairline);
+  --color-baseline: var(--baseline);
+  --color-tier-sb: var(--tier-sb);
+  --color-tier-buy: var(--tier-buy);
+  --color-tier-watch: var(--tier-watch);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-momentum: var(--momentum);
+  --color-gap-accent: var(--gap-accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Editorial vocabulary carried from the report page */
+.kicker {
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.num {
+  font-variant-numeric: tabular-nums;
 }

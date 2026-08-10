@@ -18,6 +18,18 @@ Pushes restart Railway services and KILL live scheduler runs. Rules:
    pipeline/scheduler/requirements changes; UI-only pushes touch only the
    web service. Until confirmed set, treat EVERY push as a scheduler restart.
 
+## Frontend v2 (api/ + web/)
+- ALL frontend work is governed by FRONTEND_SPEC.md. Read it BEFORE
+  touching api/, web/, or anything frontend-related — even for a "quick
+  fix". Its Progress section is the state; the previous chat is not.
+- Every decision and every phase completion is written into
+  FRONTEND_SPEC.md before the session ends. A decision that exists only
+  in chat does not exist.
+- Watch-path isolation (web-only pushes skipping the scheduler) is
+  CONFIGURED but NOT YET PROVEN. Until a web-only push is observed
+  leaving the scheduler service untouched — then recorded here — every
+  push counts as a scheduler restart and full deploy-gate rules apply.
+
 ## Other standing rules
 - Scoring changes: freeze discipline — explicit user sign-off, log in
   V2_CONSIDERATIONS.md. Offline before/after board diff ritual for big ones.

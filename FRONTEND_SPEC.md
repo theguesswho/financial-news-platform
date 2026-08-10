@@ -96,11 +96,24 @@ Mutations last, once auth exists:
 
 ## How to build (session discipline)
 
-- One phase per session. Open each build session with:
-  "Read FRONTEND_SPEC.md. We are on phase N. <what's done, what's next>."
-- Update this file's **Progress** section at the end of every phase —
-  the next session reads it, not the previous chat.
-- Verify in the browser before any push; the deploy gate applies as usual.
+These are rules, not suggestions. Sessions are disposable; this file is not.
+
+1. One phase per session. Open each build session with:
+   "Read FRONTEND_SPEC.md. We are on phase N. <what's done, what's next>."
+2. **Decisions land in this file, immediately.** Any choice that outlives
+   the session — library, endpoint shape, auth approach, design call,
+   scope cut — gets written into the relevant section (and Open decisions
+   gets resolved/updated) before the session moves on. A decision that
+   exists only in chat does not exist.
+3. **End-of-session checklist** (do not skip, even mid-phase):
+   - Progress section updated with what was actually done and verified
+   - any new caveat/gotcha recorded where the NEXT session will see it
+   - anything half-finished described precisely enough to resume cold
+4. Verify in the browser before any push; the deploy gate applies as usual.
+5. **Watch-path proof pending:** isolation is configured but unproven.
+   The first web-only push must be followed by a Railway dashboard check —
+   if the scheduler service stayed quiet, record it HERE and in CLAUDE.md;
+   until then every push counts as a scheduler restart.
 
 ## Progress
 

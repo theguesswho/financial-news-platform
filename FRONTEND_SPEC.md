@@ -32,8 +32,12 @@ Postgres (Railway)  ←  pipeline / scheduler        (unchanged)
 - **web/** — fresh Next.js + Tailwind app (name it `web/` to avoid ghosts
   of `frontend/`). Deployed as its own Railway service with watch path
   `web/**` so UI deploys never touch the scheduler.
-- **Streamlit stays live and untouched until parity.** Cutover page by
-  page; kill `ui/` only when nothing links to it.
+- **Streamlit is permanent** (decision 2026-08-10): it is the
+  methodology track's internal lab bench and is NOT retired at parity.
+  The product (web/) is a separate track for external users — see
+  DESIGN_BRIEF.md for identity/nav/design, CLAUDE.md for the two-track
+  boundary (product never modifies pipeline/scoring/Streamlit/platform
+  tables; product state lives in new tables).
 
 ## Non-negotiables (carried from the methodology — do not relitigate)
 
@@ -73,16 +77,20 @@ Mutations last, once auth exists:
 - `POST /portfolio/transactions`, `DELETE /portfolio/transactions/{id}`
   (soft delete, as today).
 
-## Page migration order (value-first)
+## Page build order (revised 2026-08-10 per DESIGN_BRIEF.md)
 
-1. **Home / Report** — the daily edition is the product's face. The report
-   page's editorial language (masthead, board-leaders strip, week grid) is
-   the design north star for everything else.
-2. **Hidden Gems board** — sortable, filterable, countdown chips.
-3. **Stock Detail** — the dossier; richest interactivity win over Streamlit.
-4. **Narrative Map** — three layers, just rebuilt in Streamlit; port design.
-5. **Portfolio** — last of the big pages because it has mutations + auth.
-6. Events / Insiders / News Wire — small, fold in as capacity allows.
+Nav is five nouns: The Board / Companies / Narratives / What Changed /
+Portfolio. Events, insiders, and news dissolve into Companies and What
+Changed — they are not pages.
+
+1. **Signature view + The Board** — the design centerpiece first (2–3
+   live variants, user picks, tokens locked into DESIGN_BRIEF.md), then
+   the Board built as that view collapsed to a row per stock. Front door.
+2. **Companies** — the workbench dossier: signature view, band history,
+   assessment, triptych, events/insiders/filings in context.
+3. **What Changed** — the daily edition as instrument log.
+4. **Narratives** — port the three-layer map.
+5. **Portfolio** — owner-only; mutations + auth decision.
 
 ## Open decisions (user sign-off before the relevant phase)
 
@@ -140,10 +148,26 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       serves the scaffold (HTTP 200). Committed locally after the Phase 0
       push; rides with the Phase 1 push (no doc-only rebuilds).
 - [ ] Phase 1: read API — board, stocks, narratives, reports
-- [ ] Phase 2: Home/Report page
-- [ ] Phase 3: Hidden Gems board
-- [ ] Phase 4: Stock Detail
-- [ ] Phase 5: Narrative Map
-- [ ] Phase 6: read API remainder + Events/Insiders/News
-- [ ] Phase 7: auth decision + Portfolio (incl. mutations)
-- [ ] Phase 8: parity check, cutover, retire ui/
+- [ ] Phase 2: signature view (2–3 live variants → user picks → tokens
+      locked in DESIGN_BRIEF.md) + The Board page
+- [ ] Phase 3: Companies workbench (dossier + events/insiders/filings)
+- [ ] Phase 4: What Changed (daily edition as instrument log)
+- [ ] Phase 5: Narratives (port three-layer map)
+- [ ] Phase 6: read API remainder; anything the pages still need
+- [ ] Phase 7: auth decision + Portfolio (owner-only; mutations)
+- [ ] Phase 8: single-user product complete — full review pass vs
+      DESIGN_BRIEF.md; Streamlit stays (lab bench, permanent)
+
+Product-track phases (other people using it — sequenced after 8, each
+needs user sign-off to start):
+- [ ] P-A: legal/compliance framing — impersonal research publication,
+      not personalised advice; disclaimers; product name/masthead
+- [ ] P-B: data licensing check — FMP/Yahoo redistribution terms for
+      displaying derived metrics to third parties (BLOCKER for any
+      external user; verify before anyone but the owner has access)
+- [ ] P-C: accounts — multi-user auth, product tables (users/sessions),
+      owner vs visitor roles; Portfolio becomes per-user or owner-only
+- [ ] P-D: public track record page — the twin comparison as the
+      product's proof, wins and losses unconditionally
+- [ ] P-E: onboarding/education — methodology explained in plain words
+      (what the lens is, what the bands mean, what the twin is)

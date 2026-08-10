@@ -18,7 +18,20 @@ Pushes restart Railway services and KILL live scheduler runs. Rules:
    pipeline/scheduler/requirements changes; UI-only pushes touch only the
    web service. Until confirmed set, treat EVERY push as a scheduler restart.
 
-## Frontend v2 (api/ + web/)
+## Two tracks (user directive 2026-08-10)
+The platform is now TWO projects with a hard boundary:
+- METHODOLOGY track: pipeline/, scheduler, Streamlit ui/, scoring,
+  assessor, narratives. Streamlit is the permanent internal lab bench —
+  it is NOT retired when the product reaches parity.
+- PRODUCT track: api/ + web/ — a product for OTHER PEOPLE to use,
+  governed by FRONTEND_SPEC.md + DESIGN_BRIEF.md.
+Boundary, absolute in both directions: product work never modifies
+pipeline, scoring, scheduler, Streamlit, or platform DB tables (reads
+via api/ only; product state like users/auth lives in NEW tables).
+And no methodology decision is ever made to please product users —
+the instrument's honesty IS the product.
+
+## Frontend v2 — the PRODUCT track (api/ + web/)
 - ALL frontend work is governed by FRONTEND_SPEC.md. Read it BEFORE
   touching api/, web/, or anything frontend-related — even for a "quick
   fix". Its Progress section is the state; the previous chat is not.

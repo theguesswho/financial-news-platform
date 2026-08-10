@@ -190,14 +190,29 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       4 macros, reports latest + archived + 404s). Also removed junk
       Finder duplicate `api/__init__ 2.py`. requirements.txt already
       carries fastapi/uvicorn — no dependency change.
-      CAVEAT for next session: the `api` Railway service does not exist
-      yet — the API runs locally only. Creating it needs: root
-      directory `.` (imports pipeline/ + db/), start command
-      `uvicorn api.main:app --host 0.0.0.0 --port $PORT`, DATABASE_URL
-      + API_CORS_ORIGINS env vars, and watch paths `api/**`,
-      `pipeline/**`, `db/**`, `requirements.txt`. Do NOT add a root
-      railway.json/toml for this — it would hijack the scheduler
-      service's Procfile config (shared repo root).
+      Pushed 05:02 UTC (deploy gate clear, 58 min before the daily
+      slot); scheduler service redeployed and was back scheduling at
+      05:00:35 per its logs — verified healthy before the 06:00 run.
+      HALF-DONE — the `api` Railway service (deploy of this code):
+      created as an EMPTY service (no source connected → inert, nothing
+      runs) with env vars already set: DATABASE_URL, API_CORS_ORIGINS
+      (web prod URL + localhost:3000). Remaining steps are dashboard-
+      only (CLI can't set them; public GraphQL API rejects the CLI's
+      session token; Chrome automation lacks railway.app permission).
+      IN THIS ORDER — the order is a safety property:
+      1. api service → Settings → Deploy → Custom Start Command:
+         `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
+      2. Settings → Watch Paths: `api/**`, `pipeline/**`, `db/**`,
+         `requirements.txt`
+      3. ONLY THEN Settings → Source → connect repo
+         theguesswho/financial-news-platform, branch main, root
+         directory `/` (the API imports pipeline/ and db/).
+      4. Generate a public domain; verify `/health` then `/board`.
+      Connecting the repo FIRST would make the build fall through to
+      the root Procfile (`worker: python scheduler_light.py`) and boot
+      a SECOND live scheduler — never do it. Likewise never add a root
+      railway.json/toml (it would hijack the scheduler service's own
+      config — shared repo root).
 - [ ] Phase 2: signature view (2–3 live variants → user picks → tokens
       locked in DESIGN_BRIEF.md) + The Board page
 - [ ] Phase 3: Companies workbench (dossier + events/insiders/filings)

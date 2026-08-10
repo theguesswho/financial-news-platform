@@ -98,8 +98,11 @@ Mutations last, once auth exists:
 
 These are rules, not suggestions. Sessions are disposable; this file is not.
 
-1. One phase per session. Open each build session with:
-   "Read FRONTEND_SPEC.md. We are on phase N. <what's done, what's next>."
+1. One phase per session. The user opens every build session with the
+   same fixed sentence — "Read FRONTEND_SPEC.md and continue from the
+   Progress section." — and nothing more. The Progress section, not the
+   user, says which phase is next; if it is ambiguous or mid-phase, work
+   out the state from it and say so before proceeding.
 2. **Decisions land in this file, immediately.** Any choice that outlives
    the session — library, endpoint shape, auth approach, design call,
    scope cut — gets written into the relevant section (and Open decisions

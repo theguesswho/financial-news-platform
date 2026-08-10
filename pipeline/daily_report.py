@@ -40,7 +40,9 @@ Voice rules (strict):
 - NEWS HIERARCHY: order every list Strong-Buy-related items first, then Buy-related, then others. A Strong Buy gained, lost, or moving is always the bigger story.
 - VOCABULARY LOCK: "value" moving UP always means the stock got CHEAPER relative to peers (bullish); never write "richens" for a value increase. The cause strings carry the direction in words — copy their meaning exactly.
 - Every board move must state its CAUSE from the provided decomposition — never report a move without its why. Component semantics (get these RIGHT): priced_in UP = the market caught up, less opportunity left (bearish for us); priced_in DOWN = the market backed off, more opportunity (bullish for us); value UP = the stock got CHEAPER relative to peers (bullish); value DOWN = the valuation richened (bearish); story_exposure UP/DOWN = filings strengthened/weakened the link to its story. If the components conflict with the direction of the move, the score and thresholds decide — say "despite X, Y dominated".
-- "Position" means a HELD tracked lot only. Stocks on the board that we don't hold are picks or ratings, never positions.
+- "Position" means a HELD tracked lot only. Stocks on the board that we don't hold are picks or ratings, never positions. Each move carries a "position" field — it is AUTHORITATIVE. Never write that no position is held unless it says "not held"; when it says HELD with a sell countdown, the item must say we hold it and name the countdown.
+- The FIRST cause listed on a move is the largest driver — lead with it. Quality causes ("our reading of the business's quality...") are about OUR measurement of business durability, not a company event.
+- "platform_notes" describes changes WE made to our own measurement. While a note is active, any move whose leading cause is a quality or value re-reading must say plainly that our measuring stick changed — e.g. "we re-measured business quality across all companies this week; under the stricter lens X's reading fell" — and must NOT present it as company news. This is the same honesty rule our assessments follow.
 - Never treat price moves or analyst opinions as evidence about a business. A price move is only opportunity ("the market just made it cheaper") or crowding ("the market caught up").
 - No padding. If a fact list is thin, write fewer, shorter items. Never invent color.
 - 1-3 sentences per item body. Direct, confident, honest about uncertainty.
@@ -77,12 +79,15 @@ def create_table(engine):
 
 # ---------------------------------------------------------------- facts
 
-def _board_moves(engine) -> list:
-    """Board changes between the last two snapshots, with deterministic
-    cause decomposition from stored components."""
+def _board_moves(engine, for_date: date | None = None) -> list:
+    """Board changes between the two most recent snapshots AS OF for_date
+    (default today), with deterministic cause decomposition from stored
+    components. The date bound keeps regenerated editions (weekly Friday
+    regen, corrections) diffing their own session, not whatever is newest."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             WITH d AS (SELECT DISTINCT date FROM leaderboard_history
+                       WHERE date <= :fd
                        ORDER BY date DESC LIMIT 2),
             cur AS (SELECT * FROM leaderboard_history WHERE date=(SELECT MAX(date) FROM d)),
             prev AS (SELECT * FROM leaderboard_history WHERE date=(SELECT MIN(date) FROM d))
@@ -95,7 +100,7 @@ def _board_moves(engine) -> list:
             FROM cur c FULL OUTER JOIN prev p USING (symbol)
             WHERE COALESCE(COALESCE(c.assessed_tier, c.tier), '_')
                   IS DISTINCT FROM COALESCE(COALESCE(p.assessed_tier, p.tier), '_')
-        """)).fetchall()
+        """), {"fd": for_date or date.today()}).fetchall()
     from pipeline.tiers import BOARD_EXIT, WATCH
     moves = []
     for (sym, pt, ct, pg, cg, pp, cp, pn, cn, pv, cv, p_qual, c_qual,
@@ -116,21 +121,32 @@ def _board_moves(engine) -> list:
             causes.append("score crossed above the entry line")
         # Causes are FINISHED plain-language phrases — the writer must not
         # reinterpret component directions (it inverted value twice on PEG).
+        # Component causes carry their |delta| and are sorted LARGEST FIRST,
+        # so the writer's "driver" is the biggest mover, never list order
+        # (the LHX lesson 2026-08-10: a 0.25 quality drop was narrated as a
+        # 0.04 value slip because quality had no clause and value led).
+        comp = []
         if pp is not None and cp is not None and abs(cp - pp) >= 0.02:
-            causes.append(
+            comp.append((abs(cp - pp),
                 f"the market caught up — more of the story is now paid for "
                 f"(priced-in {pp:.2f}->{cp:.2f})" if cp > pp else
                 f"the market backed off — more unpriced opportunity "
-                f"(priced-in {pp:.2f}->{cp:.2f})")
+                f"(priced-in {pp:.2f}->{cp:.2f})"))
         if pn is not None and cn is not None and abs(cn - pn) >= 0.03:
-            causes.append(
+            comp.append((abs(cn - pn),
                 f"filings {'strengthened' if cn > pn else 'weakened'} the link "
-                f"to its story (exposure {pn:.2f}->{cn:.2f})")
+                f"to its story (exposure {pn:.2f}->{cn:.2f})"))
         if pv is not None and cv is not None and abs(cv - pv) >= 0.03:
-            causes.append(
+            comp.append((abs(cv - pv),
                 f"the stock got cheaper relative to peers (value {pv:.2f}->{cv:.2f})"
                 if cv > pv else
-                f"the valuation richened (value {pv:.2f}->{cv:.2f})")
+                f"the valuation richened (value {pv:.2f}->{cv:.2f})"))
+        if pq is not None and cq is not None and abs(cq - pq) >= 0.03:
+            comp.append((abs(cq - pq),
+                f"our reading of the business's quality "
+                f"{'improved' if cq > pq else 'fell'} "
+                f"(quality {pq:.2f}->{cq:.2f})"))
+        causes.extend(t for _, t in sorted(comp, key=lambda x: -x[0]))
         # Growth-penalty detection (PEG 2026-08-06: components fine, score
         # halved by fresh fundamentals showing shrinking revenue+earnings).
         # Stored gem vs gem expected from components exposes the multiplier.
@@ -432,7 +448,7 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     if force is False and for_date.weekday() >= 5:
         print(f"daily report: {for_date} is not a trading session — skipped")
         return {"status": "skipped_weekend"}
-    moves = _board_moves(engine)
+    moves = _board_moves(engine, for_date)
     coverage = _coverage_facts(engine)
     stories = _story_facts(engine)
     week = _week_ahead(engine, for_date)
@@ -452,6 +468,22 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
                      WHERE exit_date > CURRENT_DATE - 2
                        AND COALESCE(era,'v1') = 'v2'""")).fetchall()]
     held = _held_symbols(engine)
+    # Position truth on every move (LHX lesson 2026-08-10: an exit story
+    # claimed "no position held" while a live lot sat in sell countdown).
+    with engine.connect() as conn:
+        countdown = {r[0]: r[1] for r in conn.execute(text("""
+            SELECT symbol, COALESCE(below_buy_days, 0) FROM track_lots
+            WHERE COALESCE(era,'v1')='v2' AND NOT COALESCE(voided, FALSE)
+              AND exit_date IS NULL"""))}
+    for m in real_moves:
+        sym = m["symbol"]
+        if sym in held:
+            days = countdown.get(sym, 0)
+            m["position"] = (f"HELD position — sell countdown day {days} of 2; "
+                             f"sold at a close only after 2 straight readings "
+                             f"below Buy" if days else "HELD position")
+        else:
+            m["position"] = "not held"
     top_pick = _pick_top_story(real_moves, stories, held)
     # Re-rating days can produce 30+ moves: the writer stories only the 10
     # most significant; the remainder land in the deterministic ledger
@@ -460,7 +492,9 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     ranked = sorted(real_moves, key=lambda m: _significance(m, held))
     storyworthy = [m for m in ranked if _significance(m, held)[0] < 3]
     storied_moves = storyworthy[:10]
-    facts = {"top_story_pick": top_pick, "board_moves": storied_moves,
+    from pipeline.qual_assessor import _platform_notes
+    facts = {"platform_notes": _platform_notes(engine) or "none active",
+             "top_story_pick": top_pick, "board_moves": storied_moves,
              "position_sales": sales,
              "week_ahead": week["notable"], "coverage": coverage,
              "story_events": {k: stories[k] for k in ("births", "verdicts")},

@@ -104,15 +104,40 @@ def compute_p3_universe(engine) -> dict:
 
     out = {}
     for sym, f in fund.items():
-        # Drop merger-era stub rows (no revenue = not a real fiscal year;
-        # LHX carried two all-zero rows from the 2019 L3/Harris transition
-        # that poisoned its trend as fake-zero ROIC years) and dedupe by
-        # calendar year, keeping the row WITH revenue.
+        # Row hygiene (fiscal-calendar audit 2026-08-10, V2_CONSIDERATIONS):
+        # 1) drop no-revenue stub rows (LHX's 2019 L3/Harris transition);
+        # 2) key each fiscal year to the calendar year it mostly covers —
+        #    a 52/53-week year ending Jan 1-14 belongs to the PRIOR year
+        #    (LHX FY2020 ended 2021-01-01 and used to collide with FY2021,
+        #    silently dropping a real year; 19 symbols had this);
+        # 3) on residual collision keep the better-populated row;
+        # 4) fake-zero guard: revenue present but ROIC and op margin BOTH
+        #    exactly zero is vendor zero-fill, not a reading — treat the
+        #    zeroed metrics as missing (a fake 0 ROIC year manufactured a
+        #    fake improvement trend that inflated TXT's quality).
         raw_rows = [r for r in annual.get(sym, []) if r[2] and float(r[2]) > 0]
+
+        def _fy_key(d):
+            s = str(d)
+            y, m, day = int(s[:4]), int(s[5:7]), int(s[8:10])
+            return y - 1 if (m == 1 and day <= 14) else y
+
+        def _filled(r):
+            return sum(1 for v in (r[3], r[5], r[6]) if v is not None
+                       and float(v) != 0)
+
         by_year = {}
         for r in raw_rows:
-            by_year[str(r[1])[:4]] = r
-        rows = [by_year[y] for y in sorted(by_year)][-10:]
+            k = _fy_key(r[1])
+            if k not in by_year or _filled(r) > _filled(by_year[k]):
+                by_year[k] = r
+
+        def _clean(r):
+            if (r[6] is not None and float(r[6]) == 0
+                    and r[3] is not None and float(r[3]) == 0):
+                r = list(r); r[3] = None; r[6] = None; r = tuple(r)
+            return r
+        rows = [_clean(by_year[y]) for y in sorted(by_year)][-10:]
         if not rows:
             continue
         t = ttm.get(sym)

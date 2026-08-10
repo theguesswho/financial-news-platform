@@ -236,3 +236,18 @@ merit. Held positions LHX (quality re-read: post-merger economics) and
 HUBB (shrunk value mid-pack) go through the normal machinery — no
 special-casing, user directive. No era reset: thesis unchanged, its
 measurement improved.
+
+## 2026-08-10 — Fiscal-calendar row hygiene (LHX audit follow-through)
+User caught the report misattributing LHX's exit; the forensic exposed a
+data class the P1 audit never checked: fiscal-calendar structure. Two
+defects, both in quality_v3 row assembly: (1) 52/53-week fiscal years
+ending Jan 1-14 collided with the next year's calendar key, silently
+dropping a real year (19 symbols, incl. LDOS/LHX/TXT/DY); (2) vendor
+zero-fill rows (revenue present, ROIC+op margin exactly 0) passed the
+no-revenue guard as catastrophic readings (11 symbols). Fix: FY keyed to
+the year it mostly covers (Jan 1-14 -> prior year), better-populated row
+wins residual collisions, fake zeros treated as missing. Offline diff
+(user-reviewed, approved): 8 movers >=0.03, one tiered — TXT 0.81->0.74
+(the fake-zero year had manufactured an improvement trend; stays Buy).
+LDOS 0.829->0.841. LHX 0.564->0.558 — exit verdict unchanged, countdown
+proceeds on merit. Verified live == offline before push.

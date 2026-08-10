@@ -104,9 +104,22 @@ Mutations last, once auth exists:
 
 ## Progress
 
-- [ ] Phase 0: delete June-era `api/` + `frontend/` (check salvage first),
-      scaffold new `api/` (FastAPI) + `web/` (Next.js), Railway service +
-      watch paths for web/
+- [x] Phase 0 (2026-08-10): June-era `api/` + `frontend/` checked for
+      salvage (nothing worth keeping — different product: JWT auth,
+      watchlists, pre-v2 scoring) and deleted, along with companions
+      `start_api.py`, `test_api.py`, `Dockerfile.backend`,
+      `docker-compose.yml`, `API_README.md`, `FRONTEND_INTEGRATION.md`.
+      New `api/` scaffolded (FastAPI, `api/main.py`, `/health`, reuses
+      `db/session.py`; routers mount in Phase 1). New `web/` scaffolded
+      (create-next-app: Next.js 16, TS, Tailwind 4, app router; build
+      verified). Railway: new `web` service created (root directory
+      `web`, watch paths `web/**`); scheduler (`financial-news-platform`)
+      and Streamlit (`impartial-heart`) services given watch paths
+      `**` + `!web/**` — exclusion, not an allowlist, so scheduler
+      redeploys are never silently skipped. Watch-path isolation is
+      CONFIGURED but not yet PROVEN by a web-only push — until a
+      web-only push is observed to leave the scheduler alone, the
+      deploy gate discipline stays as-is (CLAUDE.md rule 5).
 - [ ] Phase 1: read API — board, stocks, narratives, reports
 - [ ] Phase 2: Home/Report page
 - [ ] Phase 3: Hidden Gems board

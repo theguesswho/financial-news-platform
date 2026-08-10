@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   // Product name/masthead still an open decision (DESIGN_BRIEF.md);
   // plain page titles until it lands.
-  title: "The Board",
+  title: "Narratives",
   description: "A discovery instrument with a judgment layer.",
 };
 
 const NAV = [
-  { label: "The Board", href: "/" },
+  { label: "Narratives", href: "/" },
+  { label: "The Board", href: "/board" },
   { label: "Companies", href: null },
-  { label: "Narratives", href: null },
   { label: "What Changed", href: null },
   { label: "Portfolio", href: null },
 ] as const;

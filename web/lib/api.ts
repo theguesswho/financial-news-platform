@@ -112,7 +112,49 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+export type Force = {
+  id: number;
+  name: string;
+  thesis: string | null;
+  momentum: string;
+  board_weight: number;
+  companies: number;
+  board_companies: number;
+  top_stocks: { symbol: string; tier: string | null; score: number | null }[];
+};
+
+export type EmergingNarrative = {
+  id: number;
+  name: string;
+  maturity: "emerging" | "candidate";
+  parent: string | null;
+  age_days: number | null;
+  companies: number;
+  adds_30d: number;
+};
+
+export type WeakeningNarrative = {
+  id: number;
+  name: string;
+  level: string;
+  status: string;
+  strengthened_30d: number;
+  weakened_30d: number;
+  removed_30d: number;
+  misses: number;
+  net_30d: number;
+  companies: number;
+};
+
+export type NarrativesLanding = {
+  forces: Force[];
+  emerging: EmergingNarrative[];
+  weakening: WeakeningNarrative[];
+};
+
 export const getBoard = () => get<Board>("/board");
+export const getNarrativesLanding = () =>
+  get<NarrativesLanding>("/narratives/landing");
 export const getStock = (symbol: string) =>
   get<Stock>(`/stocks/${encodeURIComponent(symbol)}`);
 

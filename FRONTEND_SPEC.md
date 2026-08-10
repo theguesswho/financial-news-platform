@@ -266,6 +266,33 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
         url-attach to http://localhost:3100.
       - fundamentals join on the board is by symbol only; company_name
         missing for a few tickers renders blank — cosmetic, revisit.
+- [x] Phase 2b (2026-08-10, same session): the NEW FRONT DOOR — the
+      Narratives landing per the revised DESIGN_BRIEF.md.
+      - api/: `GET /narratives/landing` added (api/routers/
+        narratives.py) — forces (macros: thesis, momentum, deduped
+        subtree company counts, board count, exposed weight, top board
+        stocks), emerging (tier emerging/candidate: age from
+        created_at, companies, adds_30d), weakening (LEDGER-derived:
+        strengthened/weakened/removed 30d + misses from
+        narrative_exposures.misses; included only when net ≤ 0 with
+        activity, misses > 0, or status declining — never the momentum
+        word). /narratives untouched (regression-checked).
+      - web/: The Board moved to `app/board/page.tsx`; landing at
+        `app/page.tsx` = four brief sections (forces cards → emerging
+        list → losing-support list with down-colored nets and missed
+        calls → bridge: top-6 board rows + link). Nav reordered,
+        Narratives + The Board live. Momentum orange in use (word
+        "accelerating" only). Verified light+dark against the LOCAL
+        api (all 9 macros currently read "accelerating" — noise-ish,
+        the methodology track's recalibration will fix the input, not
+        the display). `next build` clean. Committed locally.
+      DEPLOY ORDER CAVEAT: the web landing needs /narratives/landing —
+      the api service must deploy BEFORE or WITH the web push (api
+      watch paths cover api/**, so one batched push redeploys both;
+      that batch also touches scheduler paths → full deploy-gate
+      rules, do NOT use it as the watch-path isolation proof).
+      Local dev: `venv/bin/python -m uvicorn api.main:app --port 8000`
+      then web dev with `API_URL=http://localhost:8000`.
 - [ ] Phase 3: Companies workbench — /companies/[symbol] led by B1
       (triptych + ruler + CompanySwitcher), evidence-pane data pass
       (per DESIGN_BRIEF.md, needs sign-off), then events/insiders/

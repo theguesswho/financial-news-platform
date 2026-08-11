@@ -307,13 +307,22 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
    Alternative considered: time-based decay regardless of reporting —
    rejected as arbitrary (punishes narratives between earnings seasons
    for the calendar, not for evidence).
-7. **One "exposed board weight" definition.** Two now exist: the
-   Themes/lab page uses Σ tier-weight × exposure; vital signs use
-   Σ per-symbol MAX subtree exposure over board symbols. Both render
-   as "weight" to the user. Pick ONE canonical formula (or give them
-   distinct plain-lexicon names) before the product Narratives page
-   consumes either. Small, but exactly the mismatch class this spec
-   exists to prevent.
+7. **DECIDED 2026-08-11 — one canonical weight, both old formulas
+   retire.** Exactly TWO numbers describe a narrative's footprint:
+   - **Breadth** (already in vital signs): distinct companies carrying
+     it — the corroboration count.
+   - **Board conviction** (canonical, replaces both old formulas):
+     Σ over DISTINCT board companies of (tier weight 3/2/1 × the
+     company's STRONGEST exposure anywhere in the narrative's subtree).
+     Plain-lexicon label: "board conviction riding on this force."
+   Consumer map verified before deciding (2026-08-11): formula A only
+   in ui/pages/2_Themes.py + api/routers/narratives.py (display), 
+   formula B only in narrative_vital_signs.py; NOTHING reads
+   exposed_board_weight yet; scoring/assessor/reports untouched by
+   either. Implementation (Phase 1b session, with the decay build):
+   update the three files, recompute the 846-row backfill under the
+   canonical formula so the series is consistent BEFORE Phase 2's
+   lead test ever reads it, relabel the web/Streamlit displays.
 
 ## Progress
 

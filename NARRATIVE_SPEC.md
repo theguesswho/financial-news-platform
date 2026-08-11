@@ -235,7 +235,14 @@ Amendments (Phase 4 cutover gate):
       discipline in full (user sign-off, V2_CONSIDERATIONS, platform
       note with active window). Product landing page keeps ledger-op
       coloring until then.
-- [ ] **Phase 3 — post-birth prediction minting.** Claims → checkpoints
+- [ ] **Phase 3 — post-birth prediction minting. UNBLOCKED and NEXT
+      ACTIONABLE (2026-08-11):** Phase 2 waits on ~2-3 organic weeks of
+      two-sided vital signs (earliest gate ~late Aug) but Phase 3 has
+      no dependency on it — its feed is flowing (earnings_claims:
+      38,659 claims, 813 symbols, current through 2026-08-10, backlog
+      zero) and company scope is outside live scoring, so no freeze
+      ritual. Build now, in parallel with the decay/vital-signs shadow
+      clocks. Claims → checkpoints
       on existing company narratives. Deliverable: minting rate + samples
       to user; this is what makes dossiers breathe and unblocks the
       product's Companies page evidence pane.

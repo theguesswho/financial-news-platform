@@ -60,9 +60,44 @@ fixed.
 
 ## Data / pipeline hygiene
 
-6. **Unprocessed-filings sweep.** ACM's 2026-05-12 10-Q has
-   processed_at NULL (content never analyzed). Count the class
-   (processed_at IS NULL by type/date), find the cause, drain it.
+6. **processed_at is vestigial — retire it.** Full-audit finding
+   2026-08-11: the huge processed_at NULL counts are NOT unprocessed
+   content. Real coverage metrics are healthy: 8-Ks 100% llm_analysis
+   within 30d; 10-K/Q and transcripts are themed (0 unthemed in 14d),
+   and llm_analysis was never their channel. processed_at is written
+   only by legacy paths (analyzer.py, events.py). Drop or stop reading
+   it; it misleads audits (it misled this one).
+
+6b. ~~theme_extraction has no prompt caching~~ CORRECTED 2026-08-11
+   (user challenge): 0% cache is STRUCTURAL, not a miss — instructions
+   are ~220 tokens (cache minimum 1024; padding costs more than it
+   saves) and the spend is dominated by unique filing text, uncachable.
+   The original cost audit adjudicated this correctly; the 2026-08-11
+   audit note briefly mislabeled it as free savings. Real cost lever if
+   ever needed: theming BREADTH (830-symbol universe) — but narrowing
+   blinds narrative discovery; methodology call, user-only, not
+   recommended.
+
+6e. **Yahoo refresh still writes legacy TTM margins into the
+   fundamentals snapshot** (fundamentals.py ~137-141). Harmless today
+   — scorer/assessor take margins from canonical FMP tables and the
+   sync overwrites — but it is a mixed-definition trap for any future
+   snapshot consumer. Stop writing gross/operating/net margin from the
+   Yahoo path; canonical owns statement-derived fields.
+
+6c. **Checkpoint inflow stops when the birth queue drains.** New
+   predictions (narrative_checkpoints) are only created at company-
+   narrative BIRTH (company_narrative.py:294): 140+32+48+32 during the
+   Aug 4-7 birth drain, zero since — through peak earnings season.
+   Existing dossiers never gain fresh predictions. Design decision
+   needed (ties to P3 shadow lane + the product dossier page): should
+   new typed claims on existing narratives mint checkpoints?
+
+6d. **qual_assessor cache share is 53.6%, not the ~85% hoped.** The
+   warm-up fix works within a run, but runs are spaced further apart
+   than the cache TTL, so cross-run misses are structural. Either
+   accept (cost is ~$1.4/day) or restructure prompts; recalibrate the
+   expectation in any case.
 
 7. **OZK filing-mapping** still open (chunk-3 exclusion note).
 

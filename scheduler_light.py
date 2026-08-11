@@ -963,13 +963,18 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Deep dives failed", e)
 
-    _step(5, "Embeddings refresh")
-    try:
-        from pipeline.embedding_builder import run_embedding_build
-        r = run_embedding_build()
-        _ok(f"Embeddings done: {r}")
-    except Exception as e:
-        _err("Embeddings failed", e)
+    _step(5, "Embeddings refresh — PARKED (V3 #0, 2026-08-11)")
+    # Silently failed on every Railway weekly since migration
+    # (sentence-transformers was absent); downstream stock_theme_alignment
+    # froze 2026-07-12 and feeds the 20% narrative-momentum leg of the
+    # priced-in P component in LIVE scoring. The dependency now ships
+    # (for decay shadow), so running this again would silently UNFREEZE
+    # a scoring input outside the freeze ritual. Parked LOUDLY until the
+    # NARRATIVE_SPEC Phase 2 gate decides retire-vs-revive with the
+    # board diff in hand. Do not re-enable here without that sign-off.
+    logger.warning("  Step 5 PARKED: embeddings refresh disabled pending the "
+                   "Phase 2 retire-vs-revive decision (V3 #0); "
+                   "stock_theme_alignment intentionally frozen at 2026-07-12")
 
     _step("5b", "Meta-theme clustering + stock alignment (the meta-narrative)")
     try:

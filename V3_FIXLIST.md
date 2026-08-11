@@ -74,6 +74,27 @@ fixed.
 
 ## Data / pipeline hygiene
 
+0. **STALE LIVE-SCORING INPUT (found 2026-08-11, highest item here):**
+   the weekly embeddings build requires sentence-transformers, absent
+   from Railway requirements → it has failed silently on every Railway
+   weekly. stock_theme_alignment (its downstream) froze 2026-07-12 —
+   and it supplies the 20% "narrative momentum" leg of the priced-in P
+   component in LIVE scoring. A fifth of P has run on July-12
+   trajectories for a month. Decision needed (belongs at the
+   NARRATIVE_SPEC Phase 2 gate, alongside the momentum board diff):
+   REPLACE P's leg with narrative-brain honest momentum and RETIRE the
+   legacy embeddings/meta-theme-alignment path (recommended — one
+   narrative system, no 2GB torch in the image), vs revive the
+   dependency (itself a scoring change: unfreezing shifts P).
+   Either way the change is freeze-discipline. Interim: it has been
+   stale a month with slow-moving trajectories; two more weeks of
+   documented staleness beats a rushed unfreeze.
+   INTERIM ACTIONED 2026-08-11 (user-approved): sentence-transformers
+   added to requirements (unblocks decay SHADOW accumulation on
+   Railway) and legacy step 5 explicitly PARKED with a loud weekly
+   warning — the P leg stays frozen-and-documented; nothing unfreezes
+   outside the Phase 2 ritual.
+
 6. **processed_at is vestigial — retire it.** Full-audit finding
    2026-08-11: the huge processed_at NULL counts are NOT unprocessed
    content. Real coverage metrics are healthy: 8-Ks 100% llm_analysis

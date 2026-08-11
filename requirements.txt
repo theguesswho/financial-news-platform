@@ -18,5 +18,10 @@ python-multipart>=0.0.6
 email-validator>=2.0
 pydantic-settings>=2.0
 apscheduler>=3.10
+# For narrative silence-decay reconfirmation (NARRATIVE_SPEC Phase 1b).
+# NOTE: also satisfies the legacy embeddings step, which is deliberately
+# PARKED in scheduler_light step 5 — do not un-park it outside the
+# Phase 2 freeze ritual (V3_FIXLIST #0: it feeds live scoring's P leg).
+sentence-transformers>=2.2
 
 

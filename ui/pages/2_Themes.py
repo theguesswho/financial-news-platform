@@ -2,16 +2,18 @@
 The Narrative Map — attention hierarchy first, full accountability below
 (user-approved redesign 2026-08-09).
 
-Layer 1  THE MAP        — the 9 meta forces, sized by exposed board weight,
-                          colored by momentum. 10-second world view.
+Layer 1  THE MAP        — the 9 meta forces, sized by CANONICAL BOARD
+                          CONVICTION (decision 7, 2026-08-11: per DISTINCT
+                          board company, tier weight 3/2/1 x its strongest
+                          exposure in the subtree), colored by momentum.
 Layer 2  WHAT MOVED     — salience-ranked cards from ANY level: board
-                          weight x recent change decides attention, not
+                          conviction x recent change decides attention, not
                           taxonomy position.
 Layer 3  THE LIBRARY    — the complete parented tree as a compact index.
 
 Company-scope stories are deliberately EXCLUDED here — they are dossiers
 with predictions, a different object (own page planned).
-Salience is deterministic: board weight (tier-weighted exposure) plus a
+Salience is deterministic: board conviction plus a
 bonus for ledger-recorded change in the last 7 days and accelerating
 momentum. No LLM at page load.
 """
@@ -98,7 +100,8 @@ def load_data():
         changes = dict(conn.execute(text("""
             SELECT eh.narrative_id, COUNT(*) FROM exposure_history eh
             WHERE eh.judged_at > NOW() - INTERVAL '7 days'
-              AND eh.op IN ('add','strengthen','weaken','remove')
+              AND eh.op IN ('add','strengthen','weaken','remove','decay')
+              AND eh.trigger != 'shadow'
             GROUP BY eh.narrative_id""")).fetchall())
     return nars, expo, changes
 
@@ -115,16 +118,29 @@ for n in nars:
         kids.setdefault(n[4], []).append(n[0])
 
 gems_by_n: dict = {}
-weight = {}
+links_by_n: dict = {}
 for nid, sym, ex, tier, score in expo:
     if nid not in by_id:
         continue
     gems_by_n.setdefault(nid, []).append((sym, tier, float(score)))
-    weight[nid] = weight.get(nid, 0) + TIER_W.get(tier, 0) * float(ex)
+    links_by_n.setdefault(nid, []).append((sym, TIER_W.get(tier, 0), float(ex)))
+
+weight = {nid: sum(tw * ex for _, tw, ex in links_by_n.get(nid, []))
+          for nid in by_id}
 
 
 def rollup(nid):
-    return weight.get(nid, 0) + sum(rollup(c) for c in kids.get(nid, []))
+    """Canonical board conviction (decision 7): per DISTINCT symbol,
+    tier weight x the symbol's strongest exposure in the subtree."""
+    best: dict = {}
+    stack = [nid]
+    while stack:
+        x = stack.pop()
+        stack.extend(kids.get(x, []))
+        for sym, tw, ex in links_by_n.get(x, []):
+            if sym not in best or ex > best[sym][1]:
+                best[sym] = (tw, ex)
+    return sum(tw * ex for tw, ex in best.values())
 
 
 def salience(nid):
@@ -172,12 +188,12 @@ for m in macros:
     mom = (m[5] or "stable")
     blocks += (f'<div class="nv-block {esc(mom)}" style="flex-grow:{grow}">'
                f'<h4>{esc(m[1])}</h4>'
-               f'<div class="meta">weight {w:.1f} · {nkids} narrative{"s" if nkids != 1 else ""} · {esc(mom)}</div></div>')
+               f'<div class="meta">board conviction {w:.1f} · {nkids} narrative{"s" if nkids != 1 else ""} · {esc(mom)}</div></div>')
 st.markdown(f'<div class="nv-map">{blocks}</div>', unsafe_allow_html=True)
 
 # ── Layer 2: what moved ──────────────────────────────────────────────────────
-st.markdown('<div class="nv-h2">What matters now — ranked by board weight and '
-            'recent change</div>', unsafe_allow_html=True)
+st.markdown('<div class="nv-h2">What matters now — ranked by board conviction '
+            'and recent change</div>', unsafe_allow_html=True)
 ranked = sorted(nars, key=lambda n: -salience(n[0]))[:8]
 for n in ranked:
     nid = n[0]
@@ -195,7 +211,7 @@ for n in ranked:
         f'<h3>{crumb}{esc(n[1])}{level_chip(n)}</h3>'
         f'<p>{esc(_clip(n[6]))}</p>'
         f'<div class="nv-gems">{gems_html}</div>'
-        f'<div class="nv-change">{change_line} · board weight {weight.get(nid, 0):.1f}</div>'
+        f'<div class="nv-change">{change_line} · board conviction {weight.get(nid, 0):.1f}</div>'
         f'</div>', unsafe_allow_html=True)
     if n[7]:
         with st.expander("What would kill this narrative"):
@@ -207,7 +223,7 @@ st.markdown('<div class="nv-h2">The library — every narrative, in its place</d
 for m in macros:
     total = rollup(m[0])
     nk = len(kids.get(m[0], []))
-    with st.expander(f"{m[1]}  ·  weight {total:.1f}  ·  "
+    with st.expander(f"{m[1]}  ·  board conviction {total:.1f}  ·  "
                      f"{nk} direct {'child' if nk == 1 else 'children'}"):
         def render_line(nid, depth):
             n = by_id[nid]
@@ -216,7 +232,7 @@ for m in macros:
             st.markdown(
                 f'<div class="nv-idx">{pad}{esc(n[1])}{level_chip(n)} '
                 f'<span class="cnt">· {cnt} board stock{"s" if cnt != 1 else ""}'
-                f' · weight {weight.get(nid, 0):.1f}</span></div>',
+                f' · conviction {weight.get(nid, 0):.1f}</span></div>',
                 unsafe_allow_html=True)
             for c in sorted(kids.get(nid, []), key=lambda x: -rollup(x)):
                 render_line(c, depth + 1)

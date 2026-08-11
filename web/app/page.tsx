@@ -53,7 +53,7 @@ export default async function NarrativesLandingPage() {
               )}
               <div className="num mb-2 text-[12px] text-ink-3">
                 {f.companies} companies carry it · {f.board_companies} on the
-                board · exposed weight {f.board_weight.toFixed(1)}
+                board · board conviction {f.board_weight.toFixed(1)}
               </div>
               {f.top_stocks.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">

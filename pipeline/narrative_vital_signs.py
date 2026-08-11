@@ -13,8 +13,9 @@ authority. Every run upserts; re-running any week is safe and self-healing.
 Conventions (locked in NARRATIVE_SPEC Definitions, Phase 0 sign-off 2026-08-12):
 - Week = Monday-start, UTC (matches date_trunc('week')). Backfill starts
   2026-07-06 (a Monday).
-- Support ops: add, strengthen. Erosion ops: weaken, remove, plus company-
-  scope prediction misses (checkpoint status='missed' in the window).
+- Support ops: add, strengthen. Erosion ops: weaken, remove, decay (silence
+  at earnings — Phase 1b, decision 6), plus company-scope prediction misses
+  (checkpoint status='missed' in the window).
   propose_remove and remove_vetoed change no exposure state and count as
   neither (a proposal is not yet an erosion; a veto retained the link).
   trigger='shadow' rows changed nothing live and are excluded everywhere.
@@ -31,11 +32,13 @@ any boundary on/after that date is exact. Weeks ending before 2026-07-27
 pre-date the ledger: state columns are NULL there (the ledger cannot say),
 and op counts are honestly zero.
 
-Implementation notes (Phase 1 choices, not locked definitions):
-- exposed_board_weight = sum over DISTINCT board-member symbols (latest
-  leaderboard_history snapshot on/before week end, tier NOT NULL) of the
+Implementation notes:
+- exposed_board_weight = CANONICAL BOARD CONVICTION (decision 7, 2026-08-11):
+  sum over DISTINCT board-member symbols (latest leaderboard_history snapshot
+  on/before week end) of tier weight (Strong Buy 3 / Buy 2 / Watch 1) x the
   symbol's MAX exposure within the subtree — per-symbol max so a symbol
-  exposed to several children is not double-counted.
+  exposed to several children is not double-counted. Same formula as the
+  Themes map and GET /narratives; plain-lexicon label "board conviction".
 - translation_share = delivered / exposed over the subtree's exposed symbols
   at week end. "Delivered" is currently a symbol-level proxy: a checkpoint
   pass (status='confirmed') on the symbol's company narrative, or an
@@ -53,7 +56,8 @@ LEDGER_START = date(2026, 7, 27)  # stateful ledger begins; state exact from her
 ORGANIC_START = date(2026, 8, 3)  # weeks before this are seeding-flagged
 
 SUPPORT_OPS = ("add", "strengthen")
-EROSION_OPS = ("weaken", "remove")
+EROSION_OPS = ("weaken", "remove", "decay")
+TIER_W = {"Strong Buy": 3.0, "Buy": 2.0, "Watch": 1.0}  # board conviction
 DELIVERY_RECENCY_DAYS = 100       # "most recent earnings evidence" window
 
 
@@ -122,7 +126,8 @@ def _replay_states(conn, boundaries: list[date]) -> dict[date, dict]:
     ops = conn.execute(text("""
         SELECT symbol, narrative_id, op, old_exposure, judged_at
         FROM exposure_history
-        WHERE trigger != 'shadow' AND op IN ('add','strengthen','weaken','remove')
+        WHERE trigger != 'shadow'
+          AND op IN ('add','strengthen','weaken','remove','decay')
         ORDER BY judged_at DESC, id DESC
     """)).fetchall()
 
@@ -138,7 +143,7 @@ def _replay_states(conn, boundaries: list[date]) -> dict[date, dict]:
             elif op == "remove":
                 if old_exp is not None:
                     state[key] = float(old_exp)
-            else:  # strengthen / weaken
+            else:  # strengthen / weaken / decay
                 if old_exp is not None and key in state:
                     state[key] = float(old_exp)
             i += 1
@@ -147,14 +152,17 @@ def _replay_states(conn, boundaries: list[date]) -> dict[date, dict]:
 
 
 def _board_symbols(conn, week_end: date):
+    """{symbol: tier weight} for the latest board snapshot before week end."""
     row = conn.execute(text(
         "SELECT MAX(date) FROM leaderboard_history WHERE date < :d"),
         {"d": week_end}).scalar()
     if row is None:
-        return set()
-    return {r[0] for r in conn.execute(text("""
-        SELECT DISTINCT symbol FROM leaderboard_history
-        WHERE date = :d AND tier IS NOT NULL
+        return {}
+    return {r[0]: TIER_W.get(r[1], 0.0) for r in conn.execute(text("""
+        SELECT DISTINCT ON (symbol) symbol, COALESCE(assessed_tier, tier)
+        FROM leaderboard_history
+        WHERE date = :d AND COALESCE(assessed_tier, tier) IS NOT NULL
+        ORDER BY symbol
     """), {"d": row}).fetchall()}
 
 
@@ -196,7 +204,7 @@ def compute_week(engine, week_start: date) -> int:
         """), {"ws": week_start, "we": week_end}).fetchall()
 
         state = _replay_states(conn, [week_end])[week_end]
-        board = _board_symbols(conn, week_end) if state is not None else set()
+        board = _board_symbols(conn, week_end) if state is not None else {}
         delivered = _delivered_symbols(conn, week_end) if state is not None else set()
 
         # index ops/checkpoints by narrative for subtree rollup
@@ -243,7 +251,8 @@ def compute_week(engine, week_start: date) -> int:
                     n_links += 1
                     exposed[sym] = max(exposed.get(sym, 0.0), exp)
             active = n_links
-            board_w = round(sum(e for s, e in exposed.items() if s in board), 3)
+            board_w = round(sum(board[s] * e for s, e in exposed.items()
+                                if s in board), 3)
             if exposed:
                 translation = round(
                     len([s for s in exposed if s in delivered]) / len(exposed), 3)

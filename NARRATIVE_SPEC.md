@@ -215,7 +215,8 @@ Amendments (Phase 4 cutover gate):
       Observational only; touches no judgment. Deliverable: the metas'
       trajectory table shown to user (prototype 2026-08-12 already
       demonstrated feasibility from ledger history).
-- [ ] **Phase 1b — silence decay (user-approved 2026-08-11).** When an
+- [x] **Phase 1b — silence decay (user-approved 2026-08-11). BUILT IN
+      SHADOW 2026-08-11 — live cutover awaits user sign-off (Progress).** When an
       exposed company REPORTS (call + filing ingested) and its
       extracted themes do not reconfirm the narrative, the weekly pass
       emits a deterministic `decay` erosion op on that exposure (no
@@ -361,7 +362,58 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
     organic week (8/3) shows real spread — support 20–228, breadth
     17–103, erosion ≈ 0 everywhere (nothing eroding yet — watch this),
     translation ≈ 0 (3 confirmed checkpoints platform-wide; honest).
-- NEXT: Phase 2 — momentum states computed from these vital signs in
+- Phase 1b BUILT IN SHADOW (2026-08-11, this session) — decisions 6 + 7
+  implemented; decay awaits user sign-off before going live:
+  - **Silence decay (decision 6)**: pipeline/narrative_decay.py. Report
+    event = EARN_CALL + 10-Q/K both theme-extracted within 45 days of each
+    other. Reconfirm (the implementation choice the spec left open) =
+    EITHER a cited judge support op (add/strengthen) for the pair since the
+    report, OR max cosine similarity (MiniLM, same model as
+    filing_themes.embedding) between the event filings' themes and the
+    narrative's name+thesis >= 0.25. Calibrated on live data 2026-08-11:
+    judge-cited driven pairs median 0.42 (92% >= 0.25), random non-link
+    pairs median 0.25 — conservative by design; exposure moves only on the
+    SECOND consecutive silent report (step −0.25, floor 0.10, NEVER
+    removes — removal stays the judge's two-vote job).
+  - Deviation from the decision-6 text, documented: a dedicated `decays`
+    counter column (narrative_exposures) instead of reusing `misses` —
+    the update judge treats silence as "confirm" and resets misses=0
+    (would erase decay memory weekly), and a shared counter would let one
+    propose_remove vote + one silent quarter trigger a removal neither
+    path justifies. Reconfirmation resets decays=0 + last_confirmed.
+  - SHADOW RUN against live DB 2026-08-11: 559 report events, 1,994
+    exposure pairs checked, 710 reconfirmed by judge ops + 1,109 by theme
+    match (91%), 76 already judged, **83 decay ops (4.2%)** — all
+    trigger='shadow', zero live rows touched, vital-signs erosion for the
+    week verified still 0 (shadow excluded). Samples look right (EMR ~
+    GLP-1 adjacency sim 0.10, AMGN ~ Agentic AI sim 0.15). Erosion is no
+    longer structurally impossible — this is the two-sided history Phase 2
+    needs.
+  - Wired into scheduler_light weekly step 5h BEFORE vital signs,
+    shadow=True hardcoded until sign-off here; isolated try/except so a
+    decay failure cannot break vital signs. DEPENDENCY NOTE: decay needs
+    sentence-transformers, which is NOT in requirements.txt/Dockerfile —
+    the same gap as the weekly "Embeddings refresh" step (5); wherever
+    that step succeeds, decay will too. Resolve at live cutover.
+  - **Board conviction (decision 7)**: canonical formula (Σ over DISTINCT
+    board companies of tier weight 3/2/1 × strongest subtree exposure)
+    now in all three consumers — narrative_vital_signs.py
+    (exposed_board_weight), api/routers/narratives.py (both endpoints),
+    ui/pages/2_Themes.py — both old formulas retired; web landing label
+    changed to "board conviction" (JSON key `board_weight` kept stable
+    for the product frontend). 846-row backfill RECOMPUTED under the
+    canonical formula 2026-08-11 (series consistent before Phase 2's lead
+    test): levels ≈2× old (tier weighting added), meta ordering
+    preserved; verified API map vs landing agree (39.0). `decay` added to
+    EROSION_OPS, the replay, and every ledger-op display filter
+    (shadow rows excluded everywhere).
+  - GATE TO GO LIVE (user): flip shadow=False in scheduler step 5h after
+    reviewing the shadow numbers above (next weekly runs will accumulate
+    more). Live decay writes erosion ops + lowers exposures — methodology-
+    live but NOT scoring-visible until Phase 2's momentum cutover.
+- NEXT: user reviews the Phase 1b shadow evidence (83 decays, samples
+  above) and signs off live decay here. Then Phase 2 — momentum states
+  computed from these vital signs in
   shadow. Cross-sectional calibration needs non-seeding history: ~2-3
   more organic weeks before the distribution is worth calibrating on
   (earliest useful gate ~late August). Interim: let vital signs

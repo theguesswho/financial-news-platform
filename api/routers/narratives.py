@@ -1,7 +1,9 @@
 """GET /narratives — the three-layer map (ui/pages/2_Themes.py port).
 
-Layer 1: macro forces sized by rolled-up exposed board weight, colored by
-momentum. Layer 2: salience-ranked cards from any level (board weight +
+Layer 1: macro forces sized by CANONICAL BOARD CONVICTION (decision 7,
+2026-08-11): sum over DISTINCT board companies of tier weight (3/2/1) x the
+company's STRONGEST exposure anywhere in the narrative's subtree — colored by
+momentum. Layer 2: salience-ranked cards from any level (board conviction +
 recent ledger change + momentum bonus — deterministic, no LLM). Layer 3:
 the complete parented tree. Company-scope narratives are excluded — they
 are dossier material, not map material.
@@ -40,7 +42,8 @@ def get_narratives():
         changes = dict(conn.execute(text("""
             SELECT eh.narrative_id, COUNT(*) FROM exposure_history eh
             WHERE eh.judged_at > NOW() - INTERVAL '7 days'
-              AND eh.op IN ('add','strengthen','weaken','remove')
+              AND eh.op IN ('add','strengthen','weaken','remove','decay')
+              AND eh.trigger != 'shadow'
             GROUP BY eh.narrative_id""")).fetchall())
 
     by_id = {n[0]: n for n in nars}
@@ -51,16 +54,31 @@ def get_narratives():
             kids.setdefault(n[4], []).append(n[0])
 
     gems_by_n: dict = {}
-    weight: dict = {}
+    links_by_n: dict = {}
     for nid, sym, ex, tier, score in expo:
         if nid not in by_id:
             continue
         gems_by_n.setdefault(nid, []).append(
             {"symbol": sym, "tier": tier, "score": ten(score)})
-        weight[nid] = weight.get(nid, 0) + TIER_W.get(tier, 0) * float(ex)
+        links_by_n.setdefault(nid, []).append(
+            (sym, TIER_W.get(tier, 0), float(ex)))
 
-    def rollup(nid):
-        return weight.get(nid, 0) + sum(rollup(c) for c in kids.get(nid, []))
+    # canonical board conviction: per DISTINCT symbol, tier weight x the
+    # symbol's strongest exposure in the subtree (decision 7)
+    def conviction(nid):
+        best: dict = {}
+        stack = [nid]
+        while stack:
+            x = stack.pop()
+            stack.extend(kids.get(x, []))
+            for sym, tw, ex in links_by_n.get(x, []):
+                if sym not in best or ex > best[sym][1]:
+                    best[sym] = (tw, ex)
+        return sum(tw * ex for tw, ex in best.values())
+
+    weight = {nid: sum(tw * ex for _, tw, ex in links_by_n.get(nid, []))
+              for nid in by_id}
+    rollup = conviction
 
     def salience(nid):
         mom_bonus = 5 if (by_id[nid][5] or "") == "accelerating" else 0
@@ -131,7 +149,7 @@ def get_narratives_landing():
         misses_by_n = {r[0]: int(r[1] or 0) for r in conn.execute(text("""
             SELECT narrative_id, SUM(misses)
             FROM narrative_exposures GROUP BY narrative_id""")).fetchall()}
-        # Board-weighted exposure (same weighting as the map).
+        # Board conviction (canonical, same formula as the map).
         expo = conn.execute(text("""
             SELECT ne.narrative_id, ne.symbol, ne.exposure,
                    COALESCE(lh.assessed_tier, lh.tier), lh.gem_score
@@ -144,10 +162,11 @@ def get_narratives_landing():
         ledger = {r[0]: r[1:] for r in conn.execute(text("""
             SELECT narrative_id,
                    COUNT(*) FILTER (WHERE op IN ('add','strengthen')),
-                   COUNT(*) FILTER (WHERE op = 'weaken'),
+                   COUNT(*) FILTER (WHERE op IN ('weaken','decay')),
                    COUNT(*) FILTER (WHERE op = 'remove')
             FROM exposure_history
             WHERE judged_at > NOW() - INTERVAL '30 days'
+              AND trigger != 'shadow'
             GROUP BY narrative_id""")).fetchall()}
 
     by_id = {n[0]: n for n in nars}
@@ -157,13 +176,14 @@ def get_narratives_landing():
             kids.setdefault(n[3], []).append(n[0])
 
     gems_by_n: dict = {}
-    weight: dict = {}
+    links_by_n: dict = {}
     for nid, sym, ex, tier, score in expo:
         if nid not in by_id:
             continue
         gems_by_n.setdefault(nid, []).append(
             {"symbol": sym, "tier": tier, "score": ten(score)})
-        weight[nid] = weight.get(nid, 0) + TIER_W.get(tier, 0) * float(ex)
+        links_by_n.setdefault(nid, []).append(
+            (sym, TIER_W.get(tier, 0), float(ex)))
 
     syms_by_n: dict = {}
     for nid, sym in pairs:
@@ -175,14 +195,17 @@ def get_narratives_landing():
             yield from subtree(c)
 
     def agg(nid):
-        w = 0.0
+        # canonical board conviction: per DISTINCT symbol, tier weight x
+        # strongest exposure in the subtree (decision 7)
+        best: dict = {}
         syms: set = set()
-        board: set = set()
         for x in subtree(nid):
-            w += weight.get(x, 0)
             syms |= syms_by_n.get(x, set())
-            board |= {g["symbol"] for g in gems_by_n.get(x, [])}
-        return round(w, 1), len(syms), len(board)
+            for sym, tw, ex in links_by_n.get(x, []):
+                if sym not in best or ex > best[sym][1]:
+                    best[sym] = (tw, ex)
+        w = sum(tw * ex for tw, ex in best.values())
+        return round(w, 1), len(syms), len(best)
 
     def top_board(nid, k=4):
         seen, out = set(), []

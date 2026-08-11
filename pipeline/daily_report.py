@@ -374,7 +374,7 @@ def _week_ahead(engine, session=None) -> dict:
                       for d, s in sorted(other_by_day.items())]}
 
 
-def _masthead(engine, moves) -> dict:
+def _masthead(engine, moves, for_date: date | None = None) -> dict:
     from pipeline.track_record import get_scorecard
     with engine.connect() as conn:
         board_n = conn.execute(text("""
@@ -392,7 +392,9 @@ def _masthead(engine, moves) -> dict:
                 gem_score DESC LIMIT 6""")).fetchall()]
     sc = {}
     try:
-        sc = get_scorecard(engine) or {}
+        # as_of keeps a regenerated edition's scoreboard on ITS session's
+        # closes (the 8.7% confusion 2026-08-11); None = live/today.
+        sc = get_scorecard(engine, as_of=for_date) or {}
     except Exception:
         pass
     return {"board": board_n, "leaders": leaders, "changes": len(moves),
@@ -452,7 +454,7 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     coverage = _coverage_facts(engine)
     stories = _story_facts(engine)
     week = _week_ahead(engine, for_date)
-    masthead = _masthead(engine, moves)
+    masthead = _masthead(engine, moves, for_date)
 
     real_moves = [m for m in moves if not m.get("bookkeeping")]
     bookkeeping = [m for m in moves if m.get("bookkeeping")]

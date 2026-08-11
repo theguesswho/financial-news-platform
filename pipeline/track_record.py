@@ -175,10 +175,15 @@ def open_weekly_lots(engine) -> dict:
     return {"opened": opened}
 
 
-def get_scorecard(engine, era: str = ERA) -> dict:
+def get_scorecard(engine, era: str = ERA, as_of=None) -> dict:
     """Mark-to-market every lot of the given era against its SPY twin.
-    Default is the active v2 era; pass era='v1' to read the archived record."""
-    _ensure_benchmark_prices(engine)
+    Default is the active v2 era; pass era='v1' to read the archived record.
+    as_of (date) marks lots at that session's closes instead of the newest
+    prices — regenerated editions must keep their own day's scoreboard,
+    not absorb regeneration-day marks (the 8.7% confusion, 2026-08-11).
+    Lots opened after as_of are excluded; exits after as_of count as open."""
+    if as_of is None:
+        _ensure_benchmark_prices(engine)
     with engine.connect() as conn:
         rows = conn.execute(text("""
             WITH latest AS (
@@ -188,26 +193,34 @@ def get_scorecard(engine, era: str = ERA) -> dict:
                 -- (silent scorecard disappearance, 2026-08-03).
                 SELECT DISTINCT ON (symbol) symbol, close
                 FROM eod_prices
-                WHERE date > CURRENT_DATE - 10
+                WHERE date <= COALESCE(:as_of, CURRENT_DATE)
+                  AND date > COALESCE(:as_of, CURRENT_DATE) - 10
                 ORDER BY symbol, date DESC
             )
             SELECT tl.lot_date, tl.symbol, tl.is_entry, tl.amount,
                    tl.entry_price,
-                   COALESCE(tl.exit_price, ls.close)      AS now_price,
+                   CASE WHEN tl.exit_date IS NOT NULL
+                             AND tl.exit_date <= COALESCE(:as_of, CURRENT_DATE)
+                        THEN tl.exit_price ELSE ls.close END   AS now_price,
                    tl.spy_price,
-                   COALESCE(tl.spy_exit_price, lspy.close) AS spy_now,
-                   tl.exit_date
+                   CASE WHEN tl.exit_date IS NOT NULL
+                             AND tl.exit_date <= COALESCE(:as_of, CURRENT_DATE)
+                        THEN tl.spy_exit_price ELSE lspy.close END AS spy_now,
+                   CASE WHEN tl.exit_date <= COALESCE(:as_of, CURRENT_DATE)
+                        THEN tl.exit_date END                  AS exit_date
             FROM track_lots tl
             LEFT JOIN latest ls   ON ls.symbol = tl.symbol
             LEFT JOIN latest lspy ON lspy.symbol = COALESCE(tl.benchmark, 'SPY')
             WHERE NOT COALESCE(tl.voided, FALSE)
               AND COALESCE(tl.era, 'v1') = :era
-              AND (tl.exit_price IS NOT NULL OR ls.close IS NOT NULL)
+              AND tl.lot_date <= COALESCE(:as_of, CURRENT_DATE)
             ORDER BY tl.lot_date, tl.symbol
-        """), {"era": era}).fetchall()
+        """), {"era": era, "as_of": as_of}).fetchall()
 
     lots = []
     for d, sym, is_entry, amt, e_px, n_px, e_spy, n_spy, exit_d in rows:
+        if n_px is None or n_spy is None:   # no close as of that session
+            continue
         amt = float(amt)
         stock_val = amt * float(n_px) / float(e_px)
         spy_val   = amt * float(n_spy) / float(e_spy)

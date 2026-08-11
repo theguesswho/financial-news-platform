@@ -215,6 +215,16 @@ Amendments (Phase 4 cutover gate):
       Observational only; touches no judgment. Deliverable: the metas'
       trajectory table shown to user (prototype 2026-08-12 already
       demonstrated feasibility from ledger history).
+- [ ] **Phase 1b — silence decay (user-approved 2026-08-11).** When an
+      exposed company REPORTS (call + filing ingested) and its
+      extracted themes do not reconfirm the narrative, the weekly pass
+      emits a deterministic `decay` erosion op on that exposure (no
+      LLM — theme extraction already ran); repeated decay without
+      reconfirmation lowers exposure via existing ledger machinery
+      (last_confirmed / misses). Ships BEFORE Phase 2 so momentum
+      calibrates on history that can go down. Definition of
+      "reconfirm" (theme match threshold) is an implementation choice
+      the build session documents in Progress.
 - [ ] **Phase 2 — momentum in shadow.** States computed from vital
       signs, cross-sectional calibration, corroboration bar M set.
       Deliverable: distribution + flap-rate report AND — because
@@ -273,7 +283,12 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
    would enter E at the stable weight (0.6), a small headwind for
    fresh discoveries. Decide at Phase 2 gate with the board diff in
    hand.
-6. **EROSION ASYMMETRY (Phase 1 review finding, 2026-08-11 — BLOCKS
+6. **DECIDED 2026-08-11 — user approved the silence-decay proposal.**
+   The locked erosion definition is AMENDED to: `weaken`, `remove`,
+   prediction misses, **and `decay`** (silence at earnings). Build as
+   **Phase 1b**, before Phase 2 calibration, so momentum calibrates on
+   two-sided history. Original finding preserved below.
+   **EROSION ASYMMETRY (Phase 1 review finding, 2026-08-11 — BLOCKS
    Phase 2 calibration; needs user sign-off because it amends the
    locked erosion definition).** Evidence: seeding week had 1,732
    erosion ops; the two ORGANIC weeks — peak earnings season, 163

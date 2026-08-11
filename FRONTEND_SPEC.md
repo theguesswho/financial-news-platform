@@ -162,6 +162,10 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       First deploy verified: https://web-production-8b767.up.railway.app
       serves the scaffold (HTTP 200). Committed locally after the Phase 0
       push; rides with the Phase 1 push (no doc-only rebuilds).
+      Post-script 2026-08-11: the June prototype's VERCEL project was
+      still connected to the GitHub repo and failing on every push
+      (emailing the user). The product's home is Railway; user is
+      deleting the Vercel project — no code or Railway config involved.
 - [x] Phase 1 (2026-08-10): read API for board / stocks / narratives /
       reports, built as ports of the Streamlit pages' queries and merge
       logic (single source of truth preserved: leaderboard_history

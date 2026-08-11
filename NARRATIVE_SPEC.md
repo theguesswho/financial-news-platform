@@ -255,6 +255,15 @@ Amendments (Phase 4 cutover gate):
       against fresh evidence weekly; hits force momentum=decelerating
       and open lifecycle review. platform_notes row whenever a sweep
       changes anything assessor-visible.
+      **Scope addition (user challenge 2026-08-11): early checkpoint
+      failure.** The grader currently examines checkpoints only AT
+      their deadline — conclusive contrary evidence arriving early
+      (guidance withdrawn, project cancelled) would sit unacknowledged
+      for months. The sweep must also check PENDING checkpoints
+      against fresh evidence and fail them early when refutation is
+      conclusive. Asymmetric by design: early FAIL yes (refutation can
+      be conclusive), early PASS never (confirmation needs the filed
+      number). Honest-decay principle applied to predictions.
 - [ ] **Phase 6 — surfaces.** Streamlit lab bench first (vital signs +
       amendment history per narrative); product Narratives page reads
       the same via API (product track builds it per DESIGN_BRIEF).

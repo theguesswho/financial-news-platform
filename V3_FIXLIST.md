@@ -122,6 +122,18 @@ fixed.
    d. **Falsification sweep**: kill conditions checked against fresh
       evidence every weekly pass; hits force momentum = decelerating
       and open a lifecycle review.
+   **CORROBORATION PRINCIPLE (user, 2026-08-11 — governs all of the
+   above):** one company reporting something new is NEVER a narrative
+   event above company scope. A new narrative is born — or an existing
+   one develops up or down — only when a NUMBER of companies say
+   similar things in a similar direction. Single-company signals feed
+   that company's own dossier and count as ONE vote toward any broader
+   narrative. Mechanically: sector/meta thesis amendments and births
+   require evidence from >= B distinct companies within the window
+   (B calibrated per tier — higher for metas than subsectors); the
+   momentum measure (#3) likewise requires breadth — ops from >= M
+   distinct symbols, so one company's repeated ledger activity cannot
+   move a narrative's momentum alone.
    Cost bound: (a) event-driven off claims (cheap); (b)+(c) batched
    weekly. Depends on: claim extractor (live), momentum #3 above.
    Sequencing: (a) first — it unblocks the product dossier page.

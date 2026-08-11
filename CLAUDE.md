@@ -43,6 +43,30 @@ the instrument's honesty IS the product.
   leaving the scheduler service untouched — then recorded here — every
   push counts as a scheduler restart and full deploy-gate rules apply.
 
+## Evidence integrity (user directive 2026-08-11 — the AECOM lesson)
+A $337M charge was adjudicated as "noise" by an assessor that was told an
+8-K existed but never shown its content; a wrong-quarter transcript was
+then hand-inserted under a guessed label. Both were integrity failures.
+Rules, absolute:
+1. JUDGMENT SURFACES SEE THEIR EVIDENCE. Any LLM that renders a verdict
+   (assessor, report writer, judges) must receive the CONTENT of the
+   events it is judging, not a notification that they happened. When
+   adding a trigger, add its payload to the context in the same change.
+2. THE MACHINERY DOES THE ASSESSING — NEVER CLAUDE. When an assessment
+   is wrong or stale, fix the inputs/context and RE-RUN the platform's
+   assessor. Never hand-write, steer, or "correct" an assessment
+   narrative directly, and never tell the assessor what conclusion the
+   user or Claude expects. (Recurring failure mode — user has caught
+   it more than once.)
+3. NO DATA UNDER GUESSED LABELS. Before inserting any externally
+   fetched artifact (transcript, filing, price), verify the content
+   IS what the label claims (check dates/quarter/entity inside the
+   document). A mislabeled row poisons every downstream judgment
+   silently. Vendor quarter conventions differ — verify, never assume.
+4. NEVER CLAIM A MODEL SAW SOMETHING WITHOUT CHECKING. "Assessed with
+   X in context" may only be said after confirming the context builder
+   actually includes X. Trace the code path, don't infer it.
+
 ## Other standing rules
 - Scoring changes: freeze discipline — explicit user sign-off, log in
   V2_CONSIDERATIONS.md. Offline before/after board diff ritual for big ones.

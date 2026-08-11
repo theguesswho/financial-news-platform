@@ -21,17 +21,26 @@ fixed.
 2. ~~Transcript fetch cadence~~ VOID (2026-08-11): the after-close run
    already pulls transcripts (step 2, before the assessor at step 6) —
    the architecture was right all along. Replaced by:
-   **Fast-path fiscal/calendar key collision (ROOT CAUSE FOUND
-   2026-08-11).** The fast path keys transcripts by CALENDAR quarter
-   guessed from the 8-K date; FMP keys by the company's FISCAL quarter.
-   For offset fiscal years (ACM ends Sep) the fast path's key collides
-   with a PRIOR call's FMP row and ON CONFLICT DO NOTHING silently
-   drops the new transcript — ACM's Aug-10 call collided with its May
-   fiscal-Q2 row. Fix: derive the fiscal label (FYE month from
-   fundamentals_annual) before keying, or key by call DATE. Affects any
-   offset-FY reporter every quarter. ACM's call was hand-ingested under
-   the correct fiscal key (Q3:2026) and all transcript-stale names were
-   re-assessed 2026-08-11 (9 stocks, zero tier changes).
+   **Fast-path quarter fallback can fetch the WRONG call (corrected
+   diagnosis 2026-08-11).** The vendor indexes by FISCAL quarter (same
+   as FMP) — the earlier "calendar/fiscal collision" diagnosis was
+   WRONG. Real behavior: the sweep guesses calendar quarter from the
+   8-K date; for offset-FY companies the guess misses (404 — correctly,
+   transcript not yet published) and the q-1 fallback can fetch the
+   PRIOR quarter's call, whose insert then no-ops on the existing FMP
+   row (harmless) — but a hand-ingest trusting the fallback's label
+   stored ACM's MAY call as "Q3" (caught + deleted same night; see
+   CLAUDE.md Evidence integrity rule 3). Fix: derive the FISCAL quarter
+   from FYE month (fundamentals_annual) before requesting, and verify
+   the returned transcript's internal date before insert; drop the
+   blind q-1 fallback.
+   RESOLVED SAME NIGHT (the deeper finding): **assessor was blind to
+   8-K content** — judged filings it never read; the LHX/ACM class.
+   get_stock_context now passes the last 14 days of 8-K analyses into
+   every assessment (RECENT MATERIAL EVENTS block); ACM re-assessed
+   through the machinery with the charge + guidance cut in view (SB
+   held, honestly argued, sharper bear case). Codified as CLAUDE.md
+   "Evidence integrity" rules 1-4.
 
 ## Methodology (freeze ritual applies)
 

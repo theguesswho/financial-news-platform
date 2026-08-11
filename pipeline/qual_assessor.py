@@ -255,6 +255,30 @@ def get_stock_context(engine, symbol: str) -> dict:
             LIMIT 10
         """), {"sym": symbol}).fetchall()[::-1]
 
+        # Recent material events WITH their content (the AECOM lesson,
+        # user 2026-08-11): the assessor was told an 8-K existed but never
+        # shown its summary — it adjudicated a $337M charge as noise
+        # blind. A judgment surface must receive the evidence it judges.
+        event_rows = conn.execute(text("""
+            SELECT filing_type, filing_date::date, llm_analysis
+            FROM filings
+            WHERE symbol = :sym AND filing_type IN ('8-K', '8-K/A')
+              AND llm_analysis IS NOT NULL
+              AND filing_date > NOW() - INTERVAL '14 days'
+            ORDER BY filing_date DESC LIMIT 3
+        """), {"sym": symbol}).fetchall()
+    events = []
+    for ftype, fdate, analysis in event_rows:
+        try:
+            a = json.loads(analysis)
+            events.append(
+                f"- {ftype} filed {fdate} [{a.get('event_type', '?')}, "
+                f"impact {a.get('impact', '?')} {a.get('score', '')}]: "
+                f"{a.get('summary', a.get('headline', ''))}")
+        except Exception:
+            events.append(f"- {ftype} filed {fdate}: {str(analysis)[:300]}")
+    recent_events = "\n".join(events)
+
     with engine.connect() as conn:
         hist_rows = conn.execute(text("""
             SELECT assessed_at::date, adjusted_tier, LEFT(rationale, 140)
@@ -276,6 +300,7 @@ def get_stock_context(engine, symbol: str) -> dict:
         "trend_rows": trend_rows,
         "prev":       prev,
         "band_history": band_history,
+        "recent_events": recent_events,
         "platform_notes": _platform_notes(engine),
     }
 
@@ -388,11 +413,14 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         prev_rationale       = (ctx["prev"][2] or "")[:600] if ctx.get("prev") else "",
         band_history         = ctx.get("band_history", "(no band changes on record)"),
         trigger_context      = (
-            f"{ctx.get('platform_notes', '')}"
-            f"\nWHY YOU ARE BEING ASKED NOW: {gem['_trigger']}\n"
-            "Your rationale MUST open by stating whether this event/move changes "
-            "the thesis or is noise — that opinion is the point of this assessment."
-            if gem.get("_trigger") else ctx.get("platform_notes", "")),
+            (f"\nRECENT MATERIAL EVENTS (what was actually filed — weigh the "
+             f"CONTENT, not just the fact of the filing):\n{ctx['recent_events']}\n"
+             if ctx.get("recent_events") else "")
+            + (f"{ctx.get('platform_notes', '')}"
+               f"\nWHY YOU ARE BEING ASKED NOW: {gem['_trigger']}\n"
+               "Your rationale MUST open by stating whether this event/move changes "
+               "the thesis or is noise — that opinion is the point of this assessment."
+               if gem.get("_trigger") else ctx.get("platform_notes", ""))),
     )
 
 

@@ -144,7 +144,10 @@ def _qual_sweep(gems=None):
                 FROM filings f
                 WHERE f.symbol = l.symbol
                   AND (f.filing_type = 'EARN_CALL'
+                       OR f.filing_type IN ('10-K', '10-Q')
                        OR (f.filing_type = '8-K' AND f.event_type = 'EARNINGS'))
+                  -- 10-K/Q added 2026-08-11 (user): the filed detail behind
+                  -- the 8-K must re-fire assessment same as transcripts do
                   AND f.created_at > qa.assessed_at
                   AND f.filing_date > NOW() - INTERVAL '14 days'
                 ORDER BY f.created_at DESC LIMIT 1
@@ -402,6 +405,14 @@ def daily_data_update():
         _ok(f"Earnings ingestion done: {r}")
     except Exception as e:
         _err("Earnings ingestion failed", e)
+
+    _step("4a2", "Earnings-call claim extraction (catch-up, idempotent)")
+    try:
+        from pipeline.claim_extractor import run_claim_extraction
+        run_claim_extraction()
+        _ok("Claim extraction done")
+    except Exception as e:
+        _err("Claim extraction failed", e)
 
     _step("4b", "Narrative theme extraction (catch-up)")
     try:
@@ -699,6 +710,16 @@ def after_close_refresh():
         _ok(f"Earnings ingestion done: {r}")
     except Exception as e:
         _err("Earnings ingestion failed", e)
+
+    _step("2c", "Earnings-call claim extraction (management's testable promises)")
+    try:
+        # Orphaned 2026-06-12 -> re-wired 2026-08-11 (V3 #1). Idempotent:
+        # only transcripts with no stored claims are processed.
+        from pipeline.claim_extractor import run_claim_extraction
+        run_claim_extraction()
+        _ok("Claim extraction done")
+    except Exception as e:
+        _err("Claim extraction failed", e)
 
     _step(3, "Material events (8-K)")
     try:

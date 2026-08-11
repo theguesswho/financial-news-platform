@@ -239,7 +239,6 @@ def run_events(session: Session, tickers: list[str]) -> dict:
                     content=content,
                     llm_analysis=json.dumps(classification),
                     sentiment_score=classification["score"],
-                    processed_at=datetime.utcnow(),
                 ))
                 session.commit()
                 added += 1

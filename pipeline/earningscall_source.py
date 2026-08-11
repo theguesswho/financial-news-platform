@@ -107,29 +107,51 @@ def fetch_fast_transcripts(engine, lookback_days: int = 7) -> dict:
     time.sleep(THROTTLE_S)
     stats = {"fetched": 0, "checked": 0, "not_yet": 0, "no_coverage": 0, "errors": 0}
 
+    # FYE month per symbol — the vendor (like FMP) labels transcripts by
+    # FISCAL quarter, so the request must be fiscal too. The old calendar
+    # guess + blind q-1 fallback fetched ACM's PRIOR call under a colliding
+    # key (2026-08-11, CLAUDE.md Evidence integrity rule 3). 172 symbols
+    # have offset fiscal years.
+    with engine.connect() as conn:
+        fye = dict(conn.execute(text("""
+            SELECT symbol, EXTRACT(MONTH FROM MAX(fiscal_year::date))::int
+            FROM fundamentals_annual GROUP BY symbol""")).fetchall())
+
+    def _fiscal_label(sym, event_date):
+        """(year, quarter) of the reported fiscal quarter, FMP convention
+        (fiscal year labeled by the calendar year its FYE falls in).
+        The reported quarter = most recent fiscal quarter-end at least
+        20 days before the call (Q4/annual calls lag year-end 60-90d,
+        so a fixed-offset anchor mislabels them)."""
+        import calendar as _cal
+        import datetime as _dt
+        m = fye.get(sym) or 12
+        end_months = {(m - 3 * k - 1) % 12 + 1 for k in range(4)}
+        for back in range(15):
+            idx = event_date.year * 12 + (event_date.month - 1) - back
+            yy, mm = idx // 12, idx % 12 + 1
+            if mm not in end_months:
+                continue
+            qend = _dt.date(yy, mm, _cal.monthrange(yy, mm)[1])
+            if (event_date - qend).days >= 20:
+                quarter = ((mm - m + 12) % 12) // 3 or 4
+                year = yy if mm <= m else yy + 1
+                return year, quarter
+        return event_date.year, (event_date.month - 1) // 3 + 1
+
     for sym, event_date in candidates:
         stats["checked"] += 1
         ex = exch.get(sym)
         if not ex:
             stats["no_coverage"] += 1
             continue
-        year = event_date.year
-        quarter = (event_date.month - 1) // 3 + 1
-        # An early-January report is Q4 of the prior fiscal year
-        if event_date.month == 1:
-            year, quarter = year - 1, 4
+        year, quarter = _fiscal_label(sym, event_date)
         status, body = _get("transcript", {
             "exchange": ex, "symbol": sym, "year": year, "quarter": quarter, "level": 1})
         time.sleep(THROTTLE_S)
-        if status == 404:
-            # Try adjacent quarter (fiscal-calendar offsets)
-            q2 = quarter - 1 or 4
-            y2 = year - 1 if quarter == 1 else year
-            status, body = _get("transcript", {
-                "exchange": ex, "symbol": sym, "year": y2, "quarter": q2, "level": 1})
-            time.sleep(THROTTLE_S)
-            if status == 200:
-                year, quarter = y2, q2
+        # NO adjacent-quarter fallback: a 404 means not yet published.
+        # Guessing neighbors is how a prior call gets fetched under a
+        # wrong label; the FMP fallback path covers stragglers instead.
         if status != 200 or not body:
             stats["not_yet" if status == 404 else "errors"] += 1
             continue

@@ -270,11 +270,9 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.roe                 = _pct(info.get("returnOnEquity"))
             # roic deliberately NOT written — canonical sync owns it; a
             # None here must never clobber the FMP value (P2 2026-08-09).
-            # Use TTM margins (last 4 quarters) instead of yfinance.info FY figures
-            # This avoids stale data and the 100% gross margin bug for financial services
-            row.gross_margin        = ttm_margins.get("gross_margin") or _pct(info.get("grossMargins"))
-            row.operating_margin    = ttm_margins.get("operating_margin") or _pct(info.get("operatingMargins"))
-            row.net_margin          = ttm_margins.get("net_margin") or _pct(info.get("profitMargins"))
+            # margins deliberately NOT written — canonical FMP sync owns
+            # every statement-derived field (audit 2026-08-11); a Yahoo
+            # value here would reintroduce mixed definitions between syncs.
             row.fcf_margin          = fcf_margin
             # yfinance returns debtToEquity as a percentage (e.g. 35.78 = 0.3578x ratio)
             _raw_de = _safe(info.get("debtToEquity"))

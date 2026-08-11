@@ -184,7 +184,6 @@ def run_analysis(session: Session, symbols: list[str] | None = None) -> dict:
             master_text, sentiment = _master_analysis(session, filing, per_filing)
             filing.master_analysis = master_text
             filing.sentiment_score = sentiment
-            filing.processed_at = datetime.utcnow()
 
             session.commit()
             analyzed += 1

@@ -44,11 +44,25 @@ fixed.
 
 ## Methodology (freeze ritual applies)
 
-3. **Narrative momentum uninformative.** Every macro reads
-   "accelerating" — no discriminating signal. Recalibrate from ledger
-   evidence (op balance over a window), not vibes. Blocks honest
-   momentum coloring on the product's landing page (currently contracted
-   to use ledger ops instead).
+3. **Narrative momentum — SCOPED 2026-08-11 (user: "we need to nail
+   this bit"; build shadow-first, NO live push without sign-off).**
+   Today every macro reads "accelerating" = zero signal. Design:
+   - Source: the exposure LEDGER, not judge vibes. Per narrative,
+     two trailing windows (28d primary, 7d turn-detector):
+     support = adds + strengthens; erosion = weakens + removes +
+     misses. Net support rate = (support − erosion) / active exposures.
+   - States: accelerating (28d rate ≥ +X% and 7d not negative),
+     decelerating (28d ≤ −X%, OR any falsification condition hit, OR
+     checkpoint failures outweigh passes), stable otherwise; "quiet"
+     when ops < minimum N (thin evidence must not flap the label).
+   - Company scope: checkpoint verdicts (delivered vs missed) count as
+     first-class ops.
+   - Calibration: compute over ledger history since July; tune X and N
+     so the library actually spreads across states (roughly 20/60/20,
+     not 100/0/0). Present distribution to user BEFORE cutover.
+   - Rollout: shadow field alongside the current one for ~2 weeks,
+     diff shown, then cutover with sign-off. Product landing page
+     colors stay ledger-driven until this ships.
 
 4. **EVR consistency knob revisit.** If EVR still smells wrong after the
    fiscal-calendar hygiene: measure residuals against the 15-year
@@ -85,13 +99,32 @@ fixed.
    snapshot consumer. Stop writing gross/operating/net margin from the
    Yahoo path; canonical owns statement-derived fields.
 
-6c. **Checkpoint inflow stops when the birth queue drains.** New
-   predictions (narrative_checkpoints) are only created at company-
-   narrative BIRTH (company_narrative.py:294): 140+32+48+32 during the
-   Aug 4-7 birth drain, zero since — through peak earnings season.
-   Existing dossiers never gain fresh predictions. Design decision
-   needed (ties to P3 shadow lane + the product dossier page): should
-   new typed claims on existing narratives mint checkpoints?
+6c. **LIVING NARRATIVES — SCOPED 2026-08-11 (user: "the whole point is
+   that it should be living and breathing"). Supersedes the narrower
+   checkpoint-inflow question; user answered YES and went further:
+   narratives must absorb everything — calls, 8-Ks, 10-K/Qs —
+   continuously.** Design, in dependency order:
+   a. **Post-birth prediction minting**: new typed claims on EXISTING
+      company narratives mint checkpoints (not only at birth). Feed:
+      earnings_claims (extractor re-wired 2026-08-11) mapped to the
+      company's narrative; dedupe against open checkpoints; cap per
+      narrative per quarter. This alone makes dossiers breathe.
+   b. **Thesis amendments, evidence-cited**: when a narrative
+      accumulates K new evidence rows or a checkpoint resolves, an
+      update judge amends the thesis — versioned into thesis_history,
+      each amendment citing the evidence rows that drove it (grounding
+      discipline as in P2). Never silent rewrites.
+   c. **Sector/macro narratives breathe too**: weekly evidence digest
+      per narrative (child exposures' ledger ops + filing themes) into
+      the same amendment judge. Macro theses currently only change at
+      lifecycle events — that is the "static meta-narrative" the user
+      rejects.
+   d. **Falsification sweep**: kill conditions checked against fresh
+      evidence every weekly pass; hits force momentum = decelerating
+      and open a lifecycle review.
+   Cost bound: (a) event-driven off claims (cheap); (b)+(c) batched
+   weekly. Depends on: claim extractor (live), momentum #3 above.
+   Sequencing: (a) first — it unblocks the product dossier page.
 
 6d. **qual_assessor cache share is 53.6%, not the ~85% hoped.** The
    warm-up fix works within a run, but runs are spaced further apart

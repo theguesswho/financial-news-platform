@@ -24,7 +24,10 @@ class Filing(Base):
     llm_analysis = Column(Text)              # JSON: summary, risks, opportunities, etc.
     master_analysis = Column(Text)           # prose synthesis with market context
     sentiment_score = Column(Integer)        # -10 (bearish) to +10 (bullish)
-    processed_at = Column(DateTime)
+    # processed_at retired 2026-08-11 (audit): written inconsistently by
+    # legacy paths only, read by nothing, and it misled two audits into
+    # "unprocessed content" false alarms. Coverage truth lives in
+    # llm_analysis (8-Ks) and filing_themes (10-K/Q, transcripts).
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

@@ -67,6 +67,13 @@ Rules, absolute:
    X in context" may only be said after confirming the context builder
    actually includes X. Trace the code path, don't infer it.
 
+## Narrative system (the living-narratives build)
+ALL narrative-system work (momentum, vital signs, amendments,
+checkpoint minting, lifecycle) is governed by NARRATIVE_SPEC.md — read
+it BEFORE touching any of it. Its Progress section is the state.
+Shadow-first is absolute: no live narrative field changes without the
+spec's acceptance criteria met and user sign-off recorded there.
+
 ## Other standing rules
 - Scoring changes: freeze discipline — explicit user sign-off, log in
   V2_CONSIDERATIONS.md. Offline before/after board diff ritual for big ones.

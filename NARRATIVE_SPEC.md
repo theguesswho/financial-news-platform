@@ -235,8 +235,9 @@ Amendments (Phase 4 cutover gate):
       discipline in full (user sign-off, V2_CONSIDERATIONS, platform
       note with active window). Product landing page keeps ledger-op
       coloring until then.
-- [ ] **Phase 3 — post-birth prediction minting. UNBLOCKED and NEXT
-      ACTIONABLE (2026-08-11):** Phase 2 waits on ~2-3 organic weeks of
+- [ ] **Phase 3 — post-birth prediction minting. BUILT + DRY-RUN
+      VERIFIED 2026-08-11 (see Progress); live writes await user
+      sign-off.** Phase 2 waits on ~2-3 organic weeks of
       two-sided vital signs (earliest gate ~late Aug) but Phase 3 has
       no dependency on it — its feed is flowing (earnings_claims:
       38,659 claims, 813 symbols, current through 2026-08-10, backlog
@@ -418,8 +419,51 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
     reviewing the shadow numbers above (next weekly runs will accumulate
     more). Live decay writes erosion ops + lowers exposures — methodology-
     live but NOT scoring-visible until Phase 2's momentum cutover.
-- NEXT: user reviews the Phase 1b shadow evidence (83 decays, samples
-  above) and signs off live decay here. Then Phase 2 — momentum states
+- Phase 3 BUILT, DRY-RUN VERIFIED (2026-08-11, this session) — live
+  writes + scheduler wiring await user look at the samples:
+  - pipeline/checkpoint_minting.py: per-symbol Sonnet mint judge. Input
+    = each active company narrative's thesis + OPEN checkpoints + the
+    full text of candidate claims (evidence-integrity rule 1 satisfied);
+    output = new checkpoints (claim/observable/deadline) into the SAME
+    narrative_checkpoints table the grader already reads — no parallel
+    machinery.
+  - Candidates: post-birth calls only, confidence ≥ 0.8, timeframe
+    present, claim_type ≠ 'risk' (risks are Phase 5 falsification
+    material, not credit-earning predictions). Dedupe: new column
+    narrative_checkpoints.source_claim_id excludes already-minted
+    claims before the judge runs (column added via ensure_schema;
+    NULL for all 252 birth-era rows); the judge sees open checkpoints
+    and skips restatements. Cap: 2 minted per narrative per calendar
+    quarter (birth checkpoints don't count).
+  - DRY RUN against live DB 2026-08-11: 41 candidate claims / 6 symbols
+    (small because most dossiers were born 8/7 and birth consumed the
+    current call — the pass is built for the NEXT earnings wave), 11
+    proposals, 0 errors, zero rows written. Samples look substantive
+    (ATO rider-tariff $160–165M, CDE FY26 FCF ~$1.5B, HL Greens Creek
+    phase-3 timeline). Review flags: one MCK mint self-describes as
+    checking an EXISTING open checkpoint (dedupe bar may need
+    tightening); one PODD mint is a timeline reaffirmation rather than
+    a new number.
+  - GATE TO GO LIVE (user): review the 11 samples (rerun
+    `python3 -m pipeline.checkpoint_minting` to reprint). On sign-off:
+    run with --live, wire into scheduler weekly step (before
+    checkpoint grading so mints age properly), record here. Company
+    scope — outside live scoring, no freeze ritual needed.
+  - REVIEW 2026-08-11 (methodology session; dry run reproduced 11/6/0
+    exactly; schema claims verified — status defaults 'pending',
+    created_at defaults now(), so grader + quarterly cap both work).
+    TWO FIXES REQUIRED BEFORE --live, no re-review needed once done:
+    (1) DEDUPE LEAK: 2 of 11 proposals are restatements of open
+    checkpoints (PODD admits it in its own rationale; MCK builds on an
+    open one) — harden prompt (reaffirmation = skip, never
+    "reinforce") AND add a deterministic post-filter (text overlap vs
+    open checkpoints) so echo-predictions can't earn maturity twice.
+    (2) DEADLINE VALIDATION: parse each proposal deadline; require
+    today < deadline < today+3y; skip invalid rows individually (one
+    malformed date currently aborts the whole live insert batch).
+- NEXT: user reviews (a) the Phase 1b shadow evidence and signs off
+  live decay, (b) the Phase 3 minting samples and signs off live
+  minting + scheduler wiring. Then Phase 2 — momentum states
   computed from these vital signs in
   shadow. Cross-sectional calibration needs non-seeding history: ~2-3
   more organic weeks before the distribution is worth calibrating on

@@ -203,8 +203,13 @@ Amendments (Phase 4 cutover gate):
 
 ## Phases
 
-- [ ] **Phase 0 — definitions sign-off.** User confirms the Definitions
-      and Acceptance criteria above (or amends them). No code.
+- [x] **Phase 0 — definitions sign-off. DONE 2026-08-12.** User
+      confirmed: (1) translation = delivery only, never talk;
+      (2) momentum relative/cross-sectional with the "quiet" state;
+      (3) acceptance tolerances as written (60% spread cap, <15% flap,
+      downgrades lead, metas amend ~monthly max). Definitions and
+      Acceptance criteria above are LOCKED — amend only with explicit
+      user sign-off recorded here.
 - [ ] **Phase 1 — vital signs.** narrative_health_history table +
       weekly pass + backfill to 2026-07-06 (seeding rows flagged).
       Observational only; touches no judgment. Deliverable: the metas'
@@ -271,4 +276,12 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
 
 ## Progress
 
-(nothing built — Phase 0 awaiting user definitions sign-off)
+- Phase 0 complete (2026-08-12): definitions + acceptance criteria
+  user-confirmed and locked. Nothing built yet.
+- NEXT: Phase 1 — narrative_health_history table, weekly vital-signs
+  pass, backfill from exposure_history to 2026-07-06 (seeding rows
+  flagged, excluded from calibration). Observational only: touches no
+  judgment, no scoring, no live narrative fields. Deliverable to user:
+  the metas' weekly trajectory (a 2026-08-12 offline prototype already
+  produced this from the ledger — reproduce it from the new table as
+  verification). Deploy gate + batching rules apply as everywhere.

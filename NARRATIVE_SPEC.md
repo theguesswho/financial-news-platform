@@ -149,6 +149,44 @@ filing_themes ──────────────┘         (new table) 
   track (pipeline + platform tables). The product reads it via api/
   GET /narratives only.
 
+## Existing-machinery inventory (reuse / replace / retire — the
+## anti-mismatch map; verified in code 2026-08-12)
+
+**narratives.momentum — writers today:** (1) birth judges stamp the
+initial label (newborns say "accelerating" — that's why they're born);
+(2) narrative_lifecycle.py:281-295 downgrades on falsification/decline.
+NOTHING re-judges periodically — every narrative still wears its birth
+certificate, which is the whole "100% accelerating" pathology.
+Phase 2 plan: the vital-signs writer becomes the SOLE periodic writer;
+lifecycle's falsification downgrade is retained as an override (Phase 5
+integrates with it, never duplicates it); birth stamping changes to an
+initial state (see Open decision 5). No other writer may remain.
+
+**narratives.momentum — readers (Phase 2 blast radius, ALL must be in
+the board diff):** hidden_gem_scorer (E weights 1.0/0.6/0.2 — scoring),
+theme_valuation_gap.py:63 (Dell detector FILTERS on accelerating —
+scoring-adjacent screen whose universe shrinks under honest momentum),
+buyhold_backtest, narrative_structure census, assessor context, report
+surfaces, both UIs.
+
+**Thesis text — writers today: none post-birth** (0/83 amended).
+Phase 4's amendment judge becomes the sole writer; thesis_history is
+the single versioning convention for ALL tiers including company
+dossiers — no second convention may appear.
+
+**narrative_checkpoints — writer today:** company_narrative.py:294
+(birth only). Phase 3 ADDS the claims-minting path into the same
+table with dedupe; grader (checkpoint_grader.py) unchanged.
+
+**Lifecycle (births, seasoning, promotion, decline):**
+narrative_lifecycle.py stays the owner. Phase 5 extends its
+falsification checks; the corroboration bar B plugs into ITS birth
+path. No parallel lifecycle logic anywhere.
+
+**Source of truth for ops:** exposure_history (append-only ledger).
+Vital signs are DERIVED from it and recomputable at any time; the
+health table is a cache of the ledger, never an independent authority.
+
 ## Acceptance criteria (agreed BEFORE building; measured in shadow)
 
 Momentum (Phase 2 cutover gate):
@@ -223,6 +261,13 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
 4. Whether translation_share (delivered-vs-talk) also feeds the E
    score itself one day — that is a SCORING change, freeze discipline,
    explicitly out of scope for this spec's phases.
+5. What momentum state a NEWBORN narrative gets. Proposal: "quiet"
+   until breadth clears the corroboration bar M — a newborn has no
+   trajectory yet, and birth-stamped "accelerating" is how the current
+   pathology started. Counter-consideration: quiet newborns' exposures
+   would enter E at the stable weight (0.6), a small headwind for
+   fresh discoveries. Decide at Phase 2 gate with the board diff in
+   hand.
 
 ## Progress
 

@@ -255,15 +255,34 @@ Amendments (Phase 4 cutover gate):
       against fresh evidence weekly; hits force momentum=decelerating
       and open lifecycle review. platform_notes row whenever a sweep
       changes anything assessor-visible.
-      **Scope addition (user challenge 2026-08-11): early checkpoint
-      failure.** The grader currently examines checkpoints only AT
-      their deadline — conclusive contrary evidence arriving early
-      (guidance withdrawn, project cancelled) would sit unacknowledged
-      for months. The sweep must also check PENDING checkpoints
-      against fresh evidence and fail them early when refutation is
-      conclusive. Asymmetric by design: early FAIL yes (refutation can
-      be conclusive), early PASS never (confirmation needs the filed
-      number). Honest-decay principle applied to predictions.
+      **Scope (user-directed 2026-08-11, "we shouldn't be waiting
+      around" — this is the practical design, not a gesture):
+      INTERIM CHECKPOINT TRACKING.** Every PENDING checkpoint carries
+      a living track status, refreshed whenever new evidence for its
+      symbol is processed (each quarter's call/8-K/10-Q at minimum):
+      - `on_track` — fresh evidence consistent with the promise
+      - `slipping` — timeline/magnitude softening but promise intact
+      - `in_doubt` — material contrary signal, not yet conclusive
+      - `failed_early` — conclusive refutation (guidance withdrawn,
+        project cancelled): the checkpoint FAILS now, with cited
+        evidence, months before its deadline if needed
+      - `no_signal` — the evidence didn't speak to it (feeds decay's
+        silence logic, not a judgment)
+      Asymmetry is absolute: early FAIL yes, early PASS never —
+      confirmation always waits for the filed number.
+      MATURITY DISCIPLINE: only VERDICTS (pass / fail / failed_early)
+      move maturity. Interim states inform surfaces, the assessor's
+      context, and the amendment judge — talk never earns credit
+      (translation principle).
+      IMPLEMENTATION HOME: extend the Phase 3 mint judge — it already
+      receives each dossier's open checkpoints + the new evidence in
+      one call; returning track statuses alongside mint proposals
+      costs ~zero extra. Schema: track_status, track_updated,
+      track_evidence on narrative_checkpoints. Plain lexicon on
+      surfaces ("on track", "slipping", "in doubt", "failed early").
+      Weekly falsification sweep remains the backstop for kill
+      conditions at NARRATIVE level (untenable thesis → momentum
+      forced decelerating + lifecycle review + platform note).
 - [ ] **Phase 6 — surfaces.** Streamlit lab bench first (vital signs +
       amendment history per narrative); product Narratives page reads
       the same via API (product track builds it per DESIGN_BRIEF).
@@ -470,6 +489,12 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
     (2) DEADLINE VALIDATION: parse each proposal deadline; require
     today < deadline < today+3y; skip invalid rows individually (one
     malformed date currently aborts the whole live insert batch).
+  - **GATE APPROVED (user, 2026-08-11): "approved with the two fixes."**
+    Next session: implement both fixes, run --live, wire into the
+    weekly step before checkpoint grading, record results here. While
+    in the mint judge, note Phase 5's interim-tracking extension lands
+    in this same judge later — design the output shape with that in
+    mind (but do NOT build tracking yet; it ships with Phase 5).
 - NEXT: user reviews (a) the Phase 1b shadow evidence and signs off
   live decay, (b) the Phase 3 minting samples and signs off live
   minting + scheduler wiring. Then Phase 2 — momentum states

@@ -276,12 +276,46 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
 
 ## Progress
 
-- Phase 0 complete (2026-08-12): definitions + acceptance criteria
-  user-confirmed and locked. Nothing built yet.
-- NEXT: Phase 1 — narrative_health_history table, weekly vital-signs
-  pass, backfill from exposure_history to 2026-07-06 (seeding rows
-  flagged, excluded from calibration). Observational only: touches no
-  judgment, no scoring, no live narrative fields. Deliverable to user:
-  the metas' weekly trajectory (a 2026-08-12 offline prototype already
-  produced this from the ledger — reproduce it from the new table as
-  verification). Deploy gate + batching rules apply as everywhere.
+- Phase 0 complete (2026-08-11; the "2026-08-12" stamps elsewhere in
+  this file were written the same day and are off by one): definitions
+  + acceptance criteria user-confirmed and locked.
+- Phase 1 BUILT (2026-08-11, this session) — awaiting user look at the
+  deliverable, then it just accumulates weekly:
+  - pipeline/narrative_vital_signs.py: narrative_health_history table
+    (support, erosion, breadth, active_exposures, exposed_board_weight,
+    checkpoint_passes/fails, translation_share, momentum_state shadow
+    column left NULL, seeding flag, UNIQUE(narrative_id, week_start)).
+    Derived cache of exposure_history — every run upserts, recomputable.
+  - Weekly pass wired into scheduler_light.py weekly_deep_refresh as
+    step 5h (after lifecycle 5e/structure 5f): recomputes current +
+    previous week each run, self-healing. Observational only.
+  - Backfill run 2026-08-11 against live DB: 141 narratives × 6 weeks
+    (2026-07-06 → 2026-08-10) = 846 rows. Weeks < 2026-08-03 flagged
+    seeding=true. Weeks ending before the ledger epoch (2026-07-27)
+    carry NULL state columns + zero ops — the ledger cannot say, so the
+    table doesn't pretend. Week-of-7/20 state = the pre-ledger system's
+    final narrative_exposures state at the conversion instant (exact).
+  - Historical state via backward ledger replay (add/strengthen/weaken/
+    remove undone from current narrative_exposures; propose_remove and
+    remove_vetoed change no state; trigger='shadow' excluded).
+    VERIFIED: leaf-narrative support/erosion/breadth match independent
+    raw-ledger queries; current-week replay matches live
+    narrative_exposures counts exactly (3/3 spot checks each).
+  - Phase 1 implementation choices (NOT locked definitions):
+    exposed_board_weight = Σ per-symbol MAX subtree exposure over
+    board-tier symbols at latest leaderboard snapshot ≤ week end;
+    translation "delivered" = symbol-level proxy (confirmed checkpoint
+    on the symbol's company narrative, or delivered-graded claim,
+    within 100d) until Phase 3 ties delivery to specific narratives.
+  - Metas' trajectory deliverable reproduced from the new table: first
+    organic week (8/3) shows real spread — support 20–228, breadth
+    17–103, erosion ≈ 0 everywhere (nothing eroding yet — watch this),
+    translation ≈ 0 (3 confirmed checkpoints platform-wide; honest).
+- NEXT: Phase 2 — momentum states computed from these vital signs in
+  shadow. Cross-sectional calibration needs non-seeding history: ~2-3
+  more organic weeks before the distribution is worth calibrating on
+  (earliest useful gate ~late August). Interim: let vital signs
+  accumulate via the weekly pass; verify step 5h ran in the next weekly
+  log. Momentum cutover remains a SCORING change under full freeze
+  discipline. Open decision 5 (newborn state) decides at the Phase 2
+  gate with the board diff in hand.

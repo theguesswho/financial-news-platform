@@ -1052,6 +1052,17 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Negative-control audit check failed", e)
 
+    _step("5h", "Narrative vital signs (NARRATIVE_SPEC Phase 1 — observational)")
+    try:
+        from pipeline.narrative_vital_signs import run_vital_signs
+        from pipeline.hidden_gem_scorer import get_engine as _ge5h
+        _e5h = _ge5h()
+        r = run_vital_signs(_e5h)
+        _e5h.dispose()
+        _ok(f"Vital signs: {r}")
+    except Exception as e:
+        _err("Vital signs pass failed", e)
+
     _step(6, "Historical metrics refresh (FMP quarterly)")
     try:
         from pipeline.fmp_historical import fetch_historical_metrics

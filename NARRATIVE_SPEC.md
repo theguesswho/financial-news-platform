@@ -273,6 +273,32 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
    would enter E at the stable weight (0.6), a small headwind for
    fresh discoveries. Decide at Phase 2 gate with the board diff in
    hand.
+6. **EROSION ASYMMETRY (Phase 1 review finding, 2026-08-11 — BLOCKS
+   Phase 2 calibration; needs user sign-off because it amends the
+   locked erosion definition).** Evidence: seeding week had 1,732
+   erosion ops; the two ORGANIC weeks — peak earnings season, 163
+   transcripts/wk — had 8 and 0. The update judge only erodes on
+   active negative evidence; SILENCE is not an event. Net support ≈
+   support → "decelerating" could structurally never fire except via
+   falsification. Momentum on this data is a one-way ratchet.
+   PROPOSAL — "silence at earnings is evidence": when an exposed
+   company REPORTS (call + filing ingested) and its extracted themes
+   do not reconfirm the narrative, the weekly pass emits a `decay`
+   erosion op on that exposure (deterministic, no LLM — the theme
+   extraction already ran). Repeated decay without reconfirmation
+   lowers exposure via the existing ledger machinery
+   (last_confirmed / misses columns already exist for this).
+   Corroboration-consistent: one company's silence is one vote.
+   Alternative considered: time-based decay regardless of reporting —
+   rejected as arbitrary (punishes narratives between earnings seasons
+   for the calendar, not for evidence).
+7. **One "exposed board weight" definition.** Two now exist: the
+   Themes/lab page uses Σ tier-weight × exposure; vital signs use
+   Σ per-symbol MAX subtree exposure over board symbols. Both render
+   as "weight" to the user. Pick ONE canonical formula (or give them
+   distinct plain-lexicon names) before the product Narratives page
+   consumes either. Small, but exactly the mismatch class this spec
+   exists to prevent.
 
 ## Progress
 

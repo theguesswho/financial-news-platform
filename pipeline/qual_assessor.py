@@ -240,7 +240,7 @@ def get_stock_context(engine, symbol: str) -> dict:
         # Fundamentals
         fund = conn.execute(text("""
             SELECT peg_ratio, pe_forward, revenue_growth_yoy,
-                   earnings_growth_yoy, roic, sector
+                   earnings_growth_yoy, roic, sector, peg_analysts
             FROM fundamentals WHERE symbol = :sym
         """), {"sym": symbol}).fetchone()
 
@@ -390,7 +390,14 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         quality_score        = fmt(gem["quality_score"]),
         priced_in            = fmt(gem.get("priced_in", 0.5)),
         ng_score             = fmt(gem.get("ng_score", 0)),
-        peg                  = fmt(fund[0] if fund else None),
+        # PEG carries its evidence weight (user 2026-08-12): a 3-analyst
+        # consensus PEG deserves less trust than a 25-analyst one.
+        peg                  = (fmt(fund[0]) + (
+                                    f" (consensus of {int(fund[6])} analyst"
+                                    f"{'s' if int(fund[6]) != 1 else ''}"
+                                    + (" — THIN coverage, treat with caution" if int(fund[6]) <= 4 else "")
+                                    + ")" if fund[6] else " (vendor)")
+                                ) if fund and fund[0] is not None else "n/a",
         fwd_pe               = fmt(fund[1] if fund else None),
         rev_growth           = fmt(fund[2] if fund else None, pct=True),
         earn_growth          = fmt(fund[3] if fund else None, pct=True),

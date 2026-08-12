@@ -72,6 +72,33 @@ fixed.
    quality/value, low story exposure. Watch as the BR-class narrative-
    blind override case.
 
+## New analytics (scoring-adjacent — reads scores, never writes them)
+
+8. **Price-band ceiling calculator (user 2026-08-12; NEEDS FURTHER
+   FLESHING OUT before build).** Per board stock: the price at which
+   the numbers alone would drop it out of its tier band, plus any
+   cliffs. Established so far: computable by bisection (scale stored
+   multiples by p/p0, re-run value percentile + priced-in; Q and E are
+   price-independent); the band is ONE-SIDED (falling price never
+   score-exits — ceiling, not window); cliffs are real (SMCI: cyclical
+   punished flag dies at 75% of 52w-high ≈ $44 → capped below Watch);
+   predicts the RAW tier only (assessed tier sits on top — SMCI's SB
+   is assessed, raw 0.398); peers move daily so ceilings are nightly,
+   stamped as-of. Framing rule: "on the numbers alone" — never a
+   price target. Homes: signature-view band ruler + assessor context.
+   To flesh out with user: display semantics, whether assessor sees
+   it, cliff handling, refresh cadence.
+
+9. **Timing-aware market reaction for after-hours reporters (user
+   agreed 2026-08-12).** The reaction line fed to the assessor uses
+   same-day close vs prior close — for after-close reporters (most)
+   that is the PRE-release session (SMCI: told "+0.4%" while the real
+   reaction was ~+10% after hours). Fix: when the 8-K's ingestion time
+   is after that session's close, say "released after hours — market
+   reaction not yet observable" and queue a deferred second look at
+   the next after-close run once the real reaction exists in a close.
+   Never adjudicate on evidence that doesn't exist yet.
+
 ## Data / pipeline hygiene
 
 0. **STALE LIVE-SCORING INPUT (found 2026-08-11, highest item here):**

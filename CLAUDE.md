@@ -74,6 +74,11 @@ it BEFORE touching any of it. Its Progress section is the state.
 Shadow-first is absolute: no live narrative field changes without the
 spec's acceptance criteria met and user sign-off recorded there.
 
+## Communication (user directive 2026-08-12)
+Answers must be straightforward and clear. Lead with the direct answer
+in plain words. Short sentences. Detail after, and only what the user
+needs to decide. If an answer needs three readings, it failed.
+
 ## Other standing rules
 - Scoring changes: freeze discipline — explicit user sign-off, log in
   V2_CONSIDERATIONS.md. Offline before/after board diff ritual for big ones.

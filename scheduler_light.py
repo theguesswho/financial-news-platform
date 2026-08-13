@@ -737,6 +737,22 @@ def after_close_refresh():
     except Exception as e:
         _err("Claim extraction failed", e)
 
+    _step("2d", "Post-birth checkpoint minting (same-evening — user 2026-08-13)")
+    try:
+        # A claim extracted at 22:00 must not wait for the 06:00 daily to
+        # become a prediction ("we don't time lag between functions
+        # unnecessarily"). Idempotent via source_claim_id — whichever run
+        # sees a new claim first mints it; the other skips.
+        from pipeline.checkpoint_minting import run_minting
+        from pipeline.hidden_gem_scorer import get_engine as _ge2d
+        _e2d = _ge2d()
+        r = run_minting(_e2d, live=True)
+        _e2d.dispose()
+        _ok(f"Minting: symbols={r['symbols_judged']} errors={r['errors']} "
+            f"minted={r.get('minted', 0)}")
+    except Exception as e:
+        _err("Checkpoint minting failed", e)
+
     _step(3, "Material events (8-K)")
     try:
         from db.session import get_session

@@ -520,6 +520,13 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
     NOT YET DEPLOYED — the scheduler change rides the next deploy-gate-
     compliant push; until then minting runs only manually. Verify step
     4e appears in the first daily log after deploy.
+    ADDENDUM (user 2026-08-13, "we don't time lag between functions
+    unnecessarily"): minting ALSO wired as after-close step 2d, right
+    after claim extraction 2c — a claim extracted at 22:00 becomes a
+    prediction the same evening, in time for that session's edition.
+    Safe by idempotence (source_claim_id); whichever run sees a new
+    claim first mints it. Verify BOTH 4e and 2d in first post-deploy
+    logs.
 - NEXT: (a) user reviews the Phase 1b shadow evidence and signs off
   live decay; (b) push the Phase 3 scheduler wiring (daily step 4e) on
   the next deploy-gate-compliant push, then verify it in the first

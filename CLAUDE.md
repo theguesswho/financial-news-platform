@@ -79,6 +79,13 @@ Answers must be straightforward and clear. Lead with the direct answer
 in plain words. Short sentences. Detail after, and only what the user
 needs to decide. If an answer needs three readings, it failed.
 
+## Incident fixes (user directive 2026-08-13 — the ENS lesson)
+When an incident produces a fix the user has agreed to, it gets built
+IN THAT CONVERSATION or explicitly assigned to the very next session —
+never parked on a list. "High priority" with no owner and no date is
+how SMCI's diagnosed bug was left to hit ENS the next day. Lists hold
+ideas and designs; agreed fixes get built.
+
 ## Other standing rules
 - Scoring changes: freeze discipline — explicit user sign-off, log in
   V2_CONSIDERATIONS.md. Offline before/after board diff ritual for big ones.

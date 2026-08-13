@@ -104,15 +104,19 @@ fixed.
    doctrine decision (minimum headroom for SB) with the distribution
    in hand, not before.
 
-9. **Timing-aware market reaction for after-hours reporters (user
-   agreed 2026-08-12).** The reaction line fed to the assessor uses
-   same-day close vs prior close — for after-close reporters (most)
-   that is the PRE-release session (SMCI: told "+0.4%" while the real
-   reaction was ~+10% after hours). Fix: when the 8-K's ingestion time
-   is after that session's close, say "released after hours — market
-   reaction not yet observable" and queue a deferred second look at
-   the next after-close run once the real reaction exists in a close.
-   Never adjudicate on evidence that doesn't exist yet.
+9. **DONE 2026-08-13 (after ENS became the second victim — the cost of
+   logging instead of building).** Two-part fix in the qual trigger:
+   (a) earnings-8-K reaction lines now carry an explicit caution that
+   an after-hours release makes the quoted move pre-release; (b) a
+   DEFERRED REACTION CHECK re-fires the assessment once, after the
+   first post-release close, whenever that close moved >=3% (one-shot
+   via a 21h assessed_at bound). Verified: full trigger query clean;
+   ENS simulation fires tonight at +14%; two backlog victims (MTSI,
+   ABNB, Aug 6 releases) caught by the 7-day window and re-assessed
+   tonight. Release timestamps aren't stored (SEC acceptance time not
+   ingested), so morning-vs-evening can't be distinguished directly —
+   the >=3% next-session gate is the proxy; storing acceptance time is
+   the eventual clean fix.
 
 ## Data / pipeline hygiene
 

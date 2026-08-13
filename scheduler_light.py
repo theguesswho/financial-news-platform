@@ -116,6 +116,20 @@ def _qual_sweep(gems=None):
                        COALESCE('. MARKET REACTION: the stock moved ' ||
                            ROUND(px.chg_pct, 1) || '% on the latest session — ' ||
                            'adjudicate whether the market sees something the thesis misses', '')
+                       || CASE WHEN ef.ftype = '8-K' THEN
+                          '. CAUTION: if this release came AFTER HOURS, the move '
+                          || 'quoted above predates it and is NOT the market''s '
+                          || 'verdict — assess the substance on its merits; a '
+                          || 'deferred reaction check re-runs after the next close '
+                          || 'if the market moves materially.' ELSE '' END
+                     WHEN dr.rdate IS NOT NULL THEN
+                       'DEFERRED REACTION CHECK (after-hours release, SMCI/ENS '
+                       || 'lesson 2026-08-13): you assessed the ' || dr.rdate ||
+                       ' earnings release on ' || qa.assessed_at::date ||
+                       ' BEFORE the market could react. The first full session '
+                       || 'after the release moved ' || dr.react_pct ||
+                       '% — re-adjudicate the thesis at this repriced level; '
+                       || 'the opportunity may be materially different now.'
                      WHEN ABS(l.gem_score - qa.gem_score) >= 0.05 THEN
                        'the overall score moved ' || ROUND(qa.gem_score*10,1) || ' -> ' ||
                        ROUND(l.gem_score*10,1) || ' (10-point scale) since your last assessment on ' ||
@@ -159,11 +173,37 @@ def _qual_sweep(gems=None):
                      (SELECT close FROM eod_prices WHERE symbol = l.symbol
                       ORDER BY date DESC OFFSET 1 LIMIT 1) b
             ) px ON ef.fdate IS NOT NULL
+            LEFT JOIN LATERAL (
+                -- Deferred reaction check (SMCI 2026-08-12, ENS 2026-08-13):
+                -- after-hours reporters get assessed the same evening against
+                -- a close that PRE-DATES the release. Once the first
+                -- post-release close exists, if it moved materially (>=3%),
+                -- re-fire ONCE so the judge sees the real reaction. The 21h
+                -- bound makes it a one-shot: tonight's re-assessment stamps
+                -- assessed_at past it.
+                SELECT f.filing_date::date AS rdate, pa.date AS react_date,
+                       ROUND(100 * (pa.close / NULLIF(pb.close, 0) - 1), 1) AS react_pct
+                FROM filings f
+                JOIN LATERAL (SELECT date, close FROM eod_prices
+                              WHERE symbol = l.symbol AND date > f.filing_date::date
+                              ORDER BY date ASC LIMIT 1) pa ON TRUE
+                JOIN LATERAL (SELECT close FROM eod_prices
+                              WHERE symbol = l.symbol AND date <= f.filing_date::date
+                              ORDER BY date DESC LIMIT 1) pb ON TRUE
+                WHERE f.symbol = l.symbol
+                  AND f.filing_type = '8-K' AND f.event_type = 'EARNINGS'
+                  AND f.created_at > NOW() - INTERVAL '7 days'
+                  AND qa.assessed_at > f.created_at
+                  AND qa.assessed_at < pa.date::timestamp + INTERVAL '21 hours'
+                  AND ABS(100 * (pa.close / NULLIF(pb.close, 0) - 1)) >= 3.0
+                ORDER BY f.created_at DESC LIMIT 1
+            ) dr ON qa.symbol IS NOT NULL
             WHERE (qa.assessed_at IS NULL OR qa.assessed_at < NOW() - INTERVAL '18 hours')
               AND (
                     (qa.symbol IS NULL AND (l.tier IS NOT NULL OR COALESCE(l.qual_promoted, FALSE)))
                  OR ov.promoted_since IS NOT NULL
                  OR ef.fdate IS NOT NULL
+                 OR dr.rdate IS NOT NULL
                  OR ABS(l.gem_score - COALESCE(qa.gem_score, l.gem_score)) >= 0.05
                  OR (qa.narrative_score IS NOT NULL
                      AND ABS(l.narrative_score - qa.narrative_score) >= 0.10)

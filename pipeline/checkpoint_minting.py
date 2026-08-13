@@ -30,7 +30,9 @@ Run:
 """
 import argparse
 import json
+import re
 import time
+from datetime import date, timedelta
 
 from sqlalchemy import text
 
@@ -38,13 +40,48 @@ SONNET = "claude-sonnet-4-6"
 MINT_CAP = 2          # minted checkpoints per narrative per quarter
 MIN_CONFIDENCE = 0.8
 MAX_CLAIMS_PER_SYMBOL = 12   # newest first; judge sees at most this many
+OVERLAP_SKIP = 0.5    # token-Jaccard vs an open checkpoint at/above this = restatement
+MAX_DEADLINE_YEARS = 3
+
+_STOP = {"the", "a", "an", "of", "to", "in", "for", "by", "on", "at", "and",
+         "or", "with", "will", "be", "is", "are", "its", "it", "that", "this",
+         "as", "from", "than", "into", "over", "per"}
+
+
+def _tokens(s: str) -> set:
+    return {w for w in re.findall(r"[a-z0-9.%$]+", (s or "").lower())
+            if w not in _STOP}
+
+
+def _restates_open(claim: str, open_texts: list) -> bool:
+    """Deterministic dedupe backstop: token-Jaccard overlap between the
+    proposed claim and any open checkpoint (claim + observable)."""
+    t = _tokens(claim)
+    if not t:
+        return False
+    for o in open_texts:
+        u = _tokens(o)
+        if u and len(t & u) / len(t | u) >= OVERLAP_SKIP:
+            return True
+    return False
+
+
+def _valid_deadline(d) -> bool:
+    """today < deadline < today + MAX_DEADLINE_YEARS. One malformed date
+    must skip its own row only, never abort the batch."""
+    try:
+        dd = date.fromisoformat(str(d).strip())
+    except (ValueError, TypeError):
+        return False
+    today = date.today()
+    return today < dd < today + timedelta(days=365 * MAX_DEADLINE_YEARS)
 
 MINT_SYSTEM = """You maintain the PREDICTION LEDGER of an investment research platform. A company narrative (thesis below) carries falsifiable checkpoints: claim + observable + deadline. The company has since held a NEW earnings call; management made the typed claims listed below.
 
 Select which claims deserve to become NEW checkpoints on which narrative. Rules:
 
 1. FALSIFIABLE ONLY. A checkpoint needs a claim, an observable (the specific metric or disclosure a future filing would show), and a deadline (YYYY-MM-DD by which it should appear in filed material, derived from the claim's timeframe; use the quarter-end plus one reporting cycle when the timeframe names a quarter or year). If you cannot derive a real deadline, skip the claim.
-2. NO DUPLICATES. If a claim restates an OPEN checkpoint (same substance, even reworded or re-guided), skip it.
+2. NO DUPLICATES. If a claim restates, reaffirms, extends, updates, or builds on an OPEN checkpoint (same substance, even reworded, re-guided, or with a refreshed number or timeline), SKIP it. Never mint to "reinforce", "confirm", "check", or "track" an existing checkpoint — a reaffirmation is a skip, not a mint. Only a genuinely NEW promise qualifies.
 3. RELEVANT NARRATIVE ONLY. Mint a claim onto a narrative only if it would genuinely test that narrative's thesis. A claim testing none of the listed narratives is skipped.
 4. AT MOST {cap} mints per narrative. Prefer specific numbers over directional talk.
 5. Write the checkpoint claim in plain words, self-contained (name the metric and the level), not as a quote.
@@ -148,13 +185,30 @@ def run_minting(engine, live: bool = False) -> dict:
             continue
         rooms = {n["narrative_id"]: n["room"] for n in s["narratives"]}
         claim_ids = {c["claim_id"] for c in s["claims"]}
+        # open checkpoint texts per narrative, for the deterministic
+        # restatement filter; accepted proposals join the set so one batch
+        # can't mint the same substance twice either
+        open_texts = {n["narrative_id"]: [f"{c['claim']} {c['observable']}"
+                                          for c in n["open_checkpoints"]]
+                      for n in s["narratives"]}
         for m in mints:
             nid, cid = m.get("narrative_id"), m.get("source_claim_id")
             if nid not in rooms or cid not in claim_ids or rooms[nid] <= 0:
                 continue
             if not (m.get("claim") and m.get("observable") and m.get("deadline")):
                 continue
+            if not _valid_deadline(m["deadline"]):
+                print(f"  {sym} n{nid}: skipped, invalid deadline "
+                      f"{m.get('deadline')!r}")
+                continue
+            if _restates_open(f"{m['claim']} {m['observable']}",
+                              open_texts.get(nid, [])):
+                print(f"  {sym} n{nid}: skipped, restates an open checkpoint: "
+                      f"{m['claim'][:80]}")
+                continue
             rooms[nid] -= 1
+            open_texts.setdefault(nid, []).append(
+                f"{m['claim']} {m['observable']}")
             proposals.append({"symbol": sym, **m})
         time.sleep(0.2)
     if live and proposals:

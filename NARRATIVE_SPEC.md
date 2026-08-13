@@ -490,16 +490,37 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
     today < deadline < today+3y; skip invalid rows individually (one
     malformed date currently aborts the whole live insert batch).
   - **GATE APPROVED (user, 2026-08-11): "approved with the two fixes."**
-    Next session: implement both fixes, run --live, wire into the
-    weekly step before checkpoint grading, record results here. While
-    in the mint judge, note Phase 5's interim-tracking extension lands
-    in this same judge later — design the output shape with that in
-    mind (but do NOT build tracking yet; it ships with Phase 5).
-- NEXT: user reviews (a) the Phase 1b shadow evidence and signs off
-  live decay, (b) the Phase 3 minting samples and signs off live
-  minting + scheduler wiring. Then Phase 2 — momentum states
-  computed from these vital signs in
-  shadow. Cross-sectional calibration needs non-seeding history: ~2-3
+    While in the mint judge, note Phase 5's interim-tracking extension
+    lands in this same judge later — design the output shape with that
+    in mind (but do NOT build tracking yet; it ships with Phase 5).
+  - **PHASE 3 LIVE (2026-08-13).** Both fixes implemented and observed
+    firing on real data, then --live run + scheduler wiring:
+    (1) Dedupe: prompt rule 2 hardened (reaffirm/extend/update/build-on
+    = SKIP, never reinforce) + deterministic post-filter `_restates_open`
+    (token-Jaccard ≥ 0.5 vs open checkpoints' claim+observable; accepted
+    proposals join the compare set so one batch can't mint the same
+    substance twice). Fired in the live run: HL phase-3 tailings
+    restatement blocked.
+    (2) Deadline validation `_valid_deadline` (today < d < today+3y,
+    ISO parse, per-row skip). Fired in the pre-live dry run: HL
+    2029-12-31 blocked; batch unaffected.
+    LIVE RUN 2026-08-13: 6 symbols, 0 errors, 9 minted (ATO×2, CDE×2,
+    GEN×2, HL, MCK, PODD) — verified in DB: all status='pending',
+    source_claim_id set, created_at 2026-08-13, deadlines in range.
+    New MCK (Wellverse brand launch by Jan 2027) and PODD (FY26 revenue
+    growth 20-22%) checked by hand against their open checkpoints —
+    genuinely new substance, the earlier leak shapes did not recur.
+    SCHEDULER: wired as weekly step 5g2 (weekly_deep_refresh, after 5g
+    grounding audit, before 5h decay/vital-signs), live=True, isolated
+    try/except. Grader runs daily at 5b2, so weekly mints age before
+    grading. NOT YET DEPLOYED — the scheduler change rides the next
+    deploy-gate-compliant push; until then minting runs only manually.
+    Verify step 5g2 appears in the first weekly log after deploy.
+- NEXT: (a) user reviews the Phase 1b shadow evidence and signs off
+  live decay; (b) push the Phase 3 scheduler wiring (step 5g2) on the
+  next deploy-gate-compliant push, then verify it in the first weekly
+  log. Then Phase 2 — momentum states computed from these vital signs
+  in shadow. Cross-sectional calibration needs non-seeding history: ~2-3
   more organic weeks before the distribution is worth calibrating on
   (earliest useful gate ~late August). Interim: let vital signs
   accumulate via the weekly pass; verify step 5h ran in the next weekly

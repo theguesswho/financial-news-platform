@@ -1057,6 +1057,18 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Negative-control audit check failed", e)
 
+    _step("5g2", "Post-birth checkpoint minting (NARRATIVE_SPEC Phase 3, LIVE)")
+    try:
+        from pipeline.checkpoint_minting import run_minting
+        from pipeline.hidden_gem_scorer import get_engine as _ge5g2
+        _e5g2 = _ge5g2()
+        r = run_minting(_e5g2, live=True)
+        _e5g2.dispose()
+        _ok(f"Minting: symbols={r['symbols_judged']} errors={r['errors']} "
+            f"minted={r.get('minted', 0)}")
+    except Exception as e:
+        _err("Checkpoint minting failed", e)
+
     _step("5h", "Silence decay (SHADOW) + narrative vital signs (NARRATIVE_SPEC Phase 1/1b)")
     try:
         from pipeline.narrative_decay import run_decay_pass

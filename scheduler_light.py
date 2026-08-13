@@ -444,6 +444,22 @@ def daily_data_update():
     except Exception as e:
         _err("Birth queue failed", e)
 
+    _step("4e", "Post-birth checkpoint minting (NARRATIVE_SPEC Phase 3, LIVE)")
+    try:
+        # Event-driven: new earnings calls arrive daily; the source_claim_id
+        # dedupe means the judge is only called for symbols with unminted
+        # post-birth claims — quiet days cost nothing. Runs after the birth
+        # queue (4d) and before the grader (5b2).
+        from pipeline.checkpoint_minting import run_minting
+        from pipeline.hidden_gem_scorer import get_engine as _ge4e
+        _e4e = _ge4e()
+        r = run_minting(_e4e, live=True)
+        _e4e.dispose()
+        _ok(f"Minting: symbols={r['symbols_judged']} errors={r['errors']} "
+            f"minted={r.get('minted', 0)}")
+    except Exception as e:
+        _err("Checkpoint minting failed", e)
+
     _step(5, "Re-score + archive leaderboard")
     engine = None
     gems = None
@@ -1056,18 +1072,6 @@ def weekly_deep_refresh():
         _e5g.dispose()
     except Exception as e:
         _err("Negative-control audit check failed", e)
-
-    _step("5g2", "Post-birth checkpoint minting (NARRATIVE_SPEC Phase 3, LIVE)")
-    try:
-        from pipeline.checkpoint_minting import run_minting
-        from pipeline.hidden_gem_scorer import get_engine as _ge5g2
-        _e5g2 = _ge5g2()
-        r = run_minting(_e5g2, live=True)
-        _e5g2.dispose()
-        _ok(f"Minting: symbols={r['symbols_judged']} errors={r['errors']} "
-            f"minted={r.get('minted', 0)}")
-    except Exception as e:
-        _err("Checkpoint minting failed", e)
 
     _step("5h", "Silence decay (SHADOW) + narrative vital signs (NARRATIVE_SPEC Phase 1/1b)")
     try:

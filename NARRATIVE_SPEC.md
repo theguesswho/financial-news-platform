@@ -510,16 +510,20 @@ Fixed metrics, reviewed monthly, tripwires pre-agreed:
     New MCK (Wellverse brand launch by Jan 2027) and PODD (FY26 revenue
     growth 20-22%) checked by hand against their open checkpoints —
     genuinely new substance, the earlier leak shapes did not recur.
-    SCHEDULER: wired as weekly step 5g2 (weekly_deep_refresh, after 5g
-    grounding audit, before 5h decay/vital-signs), live=True, isolated
-    try/except. Grader runs daily at 5b2, so weekly mints age before
-    grading. NOT YET DEPLOYED — the scheduler change rides the next
-    deploy-gate-compliant push; until then minting runs only manually.
-    Verify step 5g2 appears in the first weekly log after deploy.
+    SCHEDULER (user-corrected 2026-08-13: minting is EVENT-DRIVEN, not
+    weekly — calls arrive when they arrive, matching the spec's company-
+    cadence principle): wired as DAILY step 4e in daily_data_update,
+    after claim extraction (4a2) and the birth queue (4d), before the
+    grader (5b2). live=True, isolated try/except. Idempotent by
+    source_claim_id dedupe — the judge only runs for symbols with new
+    unminted post-birth claims, so quiet days cost nothing.
+    NOT YET DEPLOYED — the scheduler change rides the next deploy-gate-
+    compliant push; until then minting runs only manually. Verify step
+    4e appears in the first daily log after deploy.
 - NEXT: (a) user reviews the Phase 1b shadow evidence and signs off
-  live decay; (b) push the Phase 3 scheduler wiring (step 5g2) on the
-  next deploy-gate-compliant push, then verify it in the first weekly
-  log. Then Phase 2 — momentum states computed from these vital signs
+  live decay; (b) push the Phase 3 scheduler wiring (daily step 4e) on
+  the next deploy-gate-compliant push, then verify it in the first
+  daily log. Then Phase 2 — momentum states computed from these vital signs
   in shadow. Cross-sectional calibration needs non-seeding history: ~2-3
   more organic weeks before the distribution is worth calibrating on
   (earliest useful gate ~late August). Interim: let vital signs

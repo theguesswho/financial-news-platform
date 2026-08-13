@@ -74,20 +74,35 @@ fixed.
 
 ## New analytics (scoring-adjacent — reads scores, never writes them)
 
-8. **Price-band ceiling calculator (user 2026-08-12; NEEDS FURTHER
-   FLESHING OUT before build).** Per board stock: the price at which
-   the numbers alone would drop it out of its tier band, plus any
-   cliffs. Established so far: computable by bisection (scale stored
-   multiples by p/p0, re-run value percentile + priced-in; Q and E are
-   price-independent); the band is ONE-SIDED (falling price never
-   score-exits — ceiling, not window); cliffs are real (SMCI: cyclical
-   punished flag dies at 75% of 52w-high ≈ $44 → capped below Watch);
-   predicts the RAW tier only (assessed tier sits on top — SMCI's SB
-   is assessed, raw 0.398); peers move daily so ceilings are nightly,
-   stamped as-of. Framing rule: "on the numbers alone" — never a
-   price target. Homes: signature-view band ruler + assessor context.
-   To flesh out with user: display semantics, whether assessor sees
-   it, cliff handling, refresh cadence.
+8. **Re-rating room ("how big is the opportunity") — DESIGN APPROVED
+   2026-08-13, build-ready.** Solves the two factors from the SMCI
+   whiplash: a Strong Buy must not die on one good day (thin gaps
+   masquerade as real ones because value is a RANK, which hides
+   depth), and we want compounders, not trades.
+   THE MEASURE — re-rating distance: how far price would move if the
+   stock were priced like the MEDIAN company in its story (narrative
+   peers; thin groups <~8 fall back to sector, labeled thin evidence
+   like the PEG analyst count). ONE multiple per category (user
+   2026-08-13, no blended conflicts): most stocks forward P/E; banks
+   P/B; REITs P/FCF. No forecasts, no assumptions — today's prices,
+   today's peers.
+   THE INTERPRETATION — two engines, shown side by side, never
+   merged: re-rating room (one-time) + the business engine (quality
+   trend: growing/flat/shrinking). Shrinking-earnings cheapness is
+   fiction — flag, don't celebrate. Plain-words surface: "Priced X%
+   below the typical company in its story (N peers). Business engine:
+   growing." Nightly, dated, "on the numbers alone" (assessed layer
+   sits on top).
+   Companion (from the same episode, still valuable): tier-band
+   ceilings/re-entry prices via price-override re-scoring of the REAL
+   scorer (never a parallel formula; nightly self-test must reproduce
+   today's live score or publish nothing), incl. cyclical cliffs
+   (SMCI's punished flag dies at 75% of 52w-high ≈ $44).
+   SEQUENCE: build room measure + ceilings → assessor context line +
+   surfaces → Dell backtest as validation (how many +20% sessions
+   could Dell absorb during its re-rating vs SMCI's one) → THEN the
+   doctrine decision (minimum headroom for SB) with the distribution
+   in hand, not before.
 
 9. **Timing-aware market reaction for after-hours reporters (user
    agreed 2026-08-12).** The reaction line fed to the assessor uses

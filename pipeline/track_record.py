@@ -44,14 +44,16 @@ def create_table(engine):
 # deleted, excluded from the active scorecard — and a fresh heads-up table
 # starts with the first v2-scored snapshot. Same honesty rules.
 V2_START = date(2026, 7, 23)
-# v2d era (user 2026-08-14): DAILY $100 lots, symmetric 2-day rules —
-# 2 consecutive Strong Buy readings -> buy at the NEXT session's close;
-# 2 consecutive below-Buy readings -> sell at the NEXT session's close;
-# one lot per entry episode; twin traded on identical dates/prices.
-# "Strong Buys that remain Strong Buys don't tell us when to buy, so we
-# can only ever buy either randomly or consistently. Consistently is
-# more honest." The weekly-lot era ('v2') is frozen at 2026-08-13
-# closes; v1 remains the original archive.
+# v2d era (user 2026-08-14): DAILY $100 accumulation, one symmetric
+# 2-day rule — each session: if the last TWO readings are Strong Buy,
+# buy $100 at that session's close (every day, while it stays SB); if
+# the last two are below Buy, sell ALL open lots at that close;
+# otherwise hold. Twin mirrors every lot to the cent on identical
+# dates. Each lot is an independent $100 — proceeds are NEVER
+# reinvested (a ledger of equal-sized decisions, not a compounding
+# account; user-ratified 2026-08-14). "We can only ever buy randomly
+# or consistently. Consistently is more honest." The weekly-lot era
+# ('v2') is frozen at 2026-08-13 closes; v1 is the original archive.
 ERA = "v2d"
 DAILY_LOT = 100.0
 
@@ -107,7 +109,10 @@ def run_daily_lot_lifecycle(engine) -> dict:
         for sym, ft, ft1, gem, px_c in rows:
             if px_c is None or spy_c is None:
                 continue
-            if sym not in open_syms and ft == 'Strong Buy' and ft1 == 'Strong Buy':
+            # Daily accumulation: buy EVERY session the 2-day condition
+            # holds — open lots do not block new ones. The per-day unique
+            # index (lot_date, symbol, era) blocks double-buys on reruns.
+            if ft == 'Strong Buy' and ft1 == 'Strong Buy':
                 conn.execute(text("""
                     INSERT INTO track_lots
                         (lot_date, symbol, tier, gem_score, is_entry, entry_price,

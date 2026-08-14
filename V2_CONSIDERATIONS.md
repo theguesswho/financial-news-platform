@@ -267,3 +267,14 @@ measured $100 position, LDOS +19pts vs twin). SMCI's 1-day Strong Buy
 correctly never enters under the 2-day bar. Close fills for now;
 day-average fills possible later once OHLC is stored (T+1 discipline
 either way).
+
+## 2026-08-14 (later) — v2d corrected to DAILY ACCUMULATION (user caught the miss)
+The first v2d deploy implemented one lot per entry episode — wrong.
+User's design: $100 EVERY day the last two readings are Strong Buy
+(conviction weighted by its duration), all lots sold together at the
+close after two straight readings below Buy, proceeds never reinvested
+(equal-weight decision ledger, user-ratified). Re-backfilled from
+Jul 23: 61 lots, $6,100 deployed, picks +3.63% vs twins +1.87%
+(+1.76pp), 45 open / 16 closed — verified against the user-approved
+simulation to the digit before deploy. LDOS carries 12 lots (+9.0pp),
+ACM 7 (−9.1pp): long conviction and long mistakes both weigh fully.

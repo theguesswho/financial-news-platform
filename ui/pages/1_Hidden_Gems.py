@@ -570,11 +570,12 @@ if _sc and _sc["n_lots"]:
   </div>
 </div>
 <div style="font-size:0.72rem; color:#94a3b8; margin:0.3rem 0 1rem;">
-How the record works: a stock must hold Strong Buy for two straight readings before we buy —
-USD 100, at the NEXT session's close. It is sold the same way: two straight readings below
-Buy, sold at the next close. Every buy and sell is mirrored to the cent by the same USD 100
-in the S&amp;P 500 on identical days — the only judge that counts. One position per stock at a
-time; recorded picks only, never reconstructed. Running since
+How the record works: USD 100 goes into a stock EVERY day its last two readings are Strong
+Buy — conviction that lasts gets bought again, at each day's close. When the last two
+readings fall below Buy, everything is sold at the next close and the results lock forever.
+Each USD 100 is an independent bet, mirrored to the cent by USD 100 into the S&amp;P 500 on
+identical days — the only judge that counts. Proceeds are never reinvested: every decision
+carries equal weight. Recorded picks only, never reconstructed. Running since
 {_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f} deployed.
 Earlier eras (v1 and the weekly-lot record to Aug 13, 2026) are archived, not deleted.
 </div>""", unsafe_allow_html=True)
@@ -591,15 +592,15 @@ Earlier eras (v1 and the weekly-lot record to Aug 13, 2026) are archived, not de
         _names = load_company_names()
         _hold = pd.DataFrame([{
             "Stock": f"{s} — {_names.get(s, '')}"[:44],
-            "Positions": b["lots"],
+            "Days bought": b["lots"],
             "Invested": b["inv"],
             "Value now": round(b["val"], 0),
             "Our return %": round((b["val"] / b["inv"] - 1) * 100, 1),
             "Same $ in S&P %": round((b["spy"] / b["inv"] - 1) * 100, 1),
             "Pick's edge (pp)": round((b["val"] - b["spy"]) / b["inv"] * 100, 1),
         } for s, b in _by_sym.items()]).sort_values("Pick's edge (pp)", ascending=False)
-        st.markdown("**By stock** — a stock can appear more than once only if it earned "
-                    "its way back to Strong Buy after being sold.")
+        st.markdown("**By stock** — daily buys accumulate while a stock keeps earning "
+                    "Strong Buy; long conviction weighs more, exactly as it should.")
         st.dataframe(_hold, use_container_width=True, hide_index=True)
 
         _lotdf = pd.DataFrame([{
@@ -611,11 +612,11 @@ Earlier eras (v1 and the weekly-lot record to Aug 13, 2026) are archived, not de
             "Edge (pp)": l["vs_spy_pct"],
             "Beating": "✓" if l["beat"] else "✗",
         } for l in _sc["lots"]])
-        st.markdown("**Every position**: USD 100 in the stock and USD 100 in the S&P, "
-                    "bought at the same close after two straight Strong Buy readings, sold "
-                    "at the same close after two straight readings below Buy. 'Edge' = stock "
-                    "value minus twin value, as % of the 100. Sold positions stay on the "
-                    "record at their locked result.")
+        st.markdown("**Every lot**: USD 100 in the stock and USD 100 in the S&P at the "
+                    "same close, bought each day the last two readings were Strong Buy; "
+                    "all of a stock's lots sell together at the close after two straight "
+                    "readings below Buy. 'Edge' = stock value minus twin value, as % of "
+                    "the 100. Sold lots stay on the record at their locked result.")
         st.dataframe(_lotdf, use_container_width=True, hide_index=True)
 
 # ── Render stock cards ────────────────────────────────────────────────────────

@@ -562,18 +562,21 @@ if _sc and _sc["n_lots"]:
   </div>
   <div class="stat-item">
     <div class="stat-num">{_sc['lots_beating_spy']}/{_sc['n_lots']}</div>
-    <div class="stat-lbl">Lots beating SPY</div>
+    <div class="stat-lbl">Picks beating SPY</div>
   </div>
   <div class="stat-item">
-    <div class="stat-num">{_sc['entry_lots_beating']}/{_sc['n_entry_lots']}</div>
-    <div class="stat-lbl">Entry signals beating</div>
+    <div class="stat-num">{sum(1 for l in _sc['lots'] if not l['closed'])} open · {sum(1 for l in _sc['lots'] if l['closed'])} closed</div>
+    <div class="stat-lbl">Positions</div>
   </div>
 </div>
 <div style="font-size:0.72rem; color:#94a3b8; margin:0.3rem 0 1rem;">
-Track record (v2 era): USD 1,000 into every Strong Buy each week, each lot paired with a
-same-day USD 1,000 SPY twin. Buy-and-hold, recorded picks only — never reconstructed.
-Started {_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f}
-deployed. The v1-era record (Jun 22 – Jul 21, 2026) is archived, not deleted.
+How the record works: a stock must hold Strong Buy for two straight readings before we buy —
+USD 100, at the NEXT session's close. It is sold the same way: two straight readings below
+Buy, sold at the next close. Every buy and sell is mirrored to the cent by the same USD 100
+in the S&amp;P 500 on identical days — the only judge that counts. One position per stock at a
+time; recorded picks only, never reconstructed. Running since
+{_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f} deployed.
+Earlier eras (v1 and the weekly-lot record to Aug 13, 2026) are archived, not deleted.
 </div>""", unsafe_allow_html=True)
 
     with st.expander("📊 Holdings breakdown — every lot vs its SPY twin"):
@@ -588,28 +591,31 @@ deployed. The v1-era record (Jun 22 – Jul 21, 2026) is archived, not deleted.
         _names = load_company_names()
         _hold = pd.DataFrame([{
             "Stock": f"{s} — {_names.get(s, '')}"[:44],
-            "Weeks bought": b["lots"],
+            "Positions": b["lots"],
             "Invested": b["inv"],
             "Value now": round(b["val"], 0),
             "Our return %": round((b["val"] / b["inv"] - 1) * 100, 1),
             "Same $ in S&P %": round((b["spy"] / b["inv"] - 1) * 100, 1),
             "Pick's edge (pp)": round((b["val"] - b["spy"]) / b["inv"] * 100, 1),
-        } for s, b in _by_sym.items()]).sort_values("Invested", ascending=False)
-        st.markdown("**By stock** — weekly buys accumulate while a stock stays Strong Buy; "
-                    "buying stops when it drops out, holdings are kept.")
+        } for s, b in _by_sym.items()]).sort_values("Pick's edge (pp)", ascending=False)
+        st.markdown("**By stock** — a stock can appear more than once only if it earned "
+                    "its way back to Strong Buy after being sold.")
         st.dataframe(_hold, use_container_width=True, hide_index=True)
 
         _lotdf = pd.DataFrame([{
-            "Week": l["lot_date"].strftime("%b %d"),
+            "Bought": l["lot_date"].strftime("%b %d"),
             "Stock": l["symbol"],
-            "Entry signal": "★" if l["is_entry"] else "",
+            "Status": ("Sold " + l["exit_date"].strftime("%b %d")) if l["closed"] else "Held",
             "Stock value": l["stock_value"],
             "S&P twin value": l["spy_value"],
             "Edge (pp)": l["vs_spy_pct"],
             "Beating": "✓" if l["beat"] else "✗",
         } for l in _sc["lots"]])
-        st.markdown("**Every lot**: USD 1,000 in the stock and USD 1,000 in the S&P, bought the same day. "
-                    "'Edge' = stock value minus twin value, as % of the 1,000. ★ = week the stock first became Strong Buy.")
+        st.markdown("**Every position**: USD 100 in the stock and USD 100 in the S&P, "
+                    "bought at the same close after two straight Strong Buy readings, sold "
+                    "at the same close after two straight readings below Buy. 'Edge' = stock "
+                    "value minus twin value, as % of the 100. Sold positions stay on the "
+                    "record at their locked result.")
         st.dataframe(_lotdf, use_container_width=True, hide_index=True)
 
 # ── Render stock cards ────────────────────────────────────────────────────────

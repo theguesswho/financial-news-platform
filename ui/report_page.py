@@ -301,7 +301,10 @@ def render_report(engine):
                     f'<span>S&amp;P 500 <span class="mr-big">{spy:+.1f}%</span></span>'
                     f'<span class="mr-foot">· {p.get("positions")} positions · '
                     f'since {_esc(p.get("since"))}</span></div>')
-            parts.append('<div class="mr-foot">Every pick is tracked against a '
-                         'same-day S&amp;P 500 purchase. Exits stay on the record.</div>')
+            parts.append('<div class="mr-foot">USD 100 goes into a stock after two '
+                         'straight Strong Buy readings and comes out after two straight '
+                         'readings below Buy — always at the next session\'s close, always '
+                         'mirrored by the same USD 100 in the S&amp;P 500 on identical '
+                         'days. Sold positions stay on the record.</div>')
     parts.append("</div>")
     st.markdown("".join(parts), unsafe_allow_html=True)

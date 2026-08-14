@@ -251,3 +251,19 @@ wins residual collisions, fake zeros treated as missing. Offline diff
 (the fake-zero year had manufactured an improvement trend; stays Buy).
 LDOS 0.829->0.841. LHX 0.564->0.558 — exit verdict unchanged, countdown
 proceeds on merit. Verified live == offline before push.
+
+## 2026-08-14 — Track record v2d era: daily $100 lots, symmetric 2-day rules
+User: "Strong Buys that remain Strong Buys don't tell us when to buy —
+we can only ever buy randomly or consistently. Consistently is more
+honest." Entry now mirrors exit: 2 consecutive Strong Buy readings ->
+buy at the NEXT session's close; 2 consecutive below-Buy -> sell at the
+next close; one $100 lot per episode; SPY twin on identical dates and
+prices; fills only in the after-close run (morning fills would use the
+signal close — look-ahead). Weekly era (v2) frozen complete at Aug 13
+closes; v2d backfilled from Jul 23 and verified against the
+user-approved offline simulation to the digit (13 lots, +2.28% picks vs
++2.31% twins — honest flat start; ACM's post-charge slide is now a
+measured $100 position, LDOS +19pts vs twin). SMCI's 1-day Strong Buy
+correctly never enters under the 2-day bar. Close fills for now;
+day-average fills possible later once OHLC is stored (T+1 discipline
+either way).

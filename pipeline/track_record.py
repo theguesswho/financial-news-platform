@@ -44,7 +44,94 @@ def create_table(engine):
 # deleted, excluded from the active scorecard — and a fresh heads-up table
 # starts with the first v2-scored snapshot. Same honesty rules.
 V2_START = date(2026, 7, 23)
-ERA = "v2"
+# v2d era (user 2026-08-14): DAILY $100 lots, symmetric 2-day rules —
+# 2 consecutive Strong Buy readings -> buy at the NEXT session's close;
+# 2 consecutive below-Buy readings -> sell at the NEXT session's close;
+# one lot per entry episode; twin traded on identical dates/prices.
+# "Strong Buys that remain Strong Buys don't tell us when to buy, so we
+# can only ever buy either randomly or consistently. Consistently is
+# more honest." The weekly-lot era ('v2') is frozen at 2026-08-13
+# closes; v1 remains the original archive.
+ERA = "v2d"
+DAILY_LOT = 100.0
+
+
+def run_daily_lot_lifecycle(engine) -> dict:
+    """Entries and exits under the v2d rules, executed at the freshest
+    close. Runs ONLY in the after-close run (after that session's closes
+    are ingested) — the daily 6:00 run's freshest close is the SIGNAL
+    close, and filling there would be look-ahead.
+    Signal day T = the most recent trading-day snapshot BEFORE the
+    freshest close date C; confirmation day = the one before T."""
+    create_table(engine)
+    opened = closed = 0
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS signal_date DATE"))
+        # Uniqueness must be per-era: the old (lot_date, symbol) constraint
+        # made v2d backfill rows silently collide with archived weekly lots
+        # on the same date (PTC 2026-08-10).
+        conn.execute(text("""
+            ALTER TABLE track_lots
+            DROP CONSTRAINT IF EXISTS track_lots_lot_date_symbol_key"""))
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS track_lots_date_sym_era
+            ON track_lots (lot_date, symbol, era)"""))
+        C = conn.execute(text(
+            "SELECT MAX(date) FROM eod_prices WHERE symbol = 'SPY'")).scalar()
+        if C is None:
+            return {"opened": 0, "closed": 0}
+        tdays = [r[0] for r in conn.execute(text("""
+            SELECT DISTINCT lh.date FROM leaderboard_history lh
+            JOIN eod_prices p ON p.symbol = 'SPY' AND p.date = lh.date
+            WHERE lh.date < :c ORDER BY lh.date DESC LIMIT 2"""), {"c": C})]
+        if len(tdays) < 2:
+            return {"opened": 0, "closed": 0}
+        T, T1 = tdays[0], tdays[1]
+        spy_c = conn.execute(text(
+            "SELECT close FROM eod_prices WHERE symbol='SPY' AND date=:c"),
+            {"c": C}).scalar()
+        rows = conn.execute(text("""
+            WITH t AS (SELECT symbol, COALESCE(assessed_tier, tier) ft, gem_score
+                       FROM leaderboard_history WHERE date = :t),
+                 t1 AS (SELECT symbol, COALESCE(assessed_tier, tier) ft
+                        FROM leaderboard_history WHERE date = :t1)
+            SELECT t.symbol, t.ft, t1.ft, t.gem_score, px.close
+            FROM t JOIN t1 USING (symbol)
+            LEFT JOIN eod_prices px ON px.symbol = t.symbol AND px.date = :c
+        """), {"t": T, "t1": T1, "c": C}).fetchall()
+        open_syms = {r[0] for r in conn.execute(text("""
+            SELECT DISTINCT symbol FROM track_lots
+            WHERE era = :e AND exit_date IS NULL
+              AND NOT COALESCE(voided, FALSE)"""), {"e": ERA})}
+        for sym, ft, ft1, gem, px_c in rows:
+            if px_c is None or spy_c is None:
+                continue
+            if sym not in open_syms and ft == 'Strong Buy' and ft1 == 'Strong Buy':
+                conn.execute(text("""
+                    INSERT INTO track_lots
+                        (lot_date, symbol, tier, gem_score, is_entry, entry_price,
+                         spy_price, amount, benchmark, era, signal_date)
+                    VALUES (:d, :s, 'Strong Buy', :g, TRUE, :px, :spy, :amt,
+                            'SPY', :e, :sig)
+                    ON CONFLICT (lot_date, symbol, era) DO NOTHING
+                """), {"d": C, "s": sym, "g": gem, "px": px_c, "spy": spy_c,
+                       "amt": DAILY_LOT, "e": ERA, "sig": T})
+                opened += 1
+            elif sym in open_syms and ft not in ('Strong Buy', 'Buy') \
+                    and ft1 not in ('Strong Buy', 'Buy'):
+                conn.execute(text("""
+                    UPDATE track_lots
+                    SET exit_date = :d, exit_price = :px, spy_exit_price = :spy,
+                        exit_reason = '2 consecutive readings below Buy (signal ' || :sig || ')'
+                    WHERE symbol = :s AND era = :e AND exit_date IS NULL
+                      AND NOT COALESCE(voided, FALSE)
+                """), {"d": C, "px": px_c, "spy": spy_c, "s": sym,
+                       "e": ERA, "sig": str(T)})
+                closed += 1
+    if opened or closed:
+        print(f"✓ v2d lifecycle: opened {opened}, closed {closed} at {C} closes")
+    return {"opened": opened, "closed": closed}
 
 BENCHMARKS = ("SPY",)   # user decision 2026-07-12: SPY is THE benchmark for every lot,
                         # mid-caps included — the bar is "would my money have done

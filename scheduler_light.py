@@ -589,27 +589,12 @@ def daily_data_update():
     except Exception as e:
         _err("Qual sweep failed", e)
 
-    _step("8b", "Track record — open weekly lots (no-op unless new week)")
-    try:
-        from pipeline.track_record import open_weekly_lots
-        from pipeline.hidden_gem_scorer import get_engine as _ge
-        eng = _ge()
-        r = open_weekly_lots(eng)
-        eng.dispose()
-        _ok(f"Track record: {r}")
-    except Exception as e:
-        _err("Track record failed", e)
-
-    _step("8b2", "Position management (SB=buy, Buy=hold, 2 days below Buy=sell)")
-    try:
-        from pipeline.track_record import manage_positions
-        from pipeline.hidden_gem_scorer import get_engine as _ge8b2
-        _e8b2 = _ge8b2()
-        r = manage_positions(_e8b2)
-        _e8b2.dispose()
-        _ok(f"Positions: {r}")
-    except Exception as e:
-        _err("Position management failed", e)
+    _step("8b", "Track record — RETIRED here (v2d era, user 2026-08-14)")
+    # Weekly lot opening + morning position management replaced by the
+    # v2d daily lifecycle in the AFTER-CLOSE run (2-day symmetric rules,
+    # $100 lots, fills at the freshest close). Running fills here would
+    # use the SIGNAL close — look-ahead. See track_record.ERA.
+    logger.info("  8b/8b2 retired: v2d lot lifecycle runs in after-close only")
 
     _step("8c", "Data freshness sentinel")
     try:
@@ -890,6 +875,20 @@ def after_close_refresh():
         _ok(f"{len(gems)} scored, {result.get('on_board', 0)} on-board")
     except Exception as e:
         _err("Scoring failed", e)
+
+    _step("4t", "Track record — v2d daily lot lifecycle ($100, next-close fills)")
+    try:
+        # AFTER today's closes (step 1) so fills use the freshest close;
+        # signals read the two trading-day snapshots BEFORE it — never the
+        # close that generated the signal (no look-ahead by construction).
+        from pipeline.track_record import run_daily_lot_lifecycle
+        from pipeline.hidden_gem_scorer import get_engine as _ge4t
+        _e4t = _ge4t()
+        r = run_daily_lot_lifecycle(_e4t)
+        _e4t.dispose()
+        _ok(f"v2d lifecycle: {r}")
+    except Exception as e:
+        _err("v2d lot lifecycle failed", e)
 
     _step(5, "Filing synopses")
     try:

@@ -228,3 +228,13 @@ fixed.
     disappearance on 2026-08-15 was untraceable (end state verified
     correct, cause unknown). Add created_at DEFAULT now() + updated_at;
     never again an untraceable mutation in the record that judges us.
+
+11. **assessed_tier provenance (BLOCKS the product's assessor badge).**
+    Since the 2026-08-15 materiality corridor, assessed_tier can be
+    written by three different mechanisms: a judge's conviction
+    override, a corridor hold pending ruling, or a materiality-ruled
+    hold. The column doesn't say which, so the product's "judgment
+    raised it" badge would mislabel mechanism as conviction. Add a
+    provenance column stamped at write time (judge / corridor_pending /
+    materiality_hold) in apply_qual_tiers + apply_materiality_holds;
+    expose via /board.

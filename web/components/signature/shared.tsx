@@ -98,22 +98,28 @@ export function Sparkline({
   );
 }
 
-/** Horizontal band ruler: zone washes + threshold ticks + marker + trail. */
+/** Horizontal band ruler: zone washes + threshold ticks + marker + trail.
+ * fixedDomain pins the strip to the tier scale so an off-board outlier
+ * reading cannot squeeze the tiers (the path chart tells that story);
+ * out-of-domain values clamp to the edge. */
 export function BandStrip({
   score,
   trail = [],
   width = 260,
   height = 30,
   showLabels = false,
+  fixedDomain,
 }: {
   score: number;
   trail?: number[];
   width?: number;
   height?: number;
   showLabels?: boolean;
+  fixedDomain?: [number, number];
 }) {
-  const [lo, hi] = scoreDomain([score, ...trail]);
-  const x = (v: number) => ((v - lo) / (hi - lo)) * width;
+  const [lo, hi] = fixedDomain ?? scoreDomain([score, ...trail]);
+  const x = (v: number) =>
+    ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * width;
   const zoneY = showLabels ? 12 : 4;
   const zoneH = height - zoneY - 4;
   const cy = zoneY + zoneH / 2;

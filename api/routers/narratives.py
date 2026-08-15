@@ -271,3 +271,66 @@ def get_narratives_landing():
         "emerging": emerging[:10],
         "weakening": weakening[:10],
     }
+
+
+@router.get("/narratives/{narrative_id}/roster")
+def get_narrative_roster(narrative_id: int):
+    """One force's roster: every company carrying exposure in its subtree
+    (deduped, max exposure kept), split into on-board (by score) and the
+    attached-but-off-board tail (by exposure) — the discovery product."""
+    from fastapi import HTTPException
+    engine = get_engine()
+    with engine.connect() as conn:
+        nars = conn.execute(text("""
+            SELECT id, name, tier, parent_id,
+                   COALESCE(thesis, description), status
+            FROM narratives
+            WHERE status != 'merged' AND COALESCE(scope,'') != 'company'
+        """)).fetchall()
+        by_id = {n[0]: n for n in nars}
+        if narrative_id not in by_id:
+            raise HTTPException(404, "unknown narrative")
+        kids: dict = {}
+        for n in nars:
+            if n[3] in by_id and n[2] != "macro":
+                kids.setdefault(n[3], []).append(n[0])
+        sub = set()
+        stack = [narrative_id]
+        while stack:
+            x = stack.pop()
+            sub.add(x)
+            stack.extend(kids.get(x, []))
+
+        expo = conn.execute(text("""
+            SELECT ne.symbol, MAX(ne.exposure), f.company_name
+            FROM narrative_exposures ne
+            LEFT JOIN fundamentals f ON f.symbol = ne.symbol
+            WHERE ne.narrative_id = ANY(:ids)
+            GROUP BY ne.symbol, f.company_name
+        """), {"ids": list(sub)}).fetchall()
+        snap = {r[0]: r[1:] for r in conn.execute(text("""
+            SELECT symbol, COALESCE(assessed_tier, tier), gem_score
+            FROM leaderboard_history
+            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+        """)).fetchall()}
+
+    n = by_id[narrative_id]
+    on_board, off_board = [], []
+    for sym, ex, company in expo:
+        tier, score = snap.get(sym, (None, None))
+        row = {
+            "symbol": sym, "company": company,
+            "exposure": float(ex) if ex is not None else None,
+            "tier": tier, "score": ten(score),
+        }
+        (on_board if tier else off_board).append(row)
+    on_board.sort(key=lambda r: -(r["score"] or 0))
+    off_board.sort(key=lambda r: -(r["exposure"] or 0))
+    return {
+        "id": narrative_id, "name": n[1], "level": n[2],
+        "thesis": n[4], "status": n[5],
+        "covered": len(expo),
+        "on_board": on_board,
+        "off_board": off_board[:25],
+        "off_board_total": len(off_board),
+    }

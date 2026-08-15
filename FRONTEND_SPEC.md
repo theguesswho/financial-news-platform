@@ -56,7 +56,8 @@ Postgres (Railway)  ←  pipeline / scheduler        (unchanged)
 6. **Portfolio-tracker READ-ONLY.** The Desktop folder and its Firebase
    are never touched. Our Postgres portfolio tables are the live store.
 
-## API surface (build in this order)
+## API surface — SUPERSEDED 2026-08-16 (kept for history; a cold
+## session must follow THE AGREED ROADMAP section, not this)
 
 Boundary conventions (decided 2026-08-10, Phase 1):
 - **Scores cross the API on the 10-point display scale** (the `fmt10`
@@ -86,7 +87,8 @@ Mutations last, once auth exists:
 - `POST /portfolio/transactions`, `DELETE /portfolio/transactions/{id}`
   (soft delete, as today).
 
-## Page build order (revised 2026-08-10 per DESIGN_BRIEF.md)
+## Page build order — SUPERSEDED 2026-08-16 (front door reversed to
+## the Board; see THE AGREED ROADMAP. Kept for history only.)
 
 Nav is five nouns: Narratives / The Board / Companies / What Changed /
 Portfolio. (FRONT DOOR REVISED 2026-08-10: Narratives is the landing —
@@ -297,15 +299,150 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       rules, do NOT use it as the watch-path isolation proof).
       Local dev: `venv/bin/python -m uvicorn api.main:app --port 8000`
       then web dev with `API_URL=http://localhost:8000`.
-- [ ] Phase 3: Companies workbench — /companies/[symbol] led by B1
-      (triptych + ruler + CompanySwitcher), evidence-pane data pass
-      (per DESIGN_BRIEF.md, needs sign-off), then events/insiders/
-      filings in context; repoint Board row links here
-- [ ] Phase 4: Narratives landing — THE FRONT DOOR (promoted 2026-08-10;
-      DESIGN_BRIEF.md Landing page section is the contract) + three-layer
-      map behind it
-- [ ] Phase 5: What Changed (daily edition as instrument log)
-- [ ] Phase 6: read API remainder; anything the pages still need
+- [~] 2026-08-15 MOCKS FOR REVIEW (PRODUCT_UI_HANDOFF.md analysis —
+      decisions NOT yet recorded, user reviewing): review-only routes
+      `/home` (Board as landing: masthead search over the universe,
+      counts + Book-vs-SPY + edition-count wrinkle visible, TODAY ×3,
+      grouped table with Call / Score / Assessor-when-it-moves ("hold
+      is silence") / Moved / Story, expanding rows, Forces +
+      losing-support rail) and `/companies/[symbol]` (hero with
+      tier-domain band strip + STREET line + assessor chip + prev/next,
+      evidence triptych with mention-set rule + smallest-n hero gap,
+      score components, path + price charts with filing ticks, thesis
+      after evidence, calls stack with claims, Stories/Said/Inside
+      rail). New helpers: lib/api.ts (Report type, heroGap,
+      isMentionSet), BandStrip fixedDomain (tier-scale domain fix),
+      components/mock/*. Existing routes moved into app/(site)/ route
+      group (URLs unchanged) so mocks carry their own chrome.
+      Pending user decisions to record after review: front door
+      reversal (Board home vs narratives landing), nav nouns
+      ("Track record" vs "Book", "What changed" vs "Edition"),
+      movement column kept, per-row band strip dropped.
+      NOTE: universe grew to 828 covered / 41 with a call (edition
+      2026-08-14); /reports/latest masthead.board=35 wrinkle shown.
+      Round 2 (same day, after Grok-sketch feedback + user direction):
+      full mock suite, all live data, `next build` clean —
+      - /home refined: one-line masthead (tier dots, Book-vs-SPY link
+        → /record, wrinkle sentence), TODAY ×3 + "all N moves →",
+        filter tabs (All / Strong Buy / Moved / with-a-call),
+        name-first rows, Assessor column also prints upgrade/downgrade
+        direction words (hold still silence), Forces rail as wt/n
+        directory linking /forces/{id}. "Candidates in review" number
+        from the sketch NOT built (no sourcing field — no invented
+        data).
+      - /changed: full newspaper from /reports/{date} — kicker with
+        changes_breakdown, date-archive nav, grouped Downgrades →
+        Exits → Entries → Upgrades → Also + coverage/birth sections,
+        bodies full text, symbols link to /companies.
+      - /record: Track record from /board/scorecard — verdict header,
+        honesty paragraph ($100 lots, not live capital), AGGREGATED
+        per-name rows (invested, open/closed, beating, vs-SPY colored)
+        expanding to daily lots vs SPY twins.
+      - /forces + /forces/[id]: directory (wt/board/covered + thesis
+        clip) and force page = thesis + on-board roster (exposure,
+        tier, score) + "attached, not on the board" tail (top 25 by
+        exposure — the discovery surface). NEW API endpoint
+        GET /narratives/{id}/roster (subtree, deduped, max exposure).
+      - Company calls strip: EARN_CALL/10-K/10-Q days as full tabs;
+        8-K-only days compress to slim ticks (never hidden — AECOM
+        8-K lesson).
+      User verdict on the round-2 suite: "This is looking really
+      good." — direction approved; execution NOT yet started (user
+      instruction 2026-08-15: plan recorded here first, nothing built
+      until go).
+
+## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
+
+The product's page architecture is now the mock suite: home (Board) ·
+Forces · What changed · Track record · /companies/[symbol]. The mock
+routes at /home, /forces, /forces/[id], /changed, /record,
+/companies/[symbol] plus components/mock/* ARE the design of record —
+promote them, do not rebuild them. Steps, in order; 1–3 are local;
+4 needs the user at the Railway dashboard. NONE STARTED YET.
+
+**REVIEW ADDENDUM (2026-08-16, methodology session + external review,
+both concur — these BLOCK step 2):**
+- **READ-LAYER GAP, verified on prod**: OpenAPI serves only the
+  original 8 paths; /narratives/{id}/roster 404s (the route exists
+  only as uncommitted local code, now committed but NOT deployed);
+  /stocks/{symbol} has NO exposures and NO narrative_id — only
+  theme_alignments (the LEGACY meta-themes system, frozen since
+  Jul 12 and slated for retirement at the NARRATIVE_SPEC Phase 2
+  gate). The mock Force rosters and any Pair page are therefore
+  name-matching. Before step 2 the read layer needs:
+  (a) GET /narratives/{id} — thesis, roster, AND the health series
+      from narrative_health_history (the Forces pages currently show
+      a portrait; the product's living-narratives claim needs the
+      pulse — conviction week by week, data already accumulating);
+  (b) /stocks/{symbol} to return exposures keyed by narrative_id
+      (exposure, direction, linkage) from narrative_exposures;
+  (c) NO name-matching joins anywhere; Pair pages pair via the
+      narrative brain, never via meta_themes (see V3 #0 retirement).
+- **ASSESSOR BADGE BLOCKED pending provenance**: since 2026-08-15 the
+  materiality corridor also writes assessed_tier (corridor-pending
+  and materiality-hold states) — the "▲ judgment raised it" badge
+  would mislabel them. Methodology track must stamp provenance
+  alongside assessed_tier (judge / corridor_pending / materiality_hold
+  — V3 item); the badge ships only after it can tell them apart.
+- **Cache by cadence**: data changes twice a day; responses are
+  immutable between snapshots. Add response caching keyed to the
+  snapshot/edition date before any external user (P-C at latest).
+- **One since-date**: Track record and masthead both say "since
+  Jul 27, 2026" (the first lot); Jul 23 is the signal start and may
+  appear only as a footnote. (The board=35-vs-41 wrinkle remains a
+  methodology-track question; keep it visible.)
+
+1. **Lock decisions in DESIGN_BRIEF.md** (user has approved direction;
+   the brief still says narratives-landing-as-front-door and must be
+   rewritten): Board as home (reverses 2026-08-10); nav = The Board /
+   Forces / What changed / Track record ("Book" and "Edition" rejected
+   as jargon); hierarchy call → assessor-only-when-it-moves → story;
+   HOLD IS SILENCE (never print "hold"); STREET labeled, never our
+   call; mention-set rule (peer_count ≥ 100) + smallest-n hero gap;
+   band strip on tier domain [2.9, 5.8] (path chart tells the full
+   history); movement stays on the row; track record aggregated-first,
+   losses equal weight; 8-K tick rule; momentum orange back in
+   RESERVE (unused anywhere); no unsourced numbers ("63 candidates in
+   review" excluded until a field exists).
+2. **Promote mocks → real routes**: /home → `/`; mock Chrome becomes
+   the site chrome; retire app/(site)/ (old landing, /board,
+   /signature page — keep the signature components; lab route may stay
+   unlinked). Add the states mocks skipped: loading, error, 404,
+   mobile pass, dark-mode pass.
+3. **Data-accuracy pass** (before any deploy):
+   - automated sweep: script hits every endpoint + /stocks/{symbol}
+     for all ~828 names; catches 500s / empty payloads / null-heavy
+     pages. Becomes the permanent pre-deploy smoke test.
+   - cross-check vs Streamlit lab bench (same DB): sample of names
+     (top rank, grace seat, off-board, null-heavy) must show the same
+     numbers on product and Streamlit pages. Mismatch = port bug.
+   - honesty audit per page: no unsourced number, mention-set labels,
+     hold silent, nulls omitted (no em-dashes).
+   - trace two open discrepancies (diagnose, don't paper over):
+     masthead "since July 23" vs earliest scorecard lot 27 Jul; and
+     edition masthead.board=35 vs 41 snapshot rows with a call (the
+     wrinkle stays visible either way; the WHY belongs to the
+     methodology track).
+4. **Deploy** (user present): one batched api/ + web/ push in a clean
+   deploy-gate window — touches scheduler watch paths, so full gate
+   rules; user watches Railway dashboard. Set API_URL env on the web
+   service. Prod smoke test (the step-3 script against prod). The
+   watch-path isolation PROOF still requires a separate pure web/**
+   push on a quiet day — this batched push cannot be it.
+5. **After that, each its own session**: Pair page (BLOCKED on a real
+   meta_themes ↔ narratives linkage — methodology-track data work, no
+   name-matching hacks); Portfolio + auth decision (old Phase 7);
+   full review pass vs DESIGN_BRIEF.md (old Phase 8); product name
+   before anything public.
+
+- [x] ~~Phase 3: Companies workbench~~ SUPERSEDED — built as the
+      /companies/[symbol] mock (roadmap step 2 promotes it)
+- [x] ~~Phase 4: Narratives landing as front door~~ SUPERSEDED —
+      front-door decision reversed 2026-08-15; the narratives work
+      lives on as the Forces directory + force pages
+- [x] ~~Phase 5: What Changed~~ SUPERSEDED — built as /changed mock
+- [ ] Phase 6: read API remainder; anything the promoted pages still
+      need (roster endpoint shipped; Pair blocked, see roadmap 5)
 - [ ] Phase 7: auth decision + Portfolio (owner-only; mutations)
 - [ ] Phase 8: single-user product complete — full review pass vs
       DESIGN_BRIEF.md; Streamlit stays (lab bench, permanent)

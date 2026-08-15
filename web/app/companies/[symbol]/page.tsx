@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getBoard, getStock, heroGap, isMentionSet, Stock } from "@/lib/api";
+import { getBoard, getStock, heroGap, isMentionSet } from "@/lib/api";
 import { BandStrip, fmt, pct, scored, Sparkline, TierChip } from "@/components/signature/shared";
 import Chrome from "@/components/mock/Chrome";
 import CallsStack from "@/components/mock/CallsStack";
@@ -15,16 +15,12 @@ export async function generateMetadata({ params }: { params: Promise<{ symbol: s
   return { title: `${symbol.toUpperCase()} · company mock` };
 }
 
-const TIER_ORDER: Record<string, number> = { "Strong Buy": 0, Buy: 1, Watch: 2 };
 const TIER_DOMAIN: [number, number] = [2.9, 5.8];
 
-function assessorMove(s: Stock): { word: "raised" | "restrained"; from: string } | null {
-  const a = s.assessment;
-  if (!a?.raw_tier || !a.adjusted_tier) return null;
-  if (a.raw_tier === a.adjusted_tier) return null; // hold is silence
-  const raised = (TIER_ORDER[a.adjusted_tier] ?? 3) < (TIER_ORDER[a.raw_tier] ?? 3);
-  return { word: raised ? "raised" : "restrained", from: a.raw_tier };
-}
+// NO assessor badge on the hero: raised / restrained / promoted stay dark
+// until assessed_tier carries provenance (addendum #5, V3 #11) — the
+// corridor also writes assessed_tier, and painting a corridor state as
+// judge conviction is the exact mislabel the gate blocks.
 
 function Chip({ label, value }: { label: string; value: string }) {
   return (
@@ -35,42 +31,61 @@ function Chip({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BarsRow({
-  rows, get, label, fmtV,
+// Quality is durability — ROIC, operating margin, FCF margin — never size
+// (addendum #1: revenue can be flat while every durability metric halves,
+// so a revenue histogram cannot explain a quality move). Two columns for
+// every company: last completed fiscal year (labeled FY{YY} from its
+// period_end, so a Sep year-end is one FY, not a second calendar year)
+// and TTM from fundamentals (labeled TTM, never a year). Null sides are
+// omitted, not padded.
+function FyTtm({
+  fyLabel,
+  rows,
 }: {
-  rows: { period_end: string }[];
-  get: (r: { period_end: string }) => number | null;
-  label: string;
-  fmtV: (v: number) => string;
+  fyLabel: string;
+  rows: { label: string; fy: number | null; ttm: number | null }[];
 }) {
-  const vals = rows.map(get);
-  const max = Math.max(...vals.filter((v): v is number => v != null), 0);
-  if (max <= 0) return null;
+  const shown = rows.filter((r) => r.fy != null || r.ttm != null);
+  if (shown.length === 0) return null;
+  // If a whole column is absent (no annual row / no TTM), it is omitted,
+  // not padded with dashes.
+  const hasFy = shown.some((r) => r.fy != null);
+  const hasTtm = shown.some((r) => r.ttm != null);
+  const cols =
+    hasFy && hasTtm ? "grid-cols-[6.2rem_1fr_1fr]" : "grid-cols-[6.2rem_1fr]";
+  const BARW = 100;
   return (
     <div className="mb-2">
-      <div className="flex items-end gap-2">
-        {rows.map((r, i) => {
-          const v = vals[i];
-          return (
-            <div key={r.period_end} className="flex w-12 flex-col items-center gap-0.5">
-              {v != null ? (
-                <>
-                  <span className="num text-[9.5px] text-ink-3">{fmtV(v)}</span>
-                  <div
-                    className="w-7 rounded-t-[3px] bg-ink-2 opacity-75"
-                    style={{ height: `${Math.max((v / max) * 56, 2)}px` }}
-                    title={`FY${r.period_end.slice(0, 4)}: ${fmtV(v)}`}
-                  />
-                </>
-              ) : (
-                <div className="h-[56px]" />
-              )}
-              <span className="text-[9.5px] text-ink-3">FY{r.period_end.slice(2, 4)}</span>
-            </div>
-          );
-        })}
-        <span className="mb-3 ml-1 text-[10px] text-ink-3">{label}</span>
+      <div className={`mb-1 grid ${cols} gap-x-3`}>
+        <span />
+        {hasFy && <span className="kicker text-[9.5px]">{fyLabel}</span>}
+        {hasTtm && <span className="kicker text-[9.5px]">TTM</span>}
       </div>
+      {shown.map((r) => {
+        const max = Math.max(Math.abs(r.fy ?? 0), Math.abs(r.ttm ?? 0)) || 1;
+        const cell = (v: number | null) =>
+          v == null ? (
+            <span />
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-[9px] rounded-[2px] bg-ink-2 opacity-75"
+                style={{ width: `${Math.max((Math.abs(v) / max) * BARW, 2)}px` }}
+              />
+              <span className="num text-[11px]">{(v * 100).toFixed(1)}%</span>
+            </span>
+          );
+        return (
+          <div
+            key={r.label}
+            className={`grid ${cols} items-center gap-x-3 border-b border-hairline py-1.5 last:border-b-0`}
+          >
+            <span className="text-[11px] text-ink-3">{r.label}</span>
+            {hasFy && cell(r.fy)}
+            {hasTtm && cell(r.ttm)}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -121,13 +136,19 @@ export default async function CompanyMock({
   const prev = idx > 0 ? board.board[idx - 1] : null;
   const next = idx >= 0 && idx < board.board.length - 1 ? board.board[idx + 1] : null;
 
-  const move = assessorMove(stock);
   const f = stock.fundamentals ?? {};
   const lastClose = [...stock.prices].reverse().find((p) => p.close != null)?.close;
   const pts = scored(stock.history);
   const gap = heroGap(stock.valuation_gaps);
-  const annuals = [...stock.annual_history].reverse().filter((r) => r.revenue != null);
-  const roics = annuals.filter((r) => r.roic != null);
+  // FY = the latest annual row with any quality field (rows arrive newest
+  // first). FY FCF margin is fcf / revenue from that same row.
+  const fy = stock.annual_history.find(
+    (r) => r.roic != null || r.op_margin != null || r.fcf != null
+  );
+  const fyFcfMargin =
+    fy?.fcf != null && fy.revenue != null && fy.revenue !== 0
+      ? fy.fcf / fy.revenue
+      : null;
   // The rail's Forces block comes from narrative_exposures (keyed by
   // narrative_id). Company-scope narratives are this company's OWN story,
   // not a market-wide force, so they are listed apart. The legacy
@@ -137,34 +158,36 @@ export default async function CompanyMock({
   // is how a reader is taught something untrue.
   const forces = stock.exposures.filter((e) => e.scope !== "company");
   const companyStories = stock.exposures.filter((e) => e.scope === "company");
-  const claimsDesc = [...stock.claims].sort((a, b) =>
-    b.call_date.localeCompare(a.call_date)
-  );
-
   const num = (v: unknown): v is number => typeof v === "number";
 
   return (
     <>
       <Chrome names={names} context={`${symbol} · as of ${stock.as_of}`} />
       <main className="mx-auto max-w-[1280px] px-6 py-6">
-        {/* 1 — hero */}
+        {/* 1 — hero. Prev/next stepping is its own labeled control ABOVE
+            the name, never part of the phrase that carries this name's
+            call and score (addendum #8: "GDDY → Strong Buy 5.2" read as
+            one statement). */}
+        {(prev || next) && (
+          <div className="mb-1 flex items-center justify-end gap-2">
+            <span className="kicker text-[9.5px]">board neighbours</span>
+            {prev && (
+              <Link href={`/companies/${prev.symbol}`} className="rounded-md border border-hairline px-2 py-0.5 text-[12px] text-ink-2 hover:border-baseline">
+                ← {prev.symbol}
+              </Link>
+            )}
+            {next && (
+              <Link href={`/companies/${next.symbol}`} className="rounded-md border border-hairline px-2 py-0.5 text-[12px] text-ink-2 hover:border-baseline">
+                {next.symbol} →
+              </Link>
+            )}
+          </div>
+        )}
         <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-[26px] font-bold tracking-tight">{stock.company ?? symbol}</h1>
           <span className="text-[14px] font-bold text-ink-2">{symbol}</span>
           <span className="text-[12.5px] text-ink-3">
             {[stock.sector, stock.industry].filter(Boolean).join(" · ")}
-          </span>
-          <span className="ml-auto flex items-center gap-2">
-            {prev && (
-              <Link href={`/companies/${prev.symbol}`} className="rounded-md border border-hairline px-2 py-0.5 text-[12.5px] text-ink-2 hover:border-baseline">
-                ← {prev.symbol}
-              </Link>
-            )}
-            {next && (
-              <Link href={`/companies/${next.symbol}`} className="rounded-md border border-hairline px-2 py-0.5 text-[12.5px] text-ink-2 hover:border-baseline">
-                {next.symbol} →
-              </Link>
-            )}
           </span>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -173,17 +196,6 @@ export default async function CompanyMock({
           <span className="text-[12px] text-ink-3">out of 10</span>
           {stock.final_rank != null && (
             <span className="num text-[12.5px] text-ink-2">rank {stock.final_rank}</span>
-          )}
-          {move && (
-            <span
-              className="rounded px-1.5 py-px text-[11px] font-bold"
-              style={{
-                color: move.word === "raised" ? "var(--up)" : "var(--down)",
-                background: `color-mix(in srgb, ${move.word === "raised" ? "var(--up)" : "var(--down)"} 12%, transparent)`,
-              }}
-            >
-              {move.word} from {move.from}
-            </span>
           )}
         </div>
         {(num(f.analysts_count) || typeof f.analyst_rating === "string") && (
@@ -218,22 +230,29 @@ export default async function CompanyMock({
             <section className="mb-10 grid grid-cols-1 gap-8 border-t border-hairline pt-5 lg:grid-cols-3">
               <div>
                 <div className="kicker">Quality — {fmt(stock.components.quality)}</div>
-                <div className="mb-2 text-[11.5px] text-ink-3">is this a durable business?</div>
-                <BarsRow rows={annuals} get={(r) => (r as typeof annuals[number]).revenue}
-                  label="revenue" fmtV={(v) => `$${(v / 1e9).toFixed(1)}b`} />
-                <BarsRow rows={annuals} get={(r) => (r as typeof annuals[number]).op_margin}
-                  label="op. margin" fmtV={(v) => `${(v * 100).toFixed(1)}%`} />
-                {roics.length > 0 && (
-                  <div className="mb-2 flex flex-wrap items-center gap-1 text-[11.5px]">
-                    <span className="mr-1 text-ink-3">ROIC</span>
-                    {roics.map((r, i) => (
-                      <span key={r.period_end} className="num">
-                        {((r.roic as number) * 100).toFixed(1)}%
-                        {i < roics.length - 1 && <span className="text-ink-3"> → </span>}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div className="mb-2 text-[11.5px] text-ink-3">
+                  durability: last fiscal year vs the last twelve months
+                </div>
+                <FyTtm
+                  fyLabel={fy ? `FY${fy.period_end.slice(2, 4)}` : "FY"}
+                  rows={[
+                    {
+                      label: "ROIC",
+                      fy: fy?.roic ?? null,
+                      ttm: num(f.roic) ? f.roic : null,
+                    },
+                    {
+                      label: "op. margin",
+                      fy: fy?.op_margin ?? null,
+                      ttm: num(f.operating_margin) ? f.operating_margin : null,
+                    },
+                    {
+                      label: "FCF margin",
+                      fy: fyFcfMargin,
+                      ttm: num(f.fcf_margin) ? f.fcf_margin : null,
+                    },
+                  ]}
+                />
                 <div className="flex flex-wrap gap-1.5">
                   {num(f.pe_forward) && <Chip label="PE fwd" value={`${f.pe_forward.toFixed(1)}×`} />}
                   {num(f.peg_ratio) && <Chip label="PEG" value={f.peg_ratio.toFixed(2)} />}
@@ -247,9 +266,7 @@ export default async function CompanyMock({
               <div>
                 <div className="kicker">Value — {fmt(stock.components.value)}</div>
                 <div className="mb-2 text-[11.5px] text-ink-3">
-                  {gap && isMentionSet(gap)
-                    ? "is it cheap against this set?"
-                    : "is it cheap against the same story?"}
+                  is it cheap against this set?
                 </div>
                 {gap ? (
                   <>
@@ -294,12 +311,12 @@ export default async function CompanyMock({
                         width={(stock.components.exposure / 10) * 250 * (1 - stock.priced_in)}
                         height={16} rx="4" fill="var(--gap-accent)" />
                     </svg>
+                    {/* one gap word per pane (addendum #8): priced_in here,
+                        the 10-pt Gap on its component bar — never a third
+                        figure for the same idea */}
                     <p className="text-[11.5px] text-ink-2">
                       the market prices <b>{pct(stock.priced_in)}</b> of its story —
                       the violet rest is what the price ignores
-                      {stock.ng_score != null && (
-                        <span className="num text-ink-3"> · NG {stock.ng_score.toFixed(2)}</span>
-                      )}
                     </p>
                   </>
                 ) : (
@@ -315,8 +332,8 @@ export default async function CompanyMock({
                 {(
                   [
                     ["exposure", "Exposure", "alignment with the forces on the right"],
-                    ["value", "Value", "cheapness vs the same story"],
-                    ["quality", "Quality", "ROIC, margins, the road above"],
+                    ["value", "Value", "cheapness vs its peer set"],
+                    ["quality", "Quality", "ROIC, margins, the durability above"],
                     ["gap", "Gap", "story not yet in the price"],
                   ] as const
                 ).map(([key, label, meaning]) => {
@@ -488,34 +505,9 @@ export default async function CompanyMock({
                 ))}
             </div>
 
-            <div className="kicker mb-1.5">Said</div>
-            <div className="mb-7">
-              {claimsDesc.slice(0, 12).map((c, i) => (
-                <div key={i} className="border-b border-hairline py-2 last:border-b-0">
-                  <div className="flex items-baseline gap-2 text-[11px] text-ink-3">
-                    <span className="num">{c.call_date.slice(0, 10)}</span>
-                    <span>{c.type.replace(/_/g, " ")}</span>
-                    {c.direction && (
-                      <span
-                        className="ml-auto font-bold uppercase"
-                        style={{
-                          color:
-                            c.direction.toLowerCase() === "up"
-                              ? "var(--up)"
-                              : c.direction.toLowerCase() === "down"
-                                ? "var(--down)"
-                                : "var(--ink-3)",
-                        }}
-                      >
-                        {c.direction}
-                      </span>
-                    )}
-                  </div>
-                  <div className="line-clamp-2 text-[12px] leading-snug text-ink-2">{c.text}</div>
-                </div>
-              ))}
-            </div>
-
+            {/* Claims appear ONCE, inside the calls stack against their
+                call date (addendum #8) — the Said rail duplicated the
+                same quotes and is gone. */}
             <div className="kicker mb-1.5">Inside</div>
             <div>
               {stock.insider_trades.length === 0 && (

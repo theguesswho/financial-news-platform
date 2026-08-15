@@ -81,7 +81,7 @@ function Search({ names }: { names: SearchName[] }) {
 }
 
 const NAV = [
-  ["The Board", "/home"],
+  ["The Board", "/"],
   ["Forces", "/forces"],
   ["What changed", "/changed"],
   ["Track record", "/record"],
@@ -99,7 +99,7 @@ export default function Chrome({
   return (
     <header className="sticky top-0 z-10 border-b border-hairline bg-surface">
       <div className="mx-auto flex max-w-[1280px] items-center gap-5 px-6 py-2.5">
-        <Link href="/home" className="flex shrink-0 items-center gap-2">
+        <Link href="/" className="flex shrink-0 items-center gap-2">
           <span className="inline-block h-3 w-3 bg-[var(--tier-sb)]" />
           <span className="text-[13.5px] font-bold tracking-[0.12em]">THE BOARD</span>
         </Link>

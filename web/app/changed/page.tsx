@@ -2,7 +2,14 @@
 // with its plain-words why, grouped; past editions reachable by date.
 
 import Link from "next/link";
-import { getBoard, getReport, getReportLatest } from "@/lib/api";
+import {
+  getBoard,
+  getReport,
+  getReportLatest,
+  getScorecard,
+  openLotCounts,
+  reconcileWithBook,
+} from "@/lib/api";
 import Chrome from "@/components/mock/Chrome";
 
 export const metadata = { title: "What changed" };
@@ -26,21 +33,37 @@ export default async function ChangedMock({
   searchParams: Promise<{ date?: string }>;
 }) {
   const { date } = await searchParams;
-  const [board, report] = await Promise.all([
+  const [board, report, sc] = await Promise.all([
     getBoard(),
     date ? getReport(date) : getReportLatest(),
+    getScorecard(),
   ]);
   const names = [...board.board, ...board.off_board].map((e) => ({
     symbol: e.symbol, company: e.company, tier: e.tier,
   }));
   const m = report.masthead;
+  // Never contradict the book (addendum #4): a body claiming we hold
+  // nothing while the scorecard has open lots in that name gets the
+  // sentence replaced with the open-lot fact. Every symbol, every
+  // edition — no special-casing.
+  const lots = openLotCounts(sc);
+  const fix = <T extends { symbol: string | null; headline: string; body?: string }>(
+    s: T
+  ): T => {
+    const n = s.symbol ? (lots[s.symbol] ?? 0) : 0;
+    return {
+      ...s,
+      headline: reconcileWithBook(s.headline, n),
+      body: s.body ? reconcileWithBook(s.body, n) : s.body,
+    };
+  };
 
   // moves grouped by kind in a fixed honest order (downgrades first is
   // deliberate — bad news never below the fold), then other sections.
   const stories = [
     ...(report.top_story ? [{ ...report.top_story, section: "moves" }] : []),
     ...report.sections,
-  ];
+  ].map(fix);
   const seen = new Set<string>();
   const uniq = stories.filter((s) => {
     const k = `${s.kind}·${s.symbol}·${s.headline}`;

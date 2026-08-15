@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   // Product name/masthead still an open decision (DESIGN_BRIEF.md);
-  // plain page titles until it lands.
-  title: "Narratives",
+  // "THE BOARD" is the working wordmark until it lands.
+  title: "The Board",
   description: "A discovery instrument with a judgment layer.",
 };
 

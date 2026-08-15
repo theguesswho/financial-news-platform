@@ -1,8 +1,12 @@
 "use client";
 
-// The home table: name-first rows, filter tabs, and two silent-by-default
-// columns — Assessor (prints only when the judgment moved the call or
-// changed its verdict) and Moved (prints only day-over-day change).
+// The home table: name-first rows, filter tabs, and one silent-by-default
+// column — Moved, which prints only CALL changes (entry / exit / upgrade /
+// downgrade / grace seat). Rank moves are not calls: a name can rise a
+// rank on a downgrade day, and a green ▲ would paint the downgrade as
+// good news (addendum #6, SANM lesson). There is NO assessor column: every
+// assessor state (raised / restrained / promoted / direction words) stays
+// dark until assessed_tier carries provenance (addendum #5, V3 #11).
 // Row body expands to bull / bear / rationale; the name opens the page.
 
 import Link from "next/link";
@@ -11,37 +15,7 @@ import { BoardEntry } from "@/lib/api";
 import { fmt, TierChip } from "@/components/signature/shared";
 
 const GRID =
-  "grid-cols-[1.8rem_minmax(9rem,1fr)_auto_auto] md:grid-cols-[1.8rem_minmax(11rem,0.9fr)_auto_auto_minmax(8rem,auto)_auto_minmax(0,1.2fr)]";
-
-function Assessor({ e }: { e: BoardEntry }) {
-  if (e.qual_promoted)
-    return (
-      <span className="text-[12px] font-semibold" style={{ color: "var(--gap-accent)" }}>
-        narrative promoted
-      </span>
-    );
-  if (e.disagreement) {
-    const raised = e.disagreement.kind === "raised";
-    return (
-      <span
-        className="text-[12px] font-semibold"
-        style={{ color: raised ? "var(--up)" : "var(--down)" }}
-      >
-        {raised ? "raised" : "restrained"} from {e.disagreement.quant_tier}
-      </span>
-    );
-  }
-  if (e.direction === "upgrade" || e.direction === "downgrade")
-    return (
-      <span
-        className="text-[12px] font-semibold"
-        style={{ color: e.direction === "upgrade" ? "var(--up)" : "var(--down)" }}
-      >
-        {e.direction}
-      </span>
-    );
-  return null; // hold is silence
-}
+  "grid-cols-[1.8rem_minmax(9rem,1fr)_auto_auto] md:grid-cols-[1.8rem_minmax(11rem,0.9fr)_auto_auto_auto_minmax(0,1.4fr)]";
 
 function Moved({ e }: { e: BoardEntry }) {
   if (e.is_new)
@@ -61,20 +35,10 @@ function Moved({ e }: { e: BoardEntry }) {
     );
   if (e.exit_grace)
     return <span className="text-[11px] italic text-ink-2">grace seat</span>;
-  if (e.rank_change)
-    return (
-      <span
-        className="num text-[11.5px] font-semibold"
-        style={{ color: e.rank_change > 0 ? "var(--up)" : "var(--down)" }}
-      >
-        {e.rank_change > 0 ? "▲" : "▼"}{Math.abs(e.rank_change)}
-      </span>
-    );
   return null;
 }
 
-const moved = (e: BoardEntry) =>
-  e.is_new || !!e.tier_move || !!e.rank_change || e.exit_grace;
+const moved = (e: BoardEntry) => e.is_new || !!e.tier_move || e.exit_grace;
 
 function Row({ e }: { e: BoardEntry }) {
   const [open, setOpen] = useState(false);
@@ -103,7 +67,6 @@ function Row({ e }: { e: BoardEntry }) {
         <span className="num justify-self-end text-[15px] font-bold md:justify-self-auto">
           {fmt(e.score)}
         </span>
-        <span className="hidden md:block"><Assessor e={e} /></span>
         <span className="hidden md:block"><Moved e={e} /></span>
         <span className="hidden truncate text-[12.5px] text-ink-2 md:block">
           {e.key_bull ?? ""}
@@ -189,8 +152,7 @@ export default function HomeTable({ rows }: { rows: BoardEntry[] }) {
         {(
           [
             ["#", ""], ["Name", ""], ["Call", ""], ["Score", ""],
-            ["Assessor", "hidden md:block"], ["Moved", "hidden md:block"],
-            ["Story", "hidden md:block"],
+            ["Moved", "hidden md:block"], ["Story", "hidden md:block"],
           ] as const
         ).map(([h, cls]) => (
           <span key={h} className={`kicker text-[9.5px] ${cls}`}>{h}</span>

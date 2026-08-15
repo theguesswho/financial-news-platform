@@ -133,12 +133,16 @@ because each one is a way a surface could quietly lie.
    dot position means the same thing on every company, which is the
    whole FASTgraphs-ethos claim. The full history lives in the path
    chart below it, which does use its own range.
-8. **Movement stays on the row.** NEW / ▲▼ rank / tier moves / grace
-   seat print in the row's Moved column, in the up-down role colors —
-   not in a separate "what changed" widget. The per-row band strip and
-   the Q·V·G mini-bars from the Phase 2 board row are DROPPED from the
-   home table: the table is a directory of calls, and the evidence
-   belongs on the company page where it has room to be read.
+8. **Movement stays on the row — and Moved means the CALL moved.**
+   (Narrowed by the 2026-08-15 addendum, item 6.) NEW / tier moves /
+   grace seat print in the row's Moved column, in the up-down role
+   colors — not in a separate "what changed" widget. Rank ticks are
+   NOT movement: a name can rise a rank on a downgrade day, and a
+   green ▲1 would paint the downgrade as good news (the SANM case).
+   The per-row band strip and the Q·V·G mini-bars from the Phase 2
+   board row are DROPPED from the home table: the table is a
+   directory of calls, and the evidence belongs on the company page
+   where it has room to be read.
 9. **Track record is aggregated first, losses at equal weight.** Per
    name first (invested, open/closed, beating, vs SPY), daily lots on
    expand. The honesty paragraph — that these are $100 paper lots, not
@@ -153,24 +157,76 @@ because each one is a way a surface could quietly lie.
     and the token is unused again. It stays reserved until the
     methodology track recalibrates momentum into something that
     discriminates (today every macro reads "accelerating").
-12. **The assessor badge ships DARK until provenance exists.** Since
-    2026-08-15 `assessed_tier` is also written by the materiality
-    corridor (corridor-pending and materiality-hold states), so a
-    "▲ judgment raised it" badge would label a mechanical corridor
-    state as human-style conviction. The badge is not rendered until
+12. **The assessor ships DARK — entirely — until provenance exists.**
+    (Extended by the 2026-08-15 addendum, item 5.) Since 2026-08-15
+    `assessed_tier` is also written by the materiality corridor
+    (corridor-pending and materiality-hold states), so a "▲ judgment
+    raised it" badge would label a mechanical corridor state as
+    human-style conviction. NOTHING assessor-flavored renders until
     the methodology track stamps provenance (judge / corridor_pending /
-    materiality_hold) AND the API exposes it. This is a hard gate, not
-    a preference — see FRONTEND_SPEC roadmap step 2.
-13. **One since-date.** The masthead and the Track record page both
-    date from the FIRST LOT (currently 27 Jul 2026). The signal start
-    (23 Jul) may appear only as a footnote where it is explained. Two
-    different "since" dates on two surfaces reads as sloppiness at
-    best and cherry-picking at worst.
+    materiality_hold) AND the API exposes it: not the raised/restrained
+    badges, not "narrative promoted", not upgrade/downgrade direction
+    words, not an Assessor column at all. Hold remains silence. This
+    is a hard gate, not a preference — see FRONTEND_SPEC roadmap
+    step 2.
+13. **One since-date, derived, never copied.** (Sharpened by the
+    2026-08-15 addendum, item 2.) The masthead and the Track record
+    page both date from the FIRST LOT — computed as
+    `min(scorecard.lots[].lot_date)`, currently 27 Jul 2026 — never
+    from `masthead.since` (which says July 23, the signal start).
+    The whole Book line on the masthead draws from the scorecard:
+    its returns, its open-lot count, its first lot. Closed count is
+    `scorecard.closed_lots`, never `masthead.closed`. The signal
+    start may appear only as a footnote where it is explained.
 14. **Wrinkles stay visible.** Where two of our own counts disagree
     (today: the edition masthead says 35 on the board, the snapshot
     has 41 rows carrying a call), the surface SAYS SO in plain words
     rather than picking the flattering number. Diagnosing the why is
     the methodology track's job; hiding it is not an option.
+
+## Addendum — localhost review, ADOPTED 2026-08-15 (user decision;
+## item 4 adopted as written over Claude's objection)
+
+Source: CLAUDE_UI_ADDENDUM.md (external review of the running mocks).
+All ten items adopted and BUILT the same day. Beyond the law
+amendments above (8, 12, 13), these are now binding:
+
+15. **Quality evidence is FY vs TTM, never a revenue road.** Quality
+    is durability — ROIC, operating margin, FCF margin — not size.
+    Every company gets the same two columns: last completed fiscal
+    year (labeled FY{YY} from its `period_end`, so a Sep year-end is
+    one FY, never a second calendar year) and TTM from fundamentals
+    (labeled TTM, never a year). Nulls omit the cell; a wholly absent
+    column is omitted, not padded. No 10-year padding; revenue is
+    never charted in this pane. (Supersedes the "revenue road +
+    margin road" evidence-pane composition below, which is kept
+    marked superseded.) FY FCF margin is fcf/revenue from the same
+    annual row.
+16. **One clock.** Board surfaces (table, counts, company as-of) run
+    on `/board`'s date; TODAY and What-changed run on the edition's
+    date; when they differ each surface is stamped with ITS date
+    (the newspaper lags the board and says so).
+17. **Never contradict the book.** If the scorecard holds open lots
+    in a name, no surface prints "we don't hold a position" for it —
+    the sentence is replaced with the open-lot fact, for every
+    symbol, every edition, no special-casing. (User decision
+    2026-08-15: applied in the UI as written; the report writer
+    seeing the book remains a methodology-track item.)
+18. **Company chrome:** prev/next stepping is its own labeled
+    control, never in the phrase carrying this name's call and score;
+    gauges come from fields (`components`, `fundamentals`,
+    `priced_in`, prices, `analyst_*`), never restated from assessment
+    prose; call tone/trajectory/strength print only when the value
+    DIFFERS across the company's calls; claims appear ONCE (in the
+    calls stack, against their call date — no Said rail); the value
+    pane asks "is it cheap against this set?" (never "the same
+    story"); one gap word per pane — `priced_in` on the narrative-gap
+    pane, the 10-pt Gap on its component bar, and `ng_score` is not
+    printed as a third figure.
+19. **The pulse charts observed weeks only.** Backfill (seeding)
+    weeks from the ledger's opening sweep are acknowledged in the
+    footnote, never drawn — their bars would dwarf and re-scale the
+    real weeks. No momentum word until the shadow column earns it.
 
 ## Landing page — SUPERSEDED 2026-08-15 (was: the narrative lens)
 

@@ -3,10 +3,12 @@
 // removed, or gone quiet at earnings) below it — the up/down role, because
 // this is direction of change, not conviction.
 //
-// Two honesty rules are drawn, not just documented:
-//  - backfill weeks (seeding) render at low opacity under a labeled bracket:
-//    that stretch is the ledger's opening sweep, the instrument opening its
-//    eyes, not the world changing;
+// Honesty rules, drawn not just documented:
+//  - ONLY observed (non-seeding) weeks are charted. The backfill weeks are
+//    the ledger's opening sweep — the instrument opening its eyes, not the
+//    world changing — and their 300-op bars would dwarf every real week
+//    and set the scale (addendum #9). They are acknowledged in the
+//    footnote, never drawn as the lead.
 //  - no momentum word appears anywhere — that column is still in shadow
 //    (NARRATIVE_SPEC Phase 2), and every macro would read "accelerating".
 
@@ -24,22 +26,25 @@ const shortWeek = (d: string) => {
 };
 
 export default function Pulse({ weeks }: { weeks: HealthWeek[] }) {
-  if (weeks.length === 0) {
+  const observed = weeks.filter((w) => !w.seeding);
+  const backfill = weeks.length - observed.length;
+
+  if (observed.length === 0) {
     return (
       <p className="text-[12.5px] italic text-ink-3">
-        no weekly readings recorded for this force yet
+        no observed weeks yet — only the ledger&apos;s opening sweep
+        {backfill > 0 && ` (${backfill} backfill week${backfill === 1 ? "" : "s"})`},
+        which is the instrument opening its eyes, not the world changing
       </p>
     );
   }
 
-  const max = Math.max(1, ...weeks.map((w) => Math.max(w.support, w.erosion)));
-  const slot = (W - PAD * 2) / weeks.length;
+  const max = Math.max(1, ...observed.map((w) => Math.max(w.support, w.erosion)));
+  const slot = (W - PAD * 2) / observed.length;
   const barW = Math.min(22, slot * 0.42);
   const h = (v: number) => (v / max) * BAR;
-  const seeded = weeks.filter((w) => w.seeding);
-  const attached = weeks.filter((w) => w.active_exposures != null);
+  const attached = observed.filter((w) => w.active_exposures != null);
   const last = attached[attached.length - 1];
-  const firstReal = weeks.find((w) => !w.seeding);
 
   return (
     <div>
@@ -47,25 +52,13 @@ export default function Pulse({ weeks }: { weeks: HealthWeek[] }) {
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
         role="img"
-        aria-label="weekly support and erosion"
+        aria-label="weekly support and erosion, observed weeks only"
       >
-        {seeded.length > 0 && (
-          <>
-            <rect
-              x={PAD} y={0} width={slot * seeded.length} height={H - 12}
-              fill="var(--ink-3)" opacity="0.07"
-            />
-            <text x={PAD + 4} y={10} fontSize="9" fill="var(--ink-3)">
-              backfill
-            </text>
-          </>
-        )}
         <line x1={PAD} x2={W - PAD} y1={MID} y2={MID} stroke="var(--baseline)" strokeWidth="1" />
-        {weeks.map((w, i) => {
+        {observed.map((w, i) => {
           const cx = PAD + slot * (i + 0.5);
-          const dim = w.seeding ? 0.28 : 1;
           return (
-            <g key={w.week_start} opacity={dim}>
+            <g key={w.week_start}>
               {w.support > 0 && (
                 <rect
                   x={cx - barW - 1} y={MID - h(w.support)} width={barW} height={h(w.support)}
@@ -102,14 +95,15 @@ export default function Pulse({ weeks }: { weeks: HealthWeek[] }) {
       </svg>
 
       <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
-        Each week: links <span style={{ color: "var(--up)" }}>added or strengthened</span> above
+        Each observed week: links <span style={{ color: "var(--up)" }}>added or strengthened</span> above
         the line, <span style={{ color: "var(--down)" }}>weakened, removed, or gone quiet</span> below
         it; the number under each week is how many companies were attached
         {last?.active_exposures != null && <> (now {last.active_exposures})</>}.
-        {firstReal && seeded.length > 0 && (
+        {backfill > 0 && (
           <>
-            {" "}Weeks before {shortWeek(firstReal.week_start)} are backfill from the ledger&apos;s
-            opening sweep — the instrument opening its eyes, not the world changing.
+            {" "}{backfill} earlier week{backfill === 1 ? "" : "s"} from the
+            ledger&apos;s opening sweep {backfill === 1 ? "is" : "are"} not drawn —
+            the instrument opening its eyes, not the world changing.
           </>
         )}
       </p>

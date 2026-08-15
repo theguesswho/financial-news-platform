@@ -1,10 +1,24 @@
-// MOCK — the product home (Board as landing). One-line masthead with the
-// tier counts and the Book-vs-SPY proof (linked to Track record), TODAY
+// The product home (Board as landing). One-line masthead with the tier
+// counts and the Book-vs-SPY proof (linked to Track record), TODAY
 // headlines linking into the full edition, the ranked table with filter
 // tabs, Forces directory rail. 35-vs-41 wrinkle left visible on purpose.
+//
+// One clock (addendum #2): the table and counts run on the BOARD's date;
+// TODAY runs on the edition's date and says so when the two differ (the
+// newspaper lags the board). The Book line is drawn from the scorecard —
+// its returns, its open-lot count, its first lot as the since-date —
+// never from the edition masthead.
 
 import Link from "next/link";
-import { getBoard, getNarrativesLanding, getReportLatest } from "@/lib/api";
+import {
+  firstLotDate,
+  getBoard,
+  getNarrativesLanding,
+  getReportLatest,
+  getScorecard,
+  openLotCounts,
+  reconcileWithBook,
+} from "@/lib/api";
 import Chrome from "@/components/mock/Chrome";
 import HomeTable from "@/components/mock/HomeTable";
 
@@ -16,11 +30,18 @@ const TIER_DOT: [string, string][] = [
   ["Watch", "var(--tier-watch)"],
 ];
 
+const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+const nice = (d: string) =>
+  new Date(d + "T00:00:00").toLocaleDateString("en-GB", {
+    day: "numeric", month: "short",
+  });
+
 export default async function HomeMock() {
-  const [board, report, landing] = await Promise.all([
+  const [board, report, landing, sc] = await Promise.all([
     getBoard(),
     getReportLatest(),
     getNarrativesLanding(),
+    getScorecard(),
   ]);
   const m = report.masthead;
   const names = [...board.board, ...board.off_board].map((e) => ({
@@ -28,15 +49,22 @@ export default async function HomeMock() {
   }));
   const withCall = board.board.length;
   const counts = [board.counts.strong_buy, board.counts.buy, board.counts.watch];
+  const lots = openLotCounts(sc);
+  const since = firstLotDate(sc);
   const today = [
     ...(report.top_story ? [report.top_story] : []),
     ...report.sections.filter((s) => s.headline && s.symbol),
-  ].slice(0, 3);
+  ]
+    .slice(0, 3)
+    .map((s) => ({
+      ...s,
+      headline: reconcileWithBook(s.headline, s.symbol ? (lots[s.symbol] ?? 0) : 0),
+    }));
   const weakening = landing.weakening.filter((w) => w.net_30d < 0);
 
   return (
     <>
-      <Chrome names={names} active="The Board" context={`edition ${report.date}`} />
+      <Chrome names={names} active="The Board" context={`board ${board.date}`} />
 
       {/* one-line masthead */}
       <div className="border-b border-hairline bg-surface">
@@ -52,17 +80,17 @@ export default async function HomeMock() {
           <span className="text-ink-3">
             the edition counts {m.board}; {withCall} carry a call today
           </span>
-          {m.us_pct != null && m.spy_pct != null && (
+          {sc.n_lots > 0 && (
             <Link href="/record" className="ml-auto hover:underline">
               <span className="kicker mr-1 text-[10px]">Book</span>
-              <b style={{ color: m.us_pct >= 0 ? "var(--up)" : "var(--down)" }}>
-                {m.us_pct >= 0 ? "+" : ""}{m.us_pct}%
+              <b style={{ color: sc.portfolio_return_pct >= 0 ? "var(--up)" : "var(--down)" }}>
+                {fmtPct(sc.portfolio_return_pct)}
               </b>{" "}
               vs SPY{" "}
-              <b style={{ color: m.spy_pct >= 0 ? "var(--up)" : "var(--down)" }}>
-                {m.spy_pct >= 0 ? "+" : ""}{m.spy_pct}%
+              <b style={{ color: sc.spy_return_pct >= 0 ? "var(--up)" : "var(--down)" }}>
+                {fmtPct(sc.spy_return_pct)}
               </b>{" "}
-              since {m.since} · {m.positions} positions
+              since {nice(since)} · {sc.open_lots} open lots
             </Link>
           )}
         </div>
@@ -75,9 +103,16 @@ export default async function HomeMock() {
             {today.length > 0 && (
               <section className="mb-6">
                 <div className="mb-1.5 flex items-baseline border-b border-ink pb-1">
-                  <span className="kicker">Today</span>
+                  <span className="kicker">
+                    Today
+                    {report.date !== board.date && (
+                      <span className="normal-case tracking-normal text-ink-3">
+                        {" "}· edition {nice(report.date)}
+                      </span>
+                    )}
+                  </span>
                   <Link href="/changed" className="num ml-auto text-[12px] text-ink-2 hover:underline">
-                    all {m.changes} moves →
+                    all {m.changes} moves in the edition →
                   </Link>
                 </div>
                 {today.map((s, i) => (

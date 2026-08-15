@@ -277,6 +277,34 @@ export type Scorecard = {
 
 export const getScorecard = () => get<Scorecard>("/board/scorecard");
 
+/** One clock (addendum #2): the product's since-date is the first lot in
+ * the scorecard — never masthead.since. */
+export const firstLotDate = (sc: Scorecard) =>
+  sc.lots.reduce(
+    (min, l) => (l.lot_date < min ? l.lot_date : min),
+    sc.lots[0]?.lot_date ?? ""
+  );
+
+/** Open lots per symbol, from the scorecard — the book of record. */
+export function openLotCounts(sc: Scorecard): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const l of sc.lots) if (!l.closed) m[l.symbol] = (m[l.symbol] ?? 0) + 1;
+  return m;
+}
+
+/** Never contradict the book (addendum #4, user decision 2026-08-15):
+ * if the book holds open lots in a name, an edition sentence claiming we
+ * hold nothing is replaced with the open-lot fact. Applies to every
+ * symbol, every edition — no special-casing. */
+const NO_POSITION_CLAIM =
+  /[^.!?]*\b(?:we\s+(?:do\s*not|don'?t)\s+(?:hold|own|have)|(?:holds?|holding|have|has)\s+no\s+position|no\s+position\s+(?:is\s+)?held|not\s+a\s+(?:current\s+)?(?:position|holding))\b[^.!?]*[.!?]\s*/i;
+
+export function reconcileWithBook(text: string, openLots: number): string {
+  if (openLots <= 0 || !NO_POSITION_CLAIM.test(text)) return text;
+  const fact = `The book holds ${openLots} open $100 lot${openLots === 1 ? "" : "s"} in this name. `;
+  return text.replace(NO_POSITION_CLAIM, fact).trim();
+}
+
 export type RosterRow = {
   symbol: string;
   company: string | null;

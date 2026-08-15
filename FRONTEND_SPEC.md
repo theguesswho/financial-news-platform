@@ -387,6 +387,44 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       - two stale dev servers (api :8000, next :3100) from the mock
         session were still running and shadowed new code; kill or
         check ports before assuming a route 404s.
+- [x] 2026-08-15 (same session, continued): CLAUDE_UI_ADDENDUM.md
+      (external localhost review, all ten items) ADOPTED by the user —
+      item 4 as written over Claude's objection (UI reconciles edition
+      copy against the book; writer-sees-the-book stays a methodology
+      item) — recorded as DESIGN_BRIEF laws 15–19 + amendments to laws
+      8/12/13, and BUILT:
+      - `/` IS The Board (app/page.tsx re-exports home; old (site)
+        landing, /board page, and (site) chrome DELETED; /signature
+        moved to app/signature as the unlinked lab). Much of roadmap
+        step 2's promote work is hereby done; /companies, /forces,
+        /changed, /record remain at their mock paths with the mock
+        chrome as the real chrome. Still missing from step 2: loading
+        / error / 404 states, mobile pass, retiring /home alias.
+      - Home: Book line entirely from /board/scorecard (returns, open
+        lots, since = min lot_date → "since 27 Jul"); chrome stamped
+        with the BOARD date, TODAY stamped "edition {date}" when the
+        newspaper lags; "all N moves in the edition →"; Assessor
+        column REMOVED (all states dark, incl. direction words);
+        Moved = NEW / tier move / grace seat only (rank ticks gone).
+      - lib/api.ts: firstLotDate, openLotCounts, reconcileWithBook
+        (regex-matched no-position sentence → open-lot fact); applied
+        to /changed headlines+bodies and home TODAY. Verified live:
+        SANM/FTAI/ENS (3/3/1 lots) replaced, JBL/ARW/POR/PNR/CTRE
+        (0 lots) untouched.
+      - Company page: Quality pane = FyTtm (FY{YY} from period_end vs
+        TTM; ROIC / op margin / FCF margin; FY FCF margin = fcf/rev;
+        null cells and null columns omitted) — RevenueRoad deleted;
+        prev/next now a labeled "board neighbours" control above the
+        name; assessor hero badge deleted; value copy "cheap against
+        this set"; ng_score no longer printed (one gap word);
+        Said rail deleted (claims once, in the calls stack);
+        CallsStack prints tone/trajectory/strength only when the
+        value varies across the company's calls.
+      - Pulse: charts OBSERVED weeks only; backfill acknowledged in
+        the footnote, never drawn (it would set the scale).
+      Verified: build clean; all routes 200 and /board 404; addendum
+      verify-triple ACM (Sep-YE) / GDDY (calendar-YE) / EVR (null-TTM
+      fcf_margin — cells omitted, no dashes) all render FY | TTM.
 
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 

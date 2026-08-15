@@ -1,7 +1,7 @@
-// Phase-2 lab, round 2: user narrowed to B and C — two refinements of
-// each. B1/B2 test the judgment strip (state vs trajectory); C1/C2 test
-// the row (position vs movement). The chosen form graduates into
-// Companies and (collapsed) The Board.
+// The permanent design lab (unlinked from the site chrome — reach it by
+// URL). Phase-2 round 2 kept as built: B1/B2 test the judgment strip
+// (state vs trajectory); C1/C2 test the row (position vs movement). The
+// chosen forms shipped into the company page and the home table.
 
 import { getBoard, getStock } from "@/lib/api";
 import VariantB1 from "@/components/signature/VariantB1";

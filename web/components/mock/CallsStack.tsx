@@ -72,6 +72,16 @@ export default function CallsStack({
   const MAJOR = new Set(["EARN_CALL", "10-K", "10-Q"]);
   const isMajor = (es: FilingEvent[]) => es.some((e) => MAJOR.has(e.type));
 
+  // Tone / trajectory / strength print only when the value DIFFERS across
+  // this company's calls (addendum #8): if every call is "confident /
+  // accelerating", the words carry no information and would read as a
+  // per-call signal that isn't there.
+  const varies = (get: (c: EarningsCall) => string | number | null) =>
+    new Set(calls.map(get).filter((v) => v != null)).size > 1;
+  const toneVaries = varies((c) => c.management_tone);
+  const trajectoryVaries = varies((c) => c.trajectory);
+  const strengthVaries = varies((c) => c.narrative_strength);
+
   return (
     <div>
       <div className="mb-4 flex items-end gap-1 overflow-x-auto border-b border-hairline">
@@ -117,9 +127,13 @@ export default function CallsStack({
         <div>
           <div className="mb-3 flex flex-wrap items-baseline gap-x-3 text-[13px]">
             <span className="font-bold">{nice(call.date)}</span>
-            {call.management_tone && <span className="text-ink-2">{call.management_tone}</span>}
-            {call.trajectory && <span className="text-ink-2">· {call.trajectory}</span>}
-            {call.narrative_strength != null && (
+            {toneVaries && call.management_tone && (
+              <span className="text-ink-2">{call.management_tone}</span>
+            )}
+            {trajectoryVaries && call.trajectory && (
+              <span className="text-ink-2">· {call.trajectory}</span>
+            )}
+            {strengthVaries && call.narrative_strength != null && (
               <span className="num text-ink-3">· strength {call.narrative_strength.toFixed(2)}</span>
             )}
           </div>

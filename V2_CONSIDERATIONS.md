@@ -293,3 +293,20 @@ attempt (permission rule reinforced in memory). Anomaly noted: interim
 v2d rows (61-lot version + Friday live buys) were absent before the
 final wipe — end state verified correct; track_lots has no created_at
 so the gap is untraceable → audit column added to V3.
+
+## 2026-08-15 — Tier-materiality corridor (all drivers, user-approved)
+Marginal downward breaches of the SB/Buy floors (raw within 10% of the
+lost floor) are HELD pending the assessor's same-run materiality
+ruling; beyond 10% the tier falls with no ruling. All drivers eligible;
+asymmetric bar: price breaches get "is the move material?"; evidence
+breaches require a cited concrete noise mechanism ("thesis still good"
+does not qualify) and lapse at the next earnings. Bounds JUDGE power
+both ways at the floors; everything else (evidence deep-breaches,
+upgrades, assessor behavior elsewhere) unchanged. Evidence: since
+Jul 23, 84 SB/Buy floor crossings — 47 in-corridor (would be judged),
+37 hard. First live pass: 7 Buy-floor breaches all ruled price-noise
+HOLDs (CTSH INTU PSN RMD SF TDG TEL). Retro (user-directed): FTAI's
+Aug 14 breach ruled immaterial drift, demotion independently AFFIRMED
+on the priced-in 5.5 near-disqualifying level; ENS (20% below floor)
+and SANM (10.9%) outside corridor — demotions stand under the user's
+own hard stop. Platform note active to Aug 22.

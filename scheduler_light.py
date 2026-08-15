@@ -214,6 +214,18 @@ def _qual_sweep(gems=None):
 
     to_assess = [r[0] for r in rows]
     trig = {r[0]: r[1] for r in rows}
+    # Tier-materiality corridor (user 2026-08-15, all drivers): marginal
+    # downward breaches of the SB/Buy floors are HELD pending the judge's
+    # ruling THIS run — the materiality question overrides other triggers.
+    try:
+        from pipeline.leaderboard_archiver import (apply_materiality_holds,
+                                                   materiality_reason)
+        for h in apply_materiality_holds(eng):
+            if h["symbol"] not in to_assess:
+                to_assess.append(h["symbol"])
+            trig[h["symbol"]] = materiality_reason(h)
+    except Exception as e:
+        logger.error(f"    ✗  materiality corridor failed: {e}")
     if to_assess:
         _ok(f"Assessing {len(to_assess)} triggered stocks: {', '.join(to_assess[:15])}"
             + ("…" if len(to_assess) > 15 else ""))

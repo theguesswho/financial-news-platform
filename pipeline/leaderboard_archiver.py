@@ -236,3 +236,81 @@ if __name__ == "__main__":
     create_table(engine)
     result = archive_leaderboard(engine)
     print(f"✅ {result}")
+
+
+def apply_materiality_holds(engine) -> list:
+    """Tier-materiality corridor (user-approved 2026-08-15, all drivers).
+    When yesterday's FINAL tier was Strong Buy or Buy and today's RAW band
+    is lower but the raw score sits within 10% of the lost band's floor,
+    the tier is HELD pending the assessor's materiality ruling that same
+    run (the machinery adjudicates — never auto-demote inside the
+    corridor, never hold below it). Returns hold descriptors for the
+    qual sweep to turn into materiality triggers.
+    Scope: SB and Buy floors; holds require today's raw tier on-board.
+    """
+    FLOORS = {"Strong Buy": 0.46, "Buy": 0.36}
+    ORDER = {None: 0, "Watch": 1, "Buy": 2, "Strong Buy": 3}
+    holds = []
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            WITH cur AS (SELECT * FROM leaderboard_history
+                         WHERE date = (SELECT MAX(date) FROM leaderboard_history)),
+                 prev AS (SELECT * FROM leaderboard_history
+                          WHERE date = (SELECT MAX(date) FROM leaderboard_history
+                                        WHERE date < (SELECT MAX(date) FROM leaderboard_history)))
+            SELECT c.symbol, COALESCE(p.assessed_tier, p.tier) AS prev_final,
+                   c.tier AS raw_band, c.gem_score,
+                   p.gem_score, c.quality_score, p.quality_score,
+                   c.narrative_score, p.narrative_score,
+                   c.priced_in, p.priced_in
+            FROM cur c JOIN prev p USING (symbol)
+            WHERE c.tier IS NOT NULL
+        """)).fetchall()
+        for (sym, prev_final, raw_band, g, g0, q, q0, n, n0, pi, pi0) in rows:
+            if prev_final not in FLOORS:
+                continue
+            if ORDER.get(raw_band, 0) >= ORDER[prev_final]:
+                continue                                   # no downward breach
+            floor = FLOORS[prev_final]
+            g = float(g)
+            if g < floor * 0.9:
+                continue                                   # beyond corridor: falls
+            dq = float(q or 0) - float(q0 or 0)
+            dn = float(n or 0) - float(n0 or 0)
+            evidence = abs(dq) >= 0.005 or abs(dn) >= 0.005
+            holds.append({
+                "symbol": sym, "held": prev_final, "raw_band": raw_band,
+                "gap_pct": round((floor - g) / floor * 100, 1),
+                "evidence": evidence, "dq": round(dq, 3), "dn": round(dn, 3),
+                "dp": round(float(pi or 0) - float(pi0 or 0), 3)})
+        for h in holds:
+            conn.execute(text("""
+                UPDATE leaderboard_history SET assessed_tier = :t
+                WHERE symbol = :s AND date = (SELECT MAX(date) FROM leaderboard_history)
+            """), {"t": h["held"], "s": h["symbol"]})
+        conn.commit()
+    if holds:
+        print(f"  materiality corridor: holding {[h['symbol'] for h in holds]} pending ruling")
+    return holds
+
+
+def materiality_reason(h: dict) -> str:
+    """The asymmetric-bar question the assessor must answer for a hold."""
+    core = (f"MATERIALITY RULING REQUIRED: the raw score slipped below the "
+            f"{h['held']} floor by {h['gap_pct']}% (within the 10% corridor; "
+            f"beyond 10% the tier falls with no ruling). Component moves: "
+            f"quality {h['dq']:+}, story exposure {h['dn']:+}, priced-in {h['dp']:+}. ")
+    if h["evidence"]:
+        return core + (
+            "This breach involves EVIDENCE movement, so the bar is high: to hold "
+            "the tier you must cite the specific evidence and name a concrete "
+            "noise mechanism (an active platform note, a vendor restatement, a "
+            "single-narrative reweight with breadth intact). 'The thesis is "
+            "still good' is NOT a noise mechanism. An evidence-based hold "
+            "lapses at the company's next earnings — it must be re-earned from "
+            "fresh filings. Rule HOLD (state the mechanism) or DEMOTE.")
+    return core + (
+        "This is a PRICE-driven breach (quality and story unchanged): rule "
+        "whether the market move is material to the opportunity. A drift of "
+        "rounding size is not material; a genuine repricing that consumed the "
+        "opportunity is. Rule HOLD or DEMOTE and say why in one sentence.")

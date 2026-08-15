@@ -516,6 +516,19 @@ both concur — these BLOCK step 2):**
      this gate is now only about the api/ deploy landing before or
      with the web push (same batched-push rule as Phase 2b).
 3. **Data-accuracy pass** (before any deploy):
+   THREE MUSTS for this session (2026-08-16, Grok + Claude concur —
+   do not skip, do not add anything else to the session):
+   - the 828 sweep PLUS a law-17 honesty pass over EVERY edition date
+     in the archive — the reconciliation regex will fail on phrasings
+     it hasn't seen; any miss gets a GENERAL pattern fix, never a
+     one-name patch (both the regex belt and V3 #12's writer fix stay
+     until the writer ships);
+   - re-verify the Quality durability road on the fiscal triple after
+     any further changes: a Sep year-end (ACM), a calendar year-end
+     (GDDY), and a null-TTM field (EVR) — the triple that already
+     passed must still pass at session end;
+   - Forces pages stay behind the batched api+web push — GET
+     /narratives/{id} is still local-only; do not soft-launch them.
    - automated sweep: script hits every endpoint + /stocks/{symbol}
      for all ~828 names; catches 500s / empty payloads / null-heavy
      pages. Becomes the permanent pre-deploy smoke test.

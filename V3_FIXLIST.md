@@ -238,3 +238,11 @@ fixed.
     provenance column stamped at write time (judge / corridor_pending /
     materiality_hold) in apply_qual_tiers + apply_materiality_holds;
     expose via /board.
+
+12. **Report writer must see the book everywhere (law-17 counterpart).**
+    The UI now reconciles "no position" sentences against the scorecard
+    (DESIGN_BRIEF law 17, user-adopted); the durable fix is upstream:
+    the daily_report writer already gets position truth on MOVES
+    (2026-08-10 fix) but coverage/top-story/other sections can still
+    claim no position. Extend the position field to every section's
+    facts so the UI regex becomes a belt, not the brakes.

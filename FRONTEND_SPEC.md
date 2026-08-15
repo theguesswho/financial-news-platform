@@ -409,6 +409,18 @@ both concur — these BLOCK step 2):**
    /signature page — keep the signature components; lab route may stay
    unlinked). Add the states mocks skipped: loading, error, 404,
    mobile pass, dark-mode pass.
+   TWO HARD GATES INSIDE THIS STEP (do not promote around them):
+   - The raised/restrained ASSESSOR BADGES ship DARK (not rendered).
+     The mocks paint every assessed-vs-raw gap as judge conviction,
+     but assessed_tier is also written by the materiality corridor —
+     rendering the badge before provenance (V3 #11) ships the exact
+     mislabel we're blocking. Dark until provenance is stamped AND
+     exposed via /board.
+   - The Forces directory and /forces/[id] pages DO NOT go live until
+     GET /narratives/{id} (+ roster) is deployed and verified on prod
+     — today the roster 404s and the pages would be dead links or
+     name-matched. Promote the rest of the suite without them if the
+     endpoint isn't ready; wire Forces in when it is.
 3. **Data-accuracy pass** (before any deploy):
    - automated sweep: script hits every endpoint + /stocks/{symbol}
      for all ~828 names; catches 500s / empty payloads / null-heavy

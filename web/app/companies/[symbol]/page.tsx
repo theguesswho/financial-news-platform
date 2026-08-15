@@ -306,14 +306,6 @@ export default async function CompanyMock({
                     },
                   ]}
                 />
-                <div className="flex flex-wrap gap-1.5">
-                  {num(f.pe_forward) && <Chip label="PE fwd" value={`${f.pe_forward.toFixed(1)}×`} />}
-                  {num(f.peg_ratio) && <Chip label="PEG" value={f.peg_ratio.toFixed(2)} />}
-                  {num(f.debt_to_equity) && <Chip label="D/E" value={f.debt_to_equity.toFixed(2)} />}
-                  {num(f.price_vs_52w_high) && (
-                    <Chip label="vs 52w high" value={pct(f.price_vs_52w_high)} />
-                  )}
-                </div>
               </div>
 
               <div>
@@ -343,6 +335,16 @@ export default async function CompanyMock({
                 ) : (
                   <p className="text-[12px] italic text-ink-3">no priced peer set yet</p>
                 )}
+                {/* the multiples chips live with Value — they are price
+                    ratios, not durability (user adjustment 2026-08-15) */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {num(f.pe_forward) && <Chip label="PE fwd" value={`${f.pe_forward.toFixed(1)}×`} />}
+                  {num(f.peg_ratio) && <Chip label="PEG" value={f.peg_ratio.toFixed(2)} />}
+                  {num(f.debt_to_equity) && <Chip label="D/E" value={f.debt_to_equity.toFixed(2)} />}
+                  {num(f.price_vs_52w_high) && (
+                    <Chip label="vs 52w high" value={pct(f.price_vs_52w_high)} />
+                  )}
+                </div>
               </div>
 
               <div>

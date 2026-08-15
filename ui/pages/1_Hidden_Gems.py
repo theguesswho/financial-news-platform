@@ -578,6 +578,9 @@ identical days — the only judge that counts. Proceeds are never reinvested: ev
 carries equal weight. Recorded picks only, never reconstructed. Running since
 {_sc['lots'][0]['lot_date'].strftime('%b %d, %Y')} · USD {_sc['total_invested']:,.0f} deployed.
 Earlier eras (v1 and the weekly-lot record to Aug 13, 2026) are archived, not deleted.
+Disclosure: three stocks (MCK, LHX, RMBS) whose only Strong Buy readings came from the
+measurement era corrected on Aug 9 are excluded by owner decision, and PTC's Aug 3–5
+sub-Buy readings from that same correction are treated as Buy (held, not sold).
 </div>""", unsafe_allow_html=True)
 
     with st.expander("📊 Holdings breakdown — every lot vs its SPY twin"):

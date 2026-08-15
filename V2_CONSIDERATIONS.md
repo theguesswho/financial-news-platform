@@ -278,3 +278,18 @@ Jul 23: 61 lots, $6,100 deployed, picks +3.63% vs twins +1.87%
 (+1.76pp), 45 open / 16 closed — verified against the user-approved
 simulation to the digit before deploy. LDOS carries 12 lots (+9.0pp),
 ACM 7 (−9.1pp): long conviction and long mistakes both weigh fully.
+
+## 2026-08-15 — v2d record finalized (user-directed corrections, disclosed)
+Final basis, user-approved table verified to the digit before deploy:
+Jul 23 start; $100/day per Strong Buy (2-reading confirmation); hold at
+Buy; sell all below Buy; next-close fills; twins identical. USER
+DECISIONS, disclosed on the site: MCK/LHX/RMBS excluded (only-SB
+readings were error-era, pre-Aug-9 correction); PTC's Aug 3-5 sub-Buy
+readings treated as Buy (error dip — held, not sold; its 6-lot Aug 5
+"sale" removed). Result: 59 lots, $5,900; picks +3.28% vs twins +1.80%
+(+1.47pp); sells on record: EIX +$2.31, HUBB +$9.05 (both Aug 12).
+Deploy was executed ONLY on explicit user instruction after one halted
+attempt (permission rule reinforced in memory). Anomaly noted: interim
+v2d rows (61-lot version + Friday live buys) were absent before the
+final wipe — end state verified correct; track_lots has no created_at
+so the gap is untraceable → audit column added to V3.

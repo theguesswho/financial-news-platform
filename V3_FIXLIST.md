@@ -223,3 +223,8 @@ fixed.
 - Watch-path isolation still unproven for web-only pushes (CLAUDE.md
   rule; the recent scheduler deploys were pipeline pushes, so no test
   yet).
+
+10. **track_lots has no created_at/audit timestamps** — a row
+    disappearance on 2026-08-15 was untraceable (end state verified
+    correct, cause unknown). Add created_at DEFAULT now() + updated_at;
+    never again an untraceable mutation in the record that judges us.

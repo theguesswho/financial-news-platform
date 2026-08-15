@@ -33,60 +33,104 @@ function Chip({ label, value }: { label: string; value: string }) {
 
 // Quality is durability — ROIC, operating margin, FCF margin — never size
 // (addendum #1: revenue can be flat while every durability metric halves,
-// so a revenue histogram cannot explain a quality move). Two columns for
-// every company: last completed fiscal year (labeled FY{YY} from its
-// period_end, so a Sep year-end is one FY, not a second calendar year)
-// and TTM from fundamentals (labeled TTM, never a year). Null sides are
-// omitted, not padded.
-function FyTtm({
-  fyLabel,
-  rows,
+// so a revenue histogram cannot explain a quality move; amended by user
+// 2026-08-15: each metric gets a ROAD — up to five fiscal years of bars,
+// with TTM as the sixth). One SVG so the three metric rows share one year
+// axis; each row scales to its own range. FY labels come from period_end
+// (a Sep year-end is one FY, never a second calendar year); the TTM bar
+// is drawn in full ink so "now" reads apart from the fiscal history.
+// Null values omit the bar — the slot stays, nothing is padded.
+function DurabilityRoad({
+  columns,
+  metrics,
 }: {
-  fyLabel: string;
-  rows: { label: string; fy: number | null; ttm: number | null }[];
+  columns: string[]; // e.g. ["FY21", ..., "FY25", "TTM"]
+  metrics: { label: string; values: (number | null)[] }[];
 }) {
-  const shown = rows.filter((r) => r.fy != null || r.ttm != null);
-  if (shown.length === 0) return null;
-  // If a whole column is absent (no annual row / no TTM), it is omitted,
-  // not padded with dashes.
-  const hasFy = shown.some((r) => r.fy != null);
-  const hasTtm = shown.some((r) => r.ttm != null);
-  const cols =
-    hasFy && hasTtm ? "grid-cols-[6.2rem_1fr_1fr]" : "grid-cols-[6.2rem_1fr]";
-  const BARW = 100;
+  const shown = metrics.filter((m) => m.values.some((v) => v != null));
+  if (shown.length === 0 || columns.length === 0) return null;
+  const SLOT = 46;
+  const BARW = 20;
+  const LABEL = 13; // metric label line
+  const VAL = 10;   // value text above the tallest bar
+  const AREA = 32;  // tallest bar
+  const ROWGAP = 9;
+  const AXIS = 12;  // year labels, drawn once
+  const W = columns.length * SLOT;
+  const rowH = LABEL + VAL + AREA + ROWGAP;
+  const H = shown.length * rowH + AXIS;
+  const cx = (i: number) => i * SLOT + SLOT / 2;
+
   return (
-    <div className="mb-2">
-      <div className={`mb-1 grid ${cols} gap-x-3`}>
-        <span />
-        {hasFy && <span className="kicker text-[9.5px]">{fyLabel}</span>}
-        {hasTtm && <span className="kicker text-[9.5px]">TTM</span>}
-      </div>
-      {shown.map((r) => {
-        const max = Math.max(Math.abs(r.fy ?? 0), Math.abs(r.ttm ?? 0)) || 1;
-        const cell = (v: number | null) =>
-          v == null ? (
-            <span />
-          ) : (
-            <span className="flex items-center gap-1.5">
-              <span
-                className="h-[9px] rounded-[2px] bg-ink-2 opacity-75"
-                style={{ width: `${Math.max((Math.abs(v) / max) * BARW, 2)}px` }}
-              />
-              <span className="num text-[11px]">{(v * 100).toFixed(1)}%</span>
-            </span>
-          );
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="mb-2 w-full max-w-[330px]"
+      role="img"
+      aria-label="durability: fiscal-year history and trailing twelve months"
+    >
+      {shown.map((m, mi) => {
+        const top = mi * rowH;
+        const nums = m.values.filter((v): v is number => v != null);
+        const pos = Math.max(0, ...nums.map((v) => (v > 0 ? v : 0)));
+        const neg = Math.max(0, ...nums.map((v) => (v < 0 ? -v : 0)));
+        const scale = AREA / (pos + neg || 1);
+        const base = top + LABEL + VAL + pos * scale;
         return (
-          <div
-            key={r.label}
-            className={`grid ${cols} items-center gap-x-3 border-b border-hairline py-1.5 last:border-b-0`}
-          >
-            <span className="text-[11px] text-ink-3">{r.label}</span>
-            {hasFy && cell(r.fy)}
-            {hasTtm && cell(r.ttm)}
-          </div>
+          <g key={m.label}>
+            <text x={0} y={top + 9} fontSize="10" fill="var(--ink-3)">
+              {m.label}
+            </text>
+            <line
+              x1={0} x2={W} y1={base} y2={base}
+              stroke="var(--hairline)" strokeWidth="1"
+            />
+            {m.values.map((v, i) => {
+              if (v == null) return null;
+              const h = Math.max(Math.abs(v) * scale, 1.5);
+              const up = v >= 0;
+              const isTtm = columns[i] === "TTM";
+              return (
+                <g key={i}>
+                  <rect
+                    x={cx(i) - BARW / 2}
+                    y={up ? base - h : base}
+                    width={BARW}
+                    height={h}
+                    rx="1.5"
+                    fill={isTtm ? "var(--ink)" : "var(--ink-2)"}
+                    opacity={isTtm ? 1 : 0.55}
+                  />
+                  <text
+                    x={cx(i)}
+                    y={up ? base - h - 3 : base + h + 9}
+                    fontSize="8.5"
+                    textAnchor="middle"
+                    fill={up ? "var(--ink-2)" : "var(--down)"}
+                    className="num"
+                  >
+                    {(v * 100).toFixed(1)}%
+                  </text>
+                </g>
+              );
+            })}
+          </g>
         );
       })}
-    </div>
+      {columns.map((c, i) => (
+        <text
+          key={c + i}
+          x={cx(i)}
+          y={H - 2}
+          fontSize="9"
+          textAnchor="middle"
+          fill="var(--ink-3)"
+          fontWeight={c === "TTM" ? 700 : 400}
+          className="num"
+        >
+          {c}
+        </text>
+      ))}
+    </svg>
   );
 }
 
@@ -140,15 +184,14 @@ export default async function CompanyMock({
   const lastClose = [...stock.prices].reverse().find((p) => p.close != null)?.close;
   const pts = scored(stock.history);
   const gap = heroGap(stock.valuation_gaps);
-  // FY = the latest annual row with any quality field (rows arrive newest
-  // first). FY FCF margin is fcf / revenue from that same row.
-  const fy = stock.annual_history.find(
-    (r) => r.roic != null || r.op_margin != null || r.fcf != null
-  );
-  const fyFcfMargin =
-    fy?.fcf != null && fy.revenue != null && fy.revenue !== 0
-      ? fy.fcf / fy.revenue
-      : null;
+  // The durability road: the last five fiscal years with any quality
+  // field (rows arrive newest first), oldest → newest, then TTM as the
+  // sixth column. FY FCF margin is fcf / revenue from the same row.
+  const fys = stock.annual_history
+    .filter((r) => r.roic != null || r.op_margin != null || r.fcf != null)
+    .slice(0, 5)
+    .reverse();
+  const roadCols = [...fys.map((r) => `FY${r.period_end.slice(2, 4)}`), "TTM"];
   // The rail's Forces block comes from narrative_exposures (keyed by
   // narrative_id). Company-scope narratives are this company's OWN story,
   // not a market-wide force, so they are listed apart. The legacy
@@ -231,25 +274,35 @@ export default async function CompanyMock({
               <div>
                 <div className="kicker">Quality — {fmt(stock.components.quality)}</div>
                 <div className="mb-2 text-[11.5px] text-ink-3">
-                  durability: last fiscal year vs the last twelve months
+                  durability: five fiscal years, then the last twelve months
                 </div>
-                <FyTtm
-                  fyLabel={fy ? `FY${fy.period_end.slice(2, 4)}` : "FY"}
-                  rows={[
+                <DurabilityRoad
+                  columns={roadCols}
+                  metrics={[
                     {
                       label: "ROIC",
-                      fy: fy?.roic ?? null,
-                      ttm: num(f.roic) ? f.roic : null,
+                      values: [
+                        ...fys.map((r) => r.roic),
+                        num(f.roic) ? f.roic : null,
+                      ],
                     },
                     {
                       label: "op. margin",
-                      fy: fy?.op_margin ?? null,
-                      ttm: num(f.operating_margin) ? f.operating_margin : null,
+                      values: [
+                        ...fys.map((r) => r.op_margin),
+                        num(f.operating_margin) ? f.operating_margin : null,
+                      ],
                     },
                     {
                       label: "FCF margin",
-                      fy: fyFcfMargin,
-                      ttm: num(f.fcf_margin) ? f.fcf_margin : null,
+                      values: [
+                        ...fys.map((r) =>
+                          r.fcf != null && r.revenue != null && r.revenue !== 0
+                            ? r.fcf / r.revenue
+                            : null
+                        ),
+                        num(f.fcf_margin) ? f.fcf_margin : null,
+                      ],
                     },
                   ]}
                 />

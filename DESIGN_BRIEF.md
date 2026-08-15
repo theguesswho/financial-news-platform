@@ -191,17 +191,21 @@ Source: CLAUDE_UI_ADDENDUM.md (external review of the running mocks).
 All ten items adopted and BUILT the same day. Beyond the law
 amendments above (8, 12, 13), these are now binding:
 
-15. **Quality evidence is FY vs TTM, never a revenue road.** Quality
-    is durability — ROIC, operating margin, FCF margin — not size.
-    Every company gets the same two columns: last completed fiscal
-    year (labeled FY{YY} from its `period_end`, so a Sep year-end is
-    one FY, never a second calendar year) and TTM from fundamentals
-    (labeled TTM, never a year). Nulls omit the cell; a wholly absent
-    column is omitted, not padded. No 10-year padding; revenue is
+15. **Quality evidence is the durability road, never a revenue road.**
+    (Amended by user 2026-08-15, same day: not a single FY-vs-TTM
+    pair — each metric gets a ROAD.) Quality is durability — ROIC,
+    operating margin, FCF margin — not size. Every company gets the
+    same chart: per metric, up to FIVE fiscal years of bars (labeled
+    FY{YY} from `period_end`, so a Sep year-end is one FY, never a
+    second calendar year) with TTM from fundamentals as the SIXTH
+    bar, drawn in full ink so "now" reads apart from the history.
+    One shared year axis across the three metrics; each metric row
+    scales to its own range. Null values omit the bar (the slot
+    stays); a metric with no values at all is omitted. Revenue is
     never charted in this pane. (Supersedes the "revenue road +
-    margin road" evidence-pane composition below, which is kept
-    marked superseded.) FY FCF margin is fcf/revenue from the same
-    annual row.
+    margin road" evidence-pane composition below, kept marked
+    superseded.) FY FCF margin is fcf/revenue from the same annual
+    row.
 16. **One clock.** Board surfaces (table, counts, company as-of) run
     on `/board`'s date; TODAY and What-changed run on the edition's
     date; when they differ each surface is stamped with ITS date

@@ -411,9 +411,14 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
         to /changed headlines+bodies and home TODAY. Verified live:
         SANM/FTAI/ENS (3/3/1 lots) replaced, JBL/ARW/POR/PNR/CTRE
         (0 lots) untouched.
-      - Company page: Quality pane = FyTtm (FY{YY} from period_end vs
-        TTM; ROIC / op margin / FCF margin; FY FCF margin = fcf/rev;
-        null cells and null columns omitted) — RevenueRoad deleted;
+      - Company page: Quality pane = DurabilityRoad (user amendment
+        same day, superseding the first FY-vs-TTM pair build): per
+        metric — ROIC / op margin / FCF margin — up to five fiscal
+        years of bars (FY{YY} from period_end) + TTM as the sixth in
+        full ink; one shared year axis, per-metric scaling, negative
+        values draw below the baseline in the down color; FY FCF
+        margin = fcf/rev; null bars omitted (slot stays) — the
+        revenue road stays deleted;
         prev/next now a labeled "board neighbours" control above the
         name; assessor hero badge deleted; value copy "cheap against
         this set"; ng_score no longer printed (one gap word);

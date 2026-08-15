@@ -350,6 +350,43 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       good." — direction approved; execution NOT yet started (user
       instruction 2026-08-15: plan recorded here first, nothing built
       until go).
+- [~] 2026-08-15 (build session, same day): ROADMAP STEP 1 DONE +
+      READ-LAYER GAP CLOSED IN CODE (addendum items a/b/c — details
+      in the addendum block above, rewritten to record what shipped).
+      Web-side consumers updated in the same change:
+      - /forces/[id] now reads GET /narratives/{id}: THE PULSE chart
+        (components/mock/Pulse.tsx — support above / erosion below
+        the line in up/down roles, seeding weeks dimmed under a
+        labeled "backfill" wash, attached-count under each week, a
+        "too short to read as a trend" note while observed weeks < 4,
+        NO momentum word anywhere), falsification as "What would
+        break it", children as "Inside this force", parent
+        breadcrumb, and direction on roster rows ("headwind" in the
+        down color; beneficiary stays silent). Forces whose links are
+        majority-threatened flip the off-board tail copy: "exposure
+        to a headwind is not a candidate list."
+      - /companies/[symbol] rail: "Stories" (was legacy
+        theme_alignments + gaps mixed) is now "Forces" from
+        stock.exposures — plain-words direction ("stands to gain" /
+        "adapting to it" / "exposed to the downside"), second-order
+        linkage marked, parent named, company-scope narratives set
+        apart as "Its own story"; links to /forces/{id}. The peer
+        sets moved under their own "Priced against" kicker and link
+        by narrative_id. Legacy theme_alignments no longer rendered
+        anywhere on the page (two vocabularies on one rail teach the
+        reader something untrue).
+      Verified: tsc clean, `next build` clean, all 11 routes 200 on
+      the local pair (api :8010 / web :3100), sample sweep 32 dossiers
+      + 16 force pages clean, /narratives map+landing regression
+      unchanged, dark mode + risk-force (id 40) checked in browser.
+      NOT deployed; prod api unchanged until step 4.
+      Session gotchas for next time:
+      - dotenv's find_dotenv asserts inside Bash heredocs — pass the
+        path: load_dotenv('/path/.env', override=True), or run a
+        script file from the repo root.
+      - two stale dev servers (api :8000, next :3100) from the mock
+        session were still running and shadowed new code; kill or
+        check ports before assuming a route 404s.
 
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 
@@ -362,22 +399,34 @@ promote them, do not rebuild them. Steps, in order; 1–3 are local;
 
 **REVIEW ADDENDUM (2026-08-16, methodology session + external review,
 both concur — these BLOCK step 2):**
-- **READ-LAYER GAP, verified on prod**: OpenAPI serves only the
-  original 8 paths; /narratives/{id}/roster 404s (the route exists
-  only as uncommitted local code, now committed but NOT deployed);
-  /stocks/{symbol} has NO exposures and NO narrative_id — only
-  theme_alignments (the LEGACY meta-themes system, frozen since
-  Jul 12 and slated for retirement at the NARRATIVE_SPEC Phase 2
-  gate). The mock Force rosters and any Pair page are therefore
-  name-matching. Before step 2 the read layer needs:
-  (a) GET /narratives/{id} — thesis, roster, AND the health series
-      from narrative_health_history (the Forces pages currently show
-      a portrait; the product's living-narratives claim needs the
-      pulse — conviction week by week, data already accumulating);
-  (b) /stocks/{symbol} to return exposures keyed by narrative_id
-      (exposure, direction, linkage) from narrative_exposures;
-  (c) NO name-matching joins anywhere; Pair pages pair via the
-      narrative brain, never via meta_themes (see V3 #0 retirement).
+- **READ-LAYER GAP — CLOSED IN CODE 2026-08-15 (this session), NOT
+  YET DEPLOYED** (prod still serves the old 8 paths until the step-4
+  push). What was built, all verified locally against the live DB:
+  (a) GET /narratives/{id} — thesis + falsification, parent/children
+      (with per-child roster counts), board_weight, the roster, and
+      the HEALTH SERIES from narrative_health_history. Honesty rules
+      in the payload itself: momentum_state is NOT returned (shadow
+      column until NARRATIVE_SPEC Phase 2 passes its gate) and every
+      week carries its `seeding` flag so surfaces must distinguish
+      backfill from observation. /narratives/{id}/roster kept.
+      Roster rows now carry `direction` (a force can be a headwind;
+      a roster hiding "threatened" reads as a recommendation).
+      Perf note: child rosters computed from ONE links query (the
+      per-child version cost ~4.3s/page against remote PG; now ~1.6s,
+      which is DB round-trip latency — the cache-by-cadence item
+      remains the real fix).
+  (b) /stocks/{symbol} returns `exposures` keyed by narrative_id
+      (exposure, direction, linkage, status, misses, decays, dates,
+      parent) from narrative_exposures.
+  (c) BONUS, verified in code + data: theme_valuation_gaps.
+      meta_theme_id is a LEGACY COLUMN NAME that actually holds a
+      narrative_id (pipeline/theme_valuation_gap.py writes it from
+      narrative_exposures; all 15 distinct id/name pairs match
+      narratives, none match meta_themes). The API now exposes it as
+      valuation_gaps[].narrative_id — so the value peer sets were
+      never name-matched, and the company rail links them to
+      /forces/{id} by id. stock_theme_alignment remains genuinely
+      meta-themes (legacy); the company page no longer renders it.
 - **ASSESSOR BADGE BLOCKED pending provenance**: since 2026-08-15 the
   materiality corridor also writes assessed_tier (corridor-pending
   and materiality-hold states) — the "▲ judgment raised it" badge
@@ -392,18 +441,19 @@ both concur — these BLOCK step 2):**
   appear only as a footnote. (The board=35-vs-41 wrinkle remains a
   methodology-track question; keep it visible.)
 
-1. **Lock decisions in DESIGN_BRIEF.md** (user has approved direction;
-   the brief still says narratives-landing-as-front-door and must be
-   rewritten): Board as home (reverses 2026-08-10); nav = The Board /
-   Forces / What changed / Track record ("Book" and "Edition" rejected
-   as jargon); hierarchy call → assessor-only-when-it-moves → story;
-   HOLD IS SILENCE (never print "hold"); STREET labeled, never our
-   call; mention-set rule (peer_count ≥ 100) + smallest-n hero gap;
-   band strip on tier domain [2.9, 5.8] (path chart tells the full
-   history); movement stays on the row; track record aggregated-first,
-   losses equal weight; 8-K tick rule; momentum orange back in
-   RESERVE (unused anywhere); no unsourced numbers ("63 candidates in
-   review" excluded until a field exists).
+1. **Lock decisions in DESIGN_BRIEF.md** — DONE 2026-08-15 (this
+   session). The brief now carries: nav DECIDED (four nouns, Board is
+   home, Companies via search not nav, Portfolio joins when it
+   exists); the page architecture (mock suite = design of record); and
+   fourteen numbered SURFACE LAWS (hold-is-silence, STREET labeled,
+   mention-set + smallest-n, tier-domain band strip, no unsourced
+   numbers, nulls omitted, movement on the row, aggregated track
+   record, 8-K ticks, momentum orange re-reserved, assessor badge
+   dark until provenance, one since-date, wrinkles visible). The old
+   landing section is kept marked SUPERSEDED; its ledger-derived
+   weakness rule survives. Signature-view section amended: board row
+   drops band strip + mini-bars (law 8); B1 hero and evidence panes
+   marked BUILT; FCF chips noted absent (no field — law 5).
 2. **Promote mocks → real routes**: /home → `/`; mock Chrome becomes
    the site chrome; retire app/(site)/ (old landing, /board,
    /signature page — keep the signature components; lab route may stay
@@ -418,9 +468,10 @@ both concur — these BLOCK step 2):**
      exposed via /board.
    - The Forces directory and /forces/[id] pages DO NOT go live until
      GET /narratives/{id} (+ roster) is deployed and verified on prod
-     — today the roster 404s and the pages would be dead links or
-     name-matched. Promote the rest of the suite without them if the
-     endpoint isn't ready; wire Forces in when it is.
+     — the endpoint now EXISTS in code (2026-08-15) and the force
+     page consumes it (pulse chart, children, headwind labels), so
+     this gate is now only about the api/ deploy landing before or
+     with the web push (same batched-push rule as Phase 2b).
 3. **Data-accuracy pass** (before any deploy):
    - automated sweep: script hits every endpoint + /stocks/{symbol}
      for all ~828 names; catches 500s / empty payloads / null-heavy

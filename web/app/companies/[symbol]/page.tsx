@@ -128,9 +128,15 @@ export default async function CompanyMock({
   const gap = heroGap(stock.valuation_gaps);
   const annuals = [...stock.annual_history].reverse().filter((r) => r.revenue != null);
   const roics = annuals.filter((r) => r.roic != null);
-  const alsoAttached = stock.theme_alignments.filter(
-    (t) => !stock.valuation_gaps.some((g) => g.theme === t.theme)
-  );
+  // The rail's Forces block comes from narrative_exposures (keyed by
+  // narrative_id). Company-scope narratives are this company's OWN story,
+  // not a market-wide force, so they are listed apart. The legacy
+  // meta-themes alignments are no longer shown here at all: they are a
+  // second, frozen vocabulary for the same idea (retiring at the
+  // NARRATIVE_SPEC Phase 2 gate), and two names for one thing on one rail
+  // is how a reader is taught something untrue.
+  const forces = stock.exposures.filter((e) => e.scope !== "company");
+  const companyStories = stock.exposures.filter((e) => e.scope === "company");
   const claimsDesc = [...stock.claims].sort((a, b) =>
     b.call_date.localeCompare(a.call_date)
   );
@@ -308,7 +314,7 @@ export default async function CompanyMock({
               <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
                 {(
                   [
-                    ["exposure", "Exposure", "alignment with the stories on the right"],
+                    ["exposure", "Exposure", "alignment with the forces on the right"],
                     ["value", "Value", "cheapness vs the same story"],
                     ["quality", "Quality", "ROIC, margins, the road above"],
                     ["gap", "Gap", "story not yet in the price"],
@@ -388,17 +394,81 @@ export default async function CompanyMock({
 
           {/* 7 — right rail */}
           <aside className="text-[13px]">
-            <div className="kicker mb-1.5">Stories</div>
+            {/* The forces this company carries, from the narrative brain's
+                own link table (keyed by narrative_id — never name-matched).
+                Direction is printed: a threatened link must not read like a
+                tailwind. */}
+            <div className="kicker mb-1.5">Forces</div>
+            <div className="mb-7">
+              {forces.length === 0 && (
+                <p className="text-[12px] italic text-ink-3">
+                  no force is attached to this company yet
+                </p>
+              )}
+              {forces.map((e) => (
+                <Link
+                  key={e.narrative_id}
+                  href={`/forces/${e.narrative_id}`}
+                  className="block border-b border-hairline py-2 last:border-b-0 hover:bg-surface"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 text-[12.5px] font-semibold leading-snug">
+                      {e.name}
+                    </span>
+                    <span className="num shrink-0 text-[11px] text-ink-3">
+                      {e.exposure?.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="text-[10.5px] text-ink-3">
+                    {e.direction === "threatened" ? (
+                      <span style={{ color: "var(--down)" }}>exposed to the downside</span>
+                    ) : e.direction === "adapting" ? (
+                      "adapting to it"
+                    ) : (
+                      "stands to gain"
+                    )}
+                    {e.linkage === "secondary" && " · second-order"}
+                    {e.parent && ` · under ${e.parent.name}`}
+                  </div>
+                </Link>
+              ))}
+              {companyStories.length > 0 && (
+                <>
+                  <div className="kicker mb-1 mt-3 text-[10px]">Its own story</div>
+                  {companyStories.map((e) => (
+                    <div
+                      key={e.narrative_id}
+                      className="border-b border-hairline py-1.5 text-[12px] text-ink-2 last:border-b-0"
+                    >
+                      {e.name}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className="kicker mb-1.5">Priced against</div>
+            <p className="mb-1.5 text-[11px] leading-snug text-ink-3">
+              the peer sets behind the value reading
+            </p>
             <div className="mb-7">
               {stock.valuation_gaps.length === 0 && (
-                <p className="text-[12px] italic text-ink-3">no stories priced yet</p>
+                <p className="text-[12px] italic text-ink-3">no priced peer set yet</p>
               )}
               {[...stock.valuation_gaps]
                 .sort((a, b) => (b.alignment ?? 0) - (a.alignment ?? 0))
                 .map((g) => (
                   <div key={g.theme} className="border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="min-w-0 text-[12.5px] font-semibold leading-snug">{g.theme}</span>
+                      <span className="min-w-0 text-[12.5px] font-semibold leading-snug">
+                        {g.narrative_id != null ? (
+                          <Link href={`/forces/${g.narrative_id}`} className="hover:underline">
+                            {g.theme}
+                          </Link>
+                        ) : (
+                          g.theme
+                        )}
+                      </span>
                       <span className="num shrink-0 text-[11px] text-ink-3">
                         {g.alignment?.toFixed(2)} · n={g.peer_count}
                       </span>
@@ -416,19 +486,6 @@ export default async function CompanyMock({
                     )}
                   </div>
                 ))}
-              {alsoAttached.length > 0 && (
-                <>
-                  <div className="kicker mb-1 mt-3 text-[10px]">Also attached</div>
-                  {alsoAttached.map((t) => (
-                    <div key={t.theme} className="border-b border-hairline py-1.5 text-[12px] text-ink-2 last:border-b-0">
-                      {t.theme}
-                      <span className="num float-right text-[11px] text-ink-3">
-                        {t.alignment?.toFixed(2)}{t.trajectory ? ` · ${t.trajectory}` : ""}
-                      </span>
-                    </div>
-                  ))}
-                </>
-              )}
             </div>
 
             <div className="kicker mb-1.5">Said</div>

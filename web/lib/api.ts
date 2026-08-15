@@ -65,6 +65,10 @@ export type AnnualRow = {
 };
 
 export type ValuationGap = {
+  /** The force whose exposed companies form this peer set. (The DB column
+   * is still called meta_theme_id — a legacy name holding a narrative_id;
+   * the API renames it at the boundary.) */
+  narrative_id: number | null;
   theme: string;
   alignment: number | null;
   peer_count: number | null;
@@ -141,7 +145,30 @@ export type Stock = {
   filing_events: FilingEvent[];
   claims: Claim[];
   insider_trades: InsiderTrade[];
+  /** The narrative brain's own links, keyed by narrative_id — this is how
+   * a company is paired to a force. `theme_alignments` below is the LEGACY
+   * meta-themes system (frozen 2026-07-12, retiring); never pair the two
+   * systems by matching their names. */
+  exposures: Exposure[];
   theme_alignments: { theme: string; alignment: number | null; trajectory: string | null }[];
+};
+
+export type Exposure = {
+  narrative_id: number;
+  name: string;
+  level: string;
+  scope: string;
+  parent: { id: number; name: string } | null;
+  exposure: number | null;
+  /** beneficiary / adapting / threatened — a threatened link must never be
+   * drawn as if it were a tailwind. */
+  direction: string | null;
+  linkage: string | null;
+  status: string | null;
+  misses: number | null;
+  decays: number | null;
+  first_seen: string | null;
+  last_confirmed: string | null;
 };
 
 export type EditionStory = {
@@ -254,6 +281,9 @@ export type RosterRow = {
   symbol: string;
   company: string | null;
   exposure: number | null;
+  /** direction of the company's strongest link to this force: beneficiary /
+   * adapting / threatened. A force can be a headwind. */
+  direction: string | null;
   tier: string | null;
   score: number | null;
 };
@@ -272,6 +302,50 @@ export type ForceRoster = {
 
 export const getForceRoster = (id: number | string) =>
   get<ForceRoster>(`/narratives/${id}/roster`);
+
+/** One week of a force's vital signs. `seeding` marks the ledger-backfill
+ * weeks (before 3 Aug 2026) — the instrument opening its eyes, not the
+ * world changing; any surface drawing them must say so. There is no
+ * momentum word here on purpose: that column is still in shadow. */
+export type HealthWeek = {
+  week_start: string;
+  support: number;
+  erosion: number;
+  breadth: number;
+  active_exposures: number | null;
+  board_weight: number | null;
+  checkpoint_passes: number;
+  checkpoint_fails: number;
+  translation_share: number | null;
+  seeding: boolean;
+};
+
+export type Narrative = {
+  id: number;
+  name: string;
+  level: string;
+  thesis: string | null;
+  status: string;
+  momentum: string;
+  falsification: string | null;
+  parent: { id: number; name: string } | null;
+  children: { id: number; name: string; level: string; covered: number; on_board: number }[];
+  board_weight: number;
+  roster: {
+    covered: number;
+    on_board: RosterRow[];
+    off_board: RosterRow[];
+    off_board_total: number;
+  };
+  health: {
+    weeks: HealthWeek[];
+    observed_weeks: number;
+    first_observed_week: string | null;
+  };
+};
+
+export const getNarrative = (id: number | string) =>
+  get<Narrative>(`/narratives/${id}`);
 
 /** Mention-set rule (PRODUCT_UI_HANDOFF): a gap with peer_count >= 100 is
  * a mention set, not a same-story beneficiary set. */

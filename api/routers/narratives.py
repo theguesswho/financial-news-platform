@@ -10,7 +10,7 @@ are dossier material, not map material.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from api.deps import get_engine, ten
@@ -273,64 +273,179 @@ def get_narratives_landing():
     }
 
 
-@router.get("/narratives/{narrative_id}/roster")
-def get_narrative_roster(narrative_id: int):
-    """One force's roster: every company carrying exposure in its subtree
-    (deduped, max exposure kept), split into on-board (by score) and the
-    attached-but-off-board tail (by exposure) — the discovery product."""
-    from fastapi import HTTPException
-    engine = get_engine()
-    with engine.connect() as conn:
-        nars = conn.execute(text("""
-            SELECT id, name, tier, parent_id,
-                   COALESCE(thesis, description), status
-            FROM narratives
-            WHERE status != 'merged' AND COALESCE(scope,'') != 'company'
-        """)).fetchall()
-        by_id = {n[0]: n for n in nars}
-        if narrative_id not in by_id:
-            raise HTTPException(404, "unknown narrative")
-        kids: dict = {}
-        for n in nars:
-            if n[3] in by_id and n[2] != "macro":
-                kids.setdefault(n[3], []).append(n[0])
-        sub = set()
-        stack = [narrative_id]
-        while stack:
-            x = stack.pop()
-            sub.add(x)
-            stack.extend(kids.get(x, []))
+def _tree(conn):
+    """The map's narrative tree (company scope excluded, merged dropped):
+    rows by id + the child index used for every subtree rollup here."""
+    nars = conn.execute(text("""
+        SELECT id, name, tier, parent_id,
+               COALESCE(thesis, description), status, momentum, falsification
+        FROM narratives
+        WHERE status != 'merged' AND COALESCE(scope,'') != 'company'
+    """)).fetchall()
+    by_id = {n[0]: n for n in nars}
+    kids: dict = {}
+    for n in nars:
+        # macros are roots by definition — never a child
+        if n[3] in by_id and n[2] != "macro":
+            kids.setdefault(n[3], []).append(n[0])
+    return by_id, kids
 
-        expo = conn.execute(text("""
-            SELECT ne.symbol, MAX(ne.exposure), f.company_name
-            FROM narrative_exposures ne
-            LEFT JOIN fundamentals f ON f.symbol = ne.symbol
-            WHERE ne.narrative_id = ANY(:ids)
-            GROUP BY ne.symbol, f.company_name
-        """), {"ids": list(sub)}).fetchall()
-        snap = {r[0]: r[1:] for r in conn.execute(text("""
-            SELECT symbol, COALESCE(assessed_tier, tier), gem_score
-            FROM leaderboard_history
-            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
-        """)).fetchall()}
 
-    n = by_id[narrative_id]
+def _subtree(kids, narrative_id):
+    sub, stack = set(), [narrative_id]
+    while stack:
+        x = stack.pop()
+        if x in sub:
+            continue
+        sub.add(x)
+        stack.extend(kids.get(x, []))
+    return sub
+
+
+def _links(conn, ids):
+    """Every exposure row under a set of narratives, plus the board
+    snapshot — fetched ONCE per request. A force page needs a roster for
+    the force and for each of its children; querying per child turned one
+    page into a dozen round trips to a remote database."""
+    rows = conn.execute(text("""
+        SELECT ne.narrative_id, ne.symbol, ne.exposure, ne.direction,
+               f.company_name
+        FROM narrative_exposures ne
+        LEFT JOIN fundamentals f ON f.symbol = ne.symbol
+        WHERE ne.narrative_id = ANY(:ids)
+    """), {"ids": list(ids)}).fetchall()
+    snap = {r[0]: r[1:] for r in conn.execute(text("""
+        SELECT symbol, COALESCE(assessed_tier, tier), gem_score
+        FROM leaderboard_history
+        WHERE date = (SELECT MAX(date) FROM leaderboard_history)
+    """)).fetchall()}
+    return rows, snap
+
+
+def _roster(rows, snap, sub):
+    """Every company carrying exposure anywhere in the subtree (deduped,
+    STRONGEST link kept, with the direction that link carries — a force can
+    be a headwind, and a roster row that hides "threatened" reads as a
+    recommendation), split into on-board (by score) and the attached-but-
+    off-board tail (by exposure) — the discovery product. Board membership
+    comes from the snapshot keyed by symbol; the company↔force pairing is
+    narrative_id throughout, never a name match."""
+    best: dict = {}
+    for nid, sym, ex, direction, company in rows:
+        if nid not in sub:
+            continue
+        e = float(ex) if ex is not None else None
+        cur = best.get(sym)
+        if cur is None or (e or 0) > (cur[0] or 0):
+            best[sym] = (e, direction, company)
+
     on_board, off_board = [], []
-    for sym, ex, company in expo:
+    for sym, (ex, direction, company) in best.items():
         tier, score = snap.get(sym, (None, None))
         row = {
-            "symbol": sym, "company": company,
-            "exposure": float(ex) if ex is not None else None,
-            "tier": tier, "score": ten(score),
+            "symbol": sym, "company": company, "exposure": ex,
+            "direction": direction, "tier": tier, "score": ten(score),
         }
         (on_board if tier else off_board).append(row)
     on_board.sort(key=lambda r: -(r["score"] or 0))
     off_board.sort(key=lambda r: -(r["exposure"] or 0))
     return {
-        "id": narrative_id, "name": n[1], "level": n[2],
-        "thesis": n[4], "status": n[5],
-        "covered": len(expo),
+        "covered": len(best),
         "on_board": on_board,
         "off_board": off_board[:25],
         "off_board_total": len(off_board),
+    }
+
+
+def _health(conn, narrative_id):
+    """The pulse: narrative_health_history week by week (already rolled up
+    through the subtree by pipeline/narrative_vital_signs.py, so no rollup
+    happens here). Two honesty rules baked in:
+    - `momentum_state` is NOT returned. It is a SHADOW column, NULL until
+      NARRATIVE_SPEC Phase 2 passes its cutover gate; shipping it would
+      put an unearned word on a product surface.
+    - `seeding` rides on every week. Weeks before 2026-08-03 are backfill
+      from the ledger's opening sweep — the instrument opening its eyes,
+      not the world changing — and any surface charting them must say so.
+      `observed_weeks` counts only the non-seeding ones.
+    """
+    rows = conn.execute(text("""
+        SELECT week_start, support, erosion, breadth, active_exposures,
+               exposed_board_weight, checkpoint_passes, checkpoint_fails,
+               translation_share, seeding
+        FROM narrative_health_history
+        WHERE narrative_id = :n ORDER BY week_start
+    """), {"n": narrative_id}).fetchall()
+    f = lambda v: float(v) if v is not None else None
+    weeks = [{
+        "week_start": r[0], "support": r[1], "erosion": r[2],
+        "breadth": r[3], "active_exposures": r[4],
+        "board_weight": f(r[5]),
+        "checkpoint_passes": r[6], "checkpoint_fails": r[7],
+        "translation_share": f(r[8]), "seeding": r[9],
+    } for r in rows]
+    observed = [w for w in weeks if not w["seeding"]]
+    return {
+        "weeks": weeks,
+        "observed_weeks": len(observed),
+        "first_observed_week": observed[0]["week_start"] if observed else None,
+    }
+
+
+@router.get("/narratives/{narrative_id}")
+def get_narrative(narrative_id: int):
+    """One force, opened: identity + thesis + falsification, its place in
+    the tree, the roster (on board / attached tail), and the health series.
+    The Forces pages read THIS — everything is keyed by narrative_id, so
+    no surface ever pairs a company to a story by matching names."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        by_id, kids = _tree(conn)
+        if narrative_id not in by_id:
+            raise HTTPException(404, "unknown narrative")
+        sub = _subtree(kids, narrative_id)
+        rows, snap = _links(conn, sub)
+        roster = _roster(rows, snap, sub)
+        health = _health(conn, narrative_id)
+        child_rosters = {c: _roster(rows, snap, _subtree(kids, c))
+                         for c in kids.get(narrative_id, [])}
+
+    n = by_id[narrative_id]
+    parent = by_id.get(n[3])
+    board_weight = sum(
+        TIER_W.get(r["tier"], 0) * (r["exposure"] or 0)
+        for r in roster["on_board"])
+    return {
+        "id": narrative_id, "name": n[1], "level": n[2],
+        "thesis": n[4], "status": n[5], "momentum": n[6] or "stable",
+        "falsification": n[7],
+        "parent": parent and {"id": parent[0], "name": parent[1]},
+        "children": [{
+            "id": c, "name": by_id[c][1], "level": by_id[c][2],
+            "covered": child_rosters[c]["covered"],
+            "on_board": len(child_rosters[c]["on_board"]),
+        } for c in sorted(kids.get(narrative_id, []),
+                          key=lambda c: -child_rosters[c]["covered"])],
+        "board_weight": round(board_weight, 2),
+        "roster": roster,
+        "health": health,
+    }
+
+
+@router.get("/narratives/{narrative_id}/roster")
+def get_narrative_roster(narrative_id: int):
+    """The roster alone (kept: it is what the Forces page needed first).
+    GET /narratives/{id} returns this same block plus thesis and health."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        by_id, kids = _tree(conn)
+        if narrative_id not in by_id:
+            raise HTTPException(404, "unknown narrative")
+        sub = _subtree(kids, narrative_id)
+        roster = _roster(*_links(conn, sub), sub)
+
+    n = by_id[narrative_id]
+    return {
+        "id": narrative_id, "name": n[1], "level": n[2],
+        "thesis": n[4], "status": n[5], **roster,
     }

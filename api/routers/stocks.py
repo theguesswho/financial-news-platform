@@ -129,6 +129,22 @@ def get_stock(symbol: str):
             SELECT date, close FROM eod_prices
             WHERE symbol = :s ORDER BY date""", s=symbol)
 
+        # The narrative brain's own link table, keyed by narrative_id —
+        # this is what the company page pairs stories with. The
+        # theme_alignments below are the LEGACY meta-themes system
+        # (frozen since 2026-07-12, retired at the NARRATIVE_SPEC Phase 2
+        # gate); never pair a company to a force by matching their names.
+        exposures = _rows(conn, """
+            SELECT ne.narrative_id, n.name, n.tier, COALESCE(n.scope,''),
+                   n.parent_id, p.name, ne.exposure, ne.direction,
+                   ne.linkage, ne.status, ne.misses, ne.decays,
+                   ne.first_seen, ne.last_confirmed
+            FROM narrative_exposures ne
+            JOIN narratives n ON n.id = ne.narrative_id
+            LEFT JOIN narratives p ON p.id = n.parent_id
+            WHERE ne.symbol = :s AND n.status != 'merged'
+            ORDER BY ne.exposure DESC NULLS LAST""", s=symbol)
+
         themes = _rows(conn, """
             SELECT mt.name, sta.alignment_score, sta.trajectory
             FROM stock_theme_alignment sta
@@ -136,10 +152,17 @@ def get_stock(symbol: str):
             WHERE sta.symbol = :s
             ORDER BY sta.alignment_score DESC LIMIT 8""", s=symbol)
 
+        # theme_valuation_gaps.meta_theme_id is a LEGACY COLUMN NAME holding
+        # a narrative_id — verified in pipeline/theme_valuation_gap.py, which
+        # writes it from narrative_exposures.narrative_id (and confirmed in
+        # data: all 15 distinct id/name pairs match narratives, none match
+        # meta_themes). It crosses the API under its true name so surfaces
+        # can link a peer set to its force by id, never by name.
         gaps = _rows(conn, """
             SELECT theme_name, alignment_score, peer_count,
                    stock_pe_fwd, peer_median_pe, pe_discount,
-                   stock_ev_ebitda, peer_median_ev, ev_discount
+                   stock_ev_ebitda, peer_median_ev, ev_discount,
+                   meta_theme_id
             FROM theme_valuation_gaps
             WHERE symbol = :s
             ORDER BY GREATEST(COALESCE(pe_discount, -9),
@@ -212,10 +235,19 @@ def get_stock(symbol: str):
             "shares": f(r[4]), "avg_price": f(r[5]), "total_value": f(r[6]),
         } for r in trades],
         "prices": [{"date": r[0], "close": f(r[1])} for r in prices],
+        "exposures": [{
+            "narrative_id": r[0], "name": r[1], "level": r[2],
+            "scope": r[3],
+            "parent": r[4] and {"id": r[4], "name": r[5]},
+            "exposure": f(r[6]), "direction": r[7], "linkage": r[8],
+            "status": r[9], "misses": r[10], "decays": r[11],
+            "first_seen": r[12], "last_confirmed": r[13],
+        } for r in exposures],
         "theme_alignments": [{
             "theme": r[0], "alignment": f(r[1]), "trajectory": r[2],
         } for r in themes],
         "valuation_gaps": [{
+            "narrative_id": r[9],
             "theme": r[0], "alignment": f(r[1]), "peer_count": r[2],
             "pe_forward": f(r[3]), "peer_median_pe": f(r[4]),
             "pe_discount": f(r[5]), "ev_ebitda": f(r[6]),

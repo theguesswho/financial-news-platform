@@ -4,6 +4,13 @@ Agreed 2026-08-10 in the methodology session. Binding on every page
 phase of FRONTEND_SPEC.md. Change it only with explicit user sign-off,
 recorded here.
 
+**Revision 2026-08-15** — the mock suite (round 2) was reviewed and its
+direction approved by the user ("This is looking really good"). This
+revision records what that approval decided: the front door reverses to
+the Board, the nav nouns change, and a set of surface laws that were
+prototyped in the mocks become binding. Superseded sections are kept,
+marked, and dated — they are history, not instructions.
+
 ## Identity
 
 **A discovery instrument with a judgment layer.** By synthesising
@@ -32,55 +39,164 @@ A page leads with what the instrument concludes, supports it with the
 data that produced the conclusion, and never hides what it used to
 believe (band history, past editions, closed positions).
 
-## Navigation — five nouns, tool-shaped
-(front door REVISED 2026-08-10, user decision — see Landing page section)
+## Navigation — DECIDED 2026-08-15 (four nouns; Board is home)
 
-1. **Narratives** — FRONT DOOR. The lens is the product's identity:
-   FASTgraphs is the graphs; we are the narratives. Landing = the
-   narrative state of the world, broken down (see Landing page below),
-   flowing into the Board. The three-layer map (forces / what moved /
-   library) lives here as the deep view.
-2. **The Board** — the current opportunity set: ranked, tiered,
-   countdowns visible. One click (or one scroll-bridge) from landing.
-3. **Companies** — the workbench. Point the instrument at any covered
-   name; get the same signature view every time. Events, insider
-   activity, and filings appear HERE, inside the dossier, where they
-   have context.
-4. **What Changed** — the daily edition as instrument log: readings
-   that moved, entries, exits, why.
-5. **Portfolio** — capital against the instrument's output. (Owner-only
-   feature initially; a per-user feature if the product gets users.)
+The front door is **The Board**. This reverses the 2026-08-10 decision
+that made the narratives landing the front door (that section is kept
+below, marked superseded). Reason recorded: the product's first screen
+should be what the instrument concludes today — the calls, ranked —
+not an essay about the lens. The lens is still first-class; it lives
+one noun away and is reachable from every row.
 
-Events / Insiders / News Wire are NOT top-level destinations — they
-dissolve into Companies and What Changed.
+1. **The Board** — `/`. The current opportunity set: ranked, tiered,
+   grouped by call. Home.
+2. **Forces** — the narrative lens: the directory of forces, each
+   opening to its thesis, its on-board roster, and the covered names
+   attached to it that do not have a call yet (the discovery surface).
+3. **What changed** — the daily edition as instrument log: readings
+   that moved, entries, exits, why. ("Edition" was considered and
+   REJECTED as jargon.)
+4. **Track record** — the public scoreboard: $100 lots vs SPY twins,
+   wins and losses together. ("Book" was considered and REJECTED as
+   jargon — it is trader-speak, and this is a first-visitor surface.
+   "Book" may still appear as a small inline label on the masthead's
+   own-vs-SPY line, where the Track record page is one click away.)
 
-## Landing page — the narrative lens (user decision 2026-08-10)
+**Companies is not a nav noun.** The company page (`/companies/{symbol}`)
+is reached by the masthead search over the whole covered universe, by
+every company name on every surface, and by prev/next inside the page
+itself. A nav item pointing at "pick a company" with no company chosen
+is a dead end; the search box is the real door.
 
-The landing page showcases WHAT THE SYSTEM IS: narrative synthesis.
-It must answer, in order, for a first-time visitor:
+**Portfolio is not in the nav yet.** Owner-only, and undecided (auth) —
+FRONTEND_SPEC Phase 7. It joins the nav when it exists, not before.
 
-1. **The forces we believe in** — the leading narratives, each with:
-   how many companies gave rise to it / carry exposure to it (counts
-   are evidence of breadth, show them), its exposed board weight, and
-   one plain-words thesis line.
-2. **Emerging narratives** — what the instrument is starting to see
-   (emerging/candidate tier): name, age, companies attached so far.
-   This is the "discovery is happening live" proof.
-3. **Shifts and weakness** — narratives losing support, honestly shown:
-   drawn from the exposure LEDGER (weaken/remove ops, misses, declining
-   lifecycle status) — NOT from the momentum word alone (momentum
-   currently reads "accelerating" across the board and carries no
-   discriminating signal until the methodology track recalibrates it).
-   Honest-surfaces rule applies: weakness gets equal visual weight.
-4. **The bridge to the Board** — each narrative links to its stocks;
-   a closing strip surfaces the top of the Board ("what these forces
-   surface"), leading into the full Board page.
+Events / Insiders / News Wire are NOT destinations — they dissolve into
+the company page and What changed. (Unchanged from 2026-08-10.)
 
-The full three-layer map (forces / what moved / library) remains the
-deep view behind this landing. Momentum orange (reserved token) comes
-into use here.
+## Page architecture — DECIDED 2026-08-15
 
-## The signature view (design centerpiece — get this right first)
+The mock suite IS the design of record. Five surfaces:
+
+- **The Board (home)** — one-line masthead (universe covered · on the
+  board · tier dot counts · the count wrinkle in plain words · own-vs-
+  SPY since the first lot, linked to Track record); TODAY: the three
+  edition headlines with an "all N moves →" link; the ranked table
+  grouped by call with filter tabs (All / Strong Buy / Moved); a right
+  rail with the Forces directory (weight, company count) and a
+  "Losing support" list.
+- **Forces** — directory (weight · on board · covered · thesis clip)
+  and `/forces/{id}`: thesis, on-board roster, then the attached-but-
+  off-board tail ranked by exposure.
+- **What changed** — the full edition from `/reports/{date}`: kicker
+  with the change breakdown, date archive, grouped Downgrades →
+  Exits → Entries → Upgrades → Also, full bodies, symbols linked.
+- **Track record** — verdict header, the honesty paragraph, aggregated
+  per-name rows expanding to the daily lots and their SPY twins.
+- **Company page** — hero (name · call · score · rank · band strip ·
+  STREET line · prev/next), evidence triptych, score components, the
+  path (score + price with filing ticks), thesis, calls stack, and a
+  right rail (Stories / Said / Inside).
+
+## Surface laws — DECIDED 2026-08-15 (binding, all pages)
+
+These were prototyped in the mock suite and are now rules. They exist
+because each one is a way a surface could quietly lie.
+
+1. **Hierarchy on any row or header: the call → the assessor only when
+   it moved the call → the story.** The call is what we conclude; the
+   assessor line is why it differs from the data; the story is the
+   one-line reason. In that order, always.
+2. **HOLD IS SILENCE.** When the judgment layer agreed with the data,
+   the assessor column prints NOTHING. Never the word "hold", never a
+   check mark, never "confirmed". A verdict that says nothing new must
+   look like nothing. (Printing "hold" on 30 rows makes agreement look
+   like activity, and buries the 3 rows where judgment actually moved.)
+3. **STREET is labeled and never ours.** Analyst counts, ratings, and
+   targets appear under an explicit "Street" label, visually quieter
+   than our own numbers. We never merge a consensus figure into our
+   call, and we never present one unlabeled.
+4. **Mention-set rule.** A peer set with `peer_count ≥ 100` is a
+   MENTION set — companies that cite the story, not proven
+   beneficiaries — and must be labeled as such wherever its multiple
+   is shown. The hero gap on a company page picks the SMALLEST-n
+   priced set (the most specific peer group), not the biggest number.
+5. **No unsourced numbers, ever.** If a figure has no field behind it,
+   it does not appear. (Concrete precedent: the sketch's "63 candidates
+   in review" was cut — there is no sourcing field for it. Inventing a
+   plausible number is the one failure this product cannot survive.)
+6. **Nulls are omitted, not dashed.** A missing value drops its row,
+   chip, or sentence. No em-dash filler grids. "No data" and "zero"
+   must never look alike.
+7. **Band strip runs on the TIER DOMAIN [2.9, 5.8]**, not on the
+   observed min/max of a name's history. A fixed domain means the same
+   dot position means the same thing on every company, which is the
+   whole FASTgraphs-ethos claim. The full history lives in the path
+   chart below it, which does use its own range.
+8. **Movement stays on the row.** NEW / ▲▼ rank / tier moves / grace
+   seat print in the row's Moved column, in the up-down role colors —
+   not in a separate "what changed" widget. The per-row band strip and
+   the Q·V·G mini-bars from the Phase 2 board row are DROPPED from the
+   home table: the table is a directory of calls, and the evidence
+   belongs on the company page where it has room to be read.
+9. **Track record is aggregated first, losses at equal weight.** Per
+   name first (invested, open/closed, beating, vs SPY), daily lots on
+   expand. The honesty paragraph — that these are $100 paper lots, not
+   live capital — sits above the numbers, not in a footnote.
+10. **8-K tick rule.** Filing days that carry a transcript or a
+    10-K/10-Q get a full tab in the calls stack; 8-K-only days compress
+    to slim ticks — compressed, NEVER hidden. (The AECOM lesson: a
+    $337M charge that no surface showed is how a wrong judgment
+    survives.)
+11. **Momentum orange is BACK IN RESERVE.** The 2026-08-10 landing put
+    it into use for the word "accelerating"; that landing is retired
+    and the token is unused again. It stays reserved until the
+    methodology track recalibrates momentum into something that
+    discriminates (today every macro reads "accelerating").
+12. **The assessor badge ships DARK until provenance exists.** Since
+    2026-08-15 `assessed_tier` is also written by the materiality
+    corridor (corridor-pending and materiality-hold states), so a
+    "▲ judgment raised it" badge would label a mechanical corridor
+    state as human-style conviction. The badge is not rendered until
+    the methodology track stamps provenance (judge / corridor_pending /
+    materiality_hold) AND the API exposes it. This is a hard gate, not
+    a preference — see FRONTEND_SPEC roadmap step 2.
+13. **One since-date.** The masthead and the Track record page both
+    date from the FIRST LOT (currently 27 Jul 2026). The signal start
+    (23 Jul) may appear only as a footnote where it is explained. Two
+    different "since" dates on two surfaces reads as sloppiness at
+    best and cherry-picking at worst.
+14. **Wrinkles stay visible.** Where two of our own counts disagree
+    (today: the edition masthead says 35 on the board, the snapshot
+    has 41 rows carrying a call), the surface SAYS SO in plain words
+    rather than picking the flattering number. Diagnosing the why is
+    the methodology track's job; hiding it is not an option.
+
+## Landing page — SUPERSEDED 2026-08-15 (was: the narrative lens)
+
+Kept for history. This described the narratives-as-front-door landing
+built in Phase 2b (`/narratives/landing` + the old `app/(site)/page.tsx`).
+The front door reversed to the Board on 2026-08-15; the work lives on
+as the Forces directory and the force pages, and the four questions
+below still describe what a force page should answer.
+
+> 1. **The forces we believe in** — the leading narratives, each with:
+>    how many companies gave rise to it / carry exposure to it (counts
+>    are evidence of breadth, show them), its exposed board weight, and
+>    one plain-words thesis line.
+> 2. **Emerging narratives** — what the instrument is starting to see
+>    (emerging/candidate tier): name, age, companies attached so far.
+> 3. **Shifts and weakness** — narratives losing support, honestly
+>    shown: drawn from the exposure LEDGER (weaken/remove ops, misses,
+>    declining lifecycle status) — NOT from the momentum word alone.
+>    Honest-surfaces rule applies: weakness gets equal visual weight.
+> 4. **The bridge to the Board** — each narrative links to its stocks.
+
+The ledger-derived weakness rule (3) survives the reversal: the home
+rail's "Losing support" list and any force-level weakness claim use the
+LEDGER, never the momentum word.
+
+## The signature view (design centerpiece)
 
 One visual, identical for every stock, that collapses the methodology
 the way FASTgraphs' chart collapses theirs. It must show at a glance:
@@ -89,25 +205,10 @@ the way FASTgraphs' chart collapses theirs. It must show at a glance:
 - **Narrative gap** — how much story the price ignores (exposure × (1−P))
 - where the composite sits vs the tier bands, and its recent path
 
-Every Companies dossier leads with it. The Board is this view collapsed
-to a row per stock. Phase 2 builds 2–3 live variants of it for user
-selection before anything else is styled.
-
-## Visual language
-
-- Seed: the report page's editorial restraint — words before chrome,
-  numbers with dignity, no dashboard clutter.
-- Plain lexicon everywhere (standing rule): 10-point scores, direction
-  words spelled out, zero internal jargon. A stranger must understand
-  every label. Where a concept needs teaching (narrative gap), teach it
-  inline once, briefly — never assume the reader knows our history.
-- Honest surfaces (standing rule): losses, exits, and downgrades get the
-  same visual weight as wins. No celebration framing. The track record
-  page shows the twin comparison unconditionally.
-- Tier colors, momentum colors, and up/down colors are three SEPARATE
-  roles — never reuse one for another. Exact tokens (type scale,
-  spacing, palette, table/card anatomy) get locked in Phase 2 from the
-  chosen signature-view variant, then recorded here.
+Every company page leads with it. (2026-08-15: the BOARD is no longer
+this view collapsed to a row — see surface law 8. The Board row carries
+the call, the score, and movement; the signature evidence lives on the
+company page.)
 
 ## Signature view — DECIDED (user, 2026-08-10, Phase 2 lab)
 
@@ -120,17 +221,27 @@ data at web/app/signature (route kept as the design lab). The pick:
   compact what-changed cell (NEW badge, ▲/▼ rank moves in up/down colors,
   "▲ raised from Buy" tier moves, grace-seat note) driven entirely by
   fields /board already returns.
+  **AMENDED 2026-08-15:** the movement language and the tier chip are
+  kept; the per-row band strip and the Q·V·G mini-bars are dropped
+  (surface law 8). The home row is name-first: rank · name/symbol ·
+  call · score · assessor (silent unless it moved) · moved · story.
 - **The Companies dossier hero = B1, the triptych with the band ruler**
   (state + 30-reading trail), carrying the company toggle: dropdown over
-  the board in rank order + prev/next arrows. Built in Phase 3 at the top
-  of the company page.
-- **Evidence panes need a data pass before Phase 3 ships them** (user
-  note, direction agreed): Quality = revenue road + margin road (separate
-  micro-rows, never dual-axis) + ROIC / FCF-margin chips; Value = P/E fwd
-  AND EV/EBITDA dumbbells vs the NAMED narrative peer set ("vs 135
-  companies in the same story: …"); Narrative gap = top 2–3 narratives
-  with alignment + trajectory above the exposure/priced-in bar. All data
-  already crosses the API. Final pane composition = Phase 3 sign-off.
+  the board in rank order + prev/next arrows. **BUILT 2026-08-15** in
+  the company mock, with the band ruler on the fixed tier domain
+  (surface law 7) and prev/next over the board in rank order; the
+  dropdown was replaced by the masthead's universe search, which
+  reaches all ~828 covered names rather than only the board.
+- **Evidence panes** (user note, direction agreed): Quality = revenue
+  road + margin road (separate micro-rows, never dual-axis) + ROIC /
+  FCF-margin chips; Value = P/E fwd AND EV/EBITDA dumbbells vs the
+  NAMED narrative peer set ("vs 135 companies in the same story: …");
+  Narrative gap = top 2–3 narratives with alignment + trajectory above
+  the exposure/priced-in bar. **BUILT 2026-08-15** in the company mock
+  and approved in direction, with the mention-set label and smallest-n
+  hero gap added (surface law 4). FCF-margin chips are NOT built —
+  the field is not on the annual rows the API returns; add only if the
+  data exists (surface law 5).
 
 ## Design tokens — LOCKED (Phase 2, from the chosen variants)
 
@@ -147,10 +258,10 @@ prefers-color-scheme). Three color roles, never cross-used (standing rule):
   dark #0ca30c / #e66767. Used for rank/tier movement arrows, deltas,
   and the dashed exit line at 3.2. Never for tiers.
 - **Momentum (narrative trajectory)** — RESERVED orange, light #eb6834 /
-  dark #d95926. Not used until the Narratives phase; never for tiers or
+  dark #d95926. Currently UNUSED (surface law 11); never for tiers or
   deltas.
 - **Narrative-gap accent** — violet, light #4a3aa7 / dark #9085e9: the
-  "unpriced story" highlight only.
+  "unpriced story" highlight only. Also carries "narrative promoted".
 - **Ink & chrome** — page #f9f9f7/#0d0d0d, surface (cards) #fcfcfb/#1a1a19,
   ink #0b0b0b/#ffffff, ink-2 #52514e/#c3c2b7, ink-3 #898781 (both),
   hairline #e1e0d9/#2c2c2a, baseline #c3c2b7/#383835.
@@ -163,10 +274,20 @@ prefers-color-scheme). Three color roles, never cross-used (standing rule):
   (rounded-xl), 24px padding. Tables: hairline row separators, kicker
   column headers, generous 20px column gaps. Charts: marks in ink,
   1.5–2px lines, washes for zones, direct labels over legends.
+- **Page frame (added 2026-08-15)** — max width 1280px, 24px gutters;
+  main/rail split `minmax(0,1fr) 300px` collapsing to one column below
+  the xl breakpoint. Section rules: a 1px ink rule under a kicker opens
+  a section; hairline rules separate rows inside it.
 
 ## Open design decisions
 
-- Evidence-pane final composition (direction agreed above; sign-off in
-  Phase 3 when built on the company page).
-- Product name / masthead identity — currently internal-flavored;
-  needs deciding before anything public.
+- **Product name / masthead identity** — still open, still blocking
+  anything public. The mocks use "THE BOARD" as the working wordmark;
+  it is a placeholder, not a decision.
+- **Empty / loading / error states** — not designed yet; the mocks
+  skipped them. They get designed and built in roadmap step 2 (they
+  are the difference between a demo and a product).
+- **The force-page pulse** — force pages currently show a portrait
+  (thesis + roster). The living-narratives claim needs the health
+  series (conviction week by week) from `narrative_health_history`;
+  its chart form is undesigned and lands with the endpoint.

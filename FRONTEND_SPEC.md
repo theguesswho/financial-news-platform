@@ -179,8 +179,16 @@ Pair page, Portfolio, product name: not this phase.
 - Nothing to code. Session is closed.
 - Proof still outstanding: the 06:00 UTC `scheduler_light` daily run.
   If it fails, tell Edmund in one sentence. If it succeeds, record it
-  and stop. [Status 2026-08-16 03:40 UTC: run has NOT fired yet —
-  job armed for 06:00; outcome unrecorded, do not claim it.]
+  and stop. [PROOF RECORDED 2026-08-16: run fired 06:00, "DAILY
+  UPDATE COMPLETE" 07:09 UTC, job "executed successfully", next run
+  armed 2026-08-17 06:00. Watched live via CLI. 69 min vs ~50 usual —
+  two benign notes: FMP quarter-list HTTP 429s near the end of the
+  transcript sweep (vendor daily quota; names skipped gracefully,
+  ✗1 failed of 822) and Railway's 500 logs/sec cap dropped ~70 log
+  lines (cosmetic). Board output normal: 828 scored, 45 on-board,
+  overrides promoted 3, all sources fresh, brief generated. SANM
+  downgraded SB→Buy by the machinery itself (priced-in threshold) —
+  noted only; worked example, not a ticket.]
 - Next coding session (only when asked): push the membership fix with
   Edmund present, then confirm ON PROD that force 1/11/40 on_board ⊆
   /board and INTU/PCG/EIX have no call badge.

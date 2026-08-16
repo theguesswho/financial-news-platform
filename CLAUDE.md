@@ -18,6 +18,28 @@ Pushes restart Railway services and KILL live scheduler runs. Rules:
    pipeline/scheduler/requirements changes; UI-only pushes touch only the
    web service. Until confirmed set, treat EVERY push as a scheduler restart.
 
+## Standing alignment brief (user directive 2026-08-16 — EVERY session)
+The full brief lives in FRONTEND_SPEC.md ("STANDING BRIEF") — it
+replaces all one-off session notes and is read at session start; do
+not reopen closed items to be helpful. The push rules bind EVERY
+session, both tracks:
+1. No push, no deploy, no `git push` unless Edmund has JUST said to
+   AND is at the Railway dashboard. One-off approvals never carry over.
+2. If a step needs Edmund, ask BEFORE the action, in one exact
+   sentence: what to open, what "healthy" looks like, what to reply.
+   Never ask him to "check Railway" after the fact; never write as if
+   he already did something.
+3. Prefer the Railway CLI yourself; ping him only when the CLI cannot
+   answer.
+4. Local verifies: kill stale :8010/:3100 first; `/health` 200 is not
+   proof — hit `/board`.
+5. After any push, verify ON PROD; while a fix is local-only, say
+   "prod still has X". Recorded ≠ fixed — never claim a confirmation,
+   a user trip, or a closed ticket that didn't happen.
+6. Grok is review-only and never writes this repo; its worked examples
+   (ACM/SANM/INTU) illustrate rules, they are not tickets. Freeze
+   items (V3 #11/#12/#13, 35-vs-38) are Edmund's alone.
+
 ## Two tracks (user directive 2026-08-10)
 The platform is now TWO projects with a hard boundary:
 - METHODOLOGY track: pipeline/, scheduler, Streamlit ui/, scoring,

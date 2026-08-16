@@ -119,6 +119,73 @@ Companies and What Changed — they are not pages.
 - **Design language**: extend the report page's editorial style across the
   app (recommended) vs a fresh design pass first.
 
+## STANDING BRIEF (2026-08-16 — read FIRST, every session; replaces all
+## one-off session notes. Do not reopen closed items to be helpful.)
+
+Source: Grok review ↔ Claude build alignment, pasted by Edmund 16 Aug.
+Verbatim; later sessions may append dated updates below it, never edit
+it in place.
+
+### Roles
+- Claude: implement in this repo. Local commits. Pattern fixes, never
+  one-name patches. Stop when the brief says stop.
+- Grok: review only. Does not write this repo. ACM/SANM/INTU are worked
+  examples of a rule, not tickets.
+- Edmund: the only person who pushes, opens Railway, or decides
+  methodology freeze items (V3 #11, #12, #13, 35-vs-38). If a step
+  needs him, ask first, in one exact sentence, before doing it. Never
+  write as if he already did it.
+
+### Done — do not touch
+`/` is The Board. Four nav nouns. Assessor fully dark. Hold is silence.
+Street labeled. Mention-set + smallest-n. Quality = five FY + TTM,
+never a revenue road. Law 17 belt is thick enough (do not widen the
+regex). Since-date = first lot (27 Jul). Wrinkle 35-vs-38 stays
+visible, not diagnosed. Streamlit untouched. Laptop launchd plists
+stay disabled. Pre-Railway leftover files stay in the working tree.
+Pair page, Portfolio, product name: not this phase.
+
+### Live on production (already pushed)
+- Board, Forces, What changed, Track record, company pages.
+- GET /narratives/{id} + roster, scorecard is read-only, ARE
+  annual_history from fundamentals_annual.
+- Known prod lie, still up: force "on the board" includes names not on
+  /board (INTU, PCG, EIX on force 1).
+
+### Local only, not pushed (ahead of origin)
+- Shared `board_membership` / `_resolve_tier`. Force rosters intersect
+  that set. Off-board attached names get no call badge.
+- FRONTEND_SPEC + V3 #13 note.
+- These ride the NEXT push, and only when Edmund is at Railway and has
+  said "push".
+
+### Rules that keep getting missed
+1. No push, no deploy, no `git push`, unless Edmund has just said to,
+   and is at the Railway dashboard.
+2. Do not ask him to "check Railway" after the fact. If you need him,
+   ask before the action, one step: what to open, what "healthy" looks
+   like, what to reply.
+3. Prefer CLI yourself. Only ping him when the CLI cannot answer.
+4. Kill stale :8010/:3100 at the start of every local verify.
+   `/health` 200 is not proof. Hit `/board`.
+5. Verify on production after a push, and say "prod still has X" when
+   the fix is local only.
+6. Do not invent a Railway confirmation, a user trip, or a closed
+   ticket. If you only recorded a bug, say recorded, not fixed.
+7. Methodology files (pipeline/, scheduler, scoring) only when the
+   brief names that file. V3 items are logged, not decided here.
+
+### Right now
+- Nothing to code. Session is closed.
+- Proof still outstanding: the 06:00 UTC `scheduler_light` daily run.
+  If it fails, tell Edmund in one sentence. If it succeeds, record it
+  and stop. [Status 2026-08-16 03:40 UTC: run has NOT fired yet —
+  job armed for 06:00; outcome unrecorded, do not claim it.]
+- Next coding session (only when asked): push the membership fix with
+  Edmund present, then confirm ON PROD that force 1/11/40 on_board ⊆
+  /board and INTU/PCG/EIX have no call badge.
+- Do not start anything else.
+
 ## How to build (session discipline)
 
 These are rules, not suggestions. Sessions are disposable; this file is not.

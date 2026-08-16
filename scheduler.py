@@ -22,6 +22,8 @@ from datetime import datetime
 import yfinance as yf
 yf.set_tz_cache_location("/tmp/yf_tz_cache")  # avoid SQLite lock conflicts on wake from sleep
 
+from sqlalchemy import text
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 

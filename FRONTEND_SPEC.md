@@ -153,6 +153,14 @@ Pair page, Portfolio, product name: not this phase.
   /board (INTU, PCG, EIX on force 1).
 
 ### Local only, not pushed (ahead of origin)
+[CLOSED 2026-08-16 07:27 UTC — PUSHED with Edmund at the Railway
+dashboard, his explicit "push". Deploy gate clear (post-daily window).
+VERIFIED ON PROD 07:35 UTC: forces 1/11/40 — ghosts NONE, field
+mismatches vs /board NONE, off-board badges NONE, INTU/PCG/EIX not in
+any on_board. The prod lie is DOWN. Scheduler service restarted
+07:29:55, all three jobs re-armed (daily 08-17 06:00, after-close
+Mon–Fri, weekly 08-21 23:30). Note: /board carried 41 names after the
+morning run (SANM machinery-downgraded SB→Buy same run).]
 - Shared `board_membership` / `_resolve_tier`. Force rosters intersect
   that set. Off-board attached names get no call badge.
 - FRONTEND_SPEC + V3 #13 note.

@@ -541,6 +541,68 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       at the Railway dashboard; the batched api+web push carrying
       the scorecard write-on-read fix and GET /narratives/{id}).
 
+- [x] 2026-08-16 (deploy session): ROADMAP STEP 4 DONE — the batched
+      api/ + web/ push is LIVE on prod. Also two findings that outrank
+      the deploy, below.
+      - ARE PORT BUG actually FIXED this session (the audit session
+        had recorded it but never made the code change): annual_history
+        now reads canonical `fundamentals_annual` (fiscal_year AS
+        period_end). Verified: ARE renders six FY FCF-margin bars incl.
+        2021 at −300% below the baseline; fiscal triple (ACM/GDDY/EVR)
+        still passes — EVR's op-margin row now shows all five FYs
+        (legacy table's holes are gone).
+      - ZOMBIE LOCAL SCHEDULERS FOUND AND KILLED (user sign-off): TWO
+        launchd jobs on the Mac (com.finresearch.scheduler +
+        com.finews.scheduler, KeepAlive+RunAtLoad) were running the
+        LEGACY `scheduler.py` against the PRODUCTION DB — one for 5.7
+        days — firing the retired cron set (06:00 daily, 13:00 midday,
+        21:00, Sun 18:00) whenever the Mac was awake, and REPLAYING
+        slept-through runs on wake. Caught mid-write: on 2026-08-16
+        ~10:00 SGT one replayed a stale daily run and archived a
+        2026-08-16 board snapshot (45 on-board) 4h before Railway's
+        real daily. Both jobs bootout'd, plists renamed *.disabled in
+        ~/Library/LaunchAgents, zero scheduler processes remain, no
+        crontab. Possibly relevant to past data wrinkles (35-vs-41 NOT
+        diagnosed — out of scope per user).
+      - KEY CLARIFICATION: Railway's Procfile runs `scheduler_light.py`
+        — NOT `scheduler.py`, which is legacy and now runs NOWHERE.
+        Its step-3d NameError (sqlalchemy `text` never imported; every
+        local daily run's synopsis step failed) was fixed anyway
+        (one-line import) with user sign-off; Railway was never
+        affected (scheduler_light imports correctly). Whether to
+        DELETE scheduler.py + the untracked pre-Railway files
+        (AUTOMATION_SETUP.md, run_pipeline.py, plist, logs…) is a
+        methodology-track cleanup decision — not taken here.
+      - THE DEPLOY (02:5x UTC, gate clear, ~3h before the 06:00 slot,
+        user at the Railway dashboard): 15 commits, one batched push —
+        everything since f6ea01b incl. the scorecard write-on-read
+        fix, GET /narratives/{id} (+roster), the promoted routes, and
+        both fixes above. New api live after ~100s, web after ~2 min.
+        PROD SMOKE SWEEP PASSED: 828 dossiers, 0 hard failures, 0
+        null-heavy, law-17 5 expected strict hits / 0 gaps, expected
+        404s correct. Browser-verified on prod: `/` is The Board
+        (masthead, wrinkle sentence, Book vs SPY since 27 Jul),
+        /companies/ARE (fix live), /forces/9 (pulse, "What would
+        break it" — Forces' first time live, its api gate satisfied),
+        /changed (law-17 rewrite visible on SANM 3-lots; JBL zero-lot
+        untouched), /record (honesty paragraph, ACM −8.60% full
+        weight). First prod paint of `/` once showed unstyled column
+        (transient stream paint; fine on reload, css 200) — watch it.
+      - API_URL env on the web service: NOT set — web/lib/api.ts
+        defaults to the prod api URL, which is correct in prod; the
+        env exists for local dev (decision recorded, step-4 item
+        closed).
+      - Watch-path isolation STILL UNPROVEN (this push touched
+        scheduler paths by design). The proof push (pure web/**, quiet
+        day, dashboard check) remains TODO.
+      - Sweep hardened: a failed /board fetch now reports instead of
+        crashing the script.
+      - STILL OPEN from step 2: loading/error/404 states, mobile pass,
+        retiring the /home alias (route still answers).
+      NEXT: roadmap item 5 — each its own session: Pair page (still
+      BLOCKED on methodology data), Portfolio + auth, full review pass
+      vs DESIGN_BRIEF.md, product name. Plus the isolation-proof push.
+
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 
 The product's page architecture is now the mock suite: home (Board) ·
@@ -706,7 +768,9 @@ both concur — these BLOCK step 2):**
      edition masthead.board=35 vs 41 snapshot rows with a call (the
      wrinkle stays visible either way; the WHY belongs to the
      methodology track).
-4. **Deploy** (user present): one batched api/ + web/ push in a clean
+4. **Deploy** — DONE 2026-08-16, see the deploy-session Progress
+   entry (prod smoke passed; isolation proof still pending):
+   (user present): one batched api/ + web/ push in a clean
    deploy-gate window — touches scheduler watch paths, so full gate
    rules; user watches Railway dashboard. Set API_URL env on the web
    service. Prod smoke test (the step-3 script against prod). The

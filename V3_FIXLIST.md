@@ -246,3 +246,14 @@ fixed.
     (2026-08-10 fix) but coverage/top-story/other sections can still
     claim no position. Extend the position field to every section's
     facts so the UI regex becomes a belt, not the brakes.
+
+13. **Corridor holds vs the board's raw-floor guard (found via the
+    roster fix, 2026-08-16).** /board applies "an assessor verdict
+    counts only while the raw score clears the Watch floor" (Aug 10
+    rule); the materiality corridor (Aug 15) stamps holds whose raw
+    score can sit BELOW that floor — the guard silently discards them
+    (INTU: held Buy in the DB, absent from /board). Two rules written
+    five days apart disagree about who wins at the bottom of the
+    board. Decide precedence deliberately (freeze ritual — it changes
+    board membership); until then the guard wins and holds below the
+    floor are display-dead.

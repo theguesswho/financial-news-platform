@@ -314,11 +314,13 @@ def _links(conn, ids):
         LEFT JOIN fundamentals f ON f.symbol = ne.symbol
         WHERE ne.narrative_id = ANY(:ids)
     """), {"ids": list(ids)}).fetchall()
-    snap = {r[0]: r[1:] for r in conn.execute(text("""
-        SELECT symbol, COALESCE(assessed_tier, tier), gem_score
-        FROM leaderboard_history
-        WHERE date = (SELECT MAX(date) FROM leaderboard_history)
-    """)).fetchall()}
+    # Board membership comes from THE shared resolver (external review
+    # 2026-08-16): "on the board" on a force page means exactly what
+    # /board shows — same merge, same guard, same fields. A bare
+    # COALESCE here put INTU/PCG/EIX "on the board" while /board
+    # excluded them.
+    from api.routers.board import board_membership
+    snap = board_membership(conn)
     return rows, snap
 
 
@@ -341,12 +343,14 @@ def _roster(rows, snap, sub):
 
     on_board, off_board = [], []
     for sym, (ex, direction, company) in best.items():
-        tier, score = snap.get(sym, (None, None))
+        m = snap.get(sym)   # shared board membership: {'tier','score'} 10-pt
         row = {
             "symbol": sym, "company": company, "exposure": ex,
-            "direction": direction, "tier": tier, "score": ten(score),
+            "direction": direction,
+            "tier": m["tier"] if m else None,
+            "score": m["score"] if m else None,
         }
-        (on_board if tier else off_board).append(row)
+        (on_board if m else off_board).append(row)
     on_board.sort(key=lambda r: -(r["score"] or 0))
     off_board.sort(key=lambda r: -(r["exposure"] or 0))
     return {

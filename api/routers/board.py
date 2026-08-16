@@ -31,6 +31,53 @@ def _load_rows(conn):
     """)).fetchall()
 
 
+def _resolve_tier(row, qual, overrides):
+    """THE single definition of a symbol's final tier + display score.
+    Extracted 2026-08-16 (external review): the force-page roster was
+    classifying on-board membership with a bare COALESCE while this
+    merge (override -> qual-with-raw-floor-guard -> raw) is what /board
+    actually shows — INTU/PCG/EIX appeared 'on the board' on force
+    pages while absent from /board. Any surface that says 'on the
+    board' derives it from THIS function, never from a parallel query."""
+    (sym, gem, ns, vs, qs, gs, promoted, gem_adj, assessed_tier,
+     raw_board_tier, final_rank) = row
+    gem = float(gem)
+    raw_tier = tier_for(gem)
+    q = qual.get(sym)
+    ov = overrides.get(sym) if promoted else None
+    if ov and assessed_tier in ("Strong Buy", "Buy", "Watch"):
+        tier = assessed_tier
+        display = float(gem_adj) if gem_adj is not None else gem
+    elif q and raw_tier:
+        tier = q[1] if q[1] in ("Strong Buy", "Buy", "Watch") else None
+        display = gem
+    else:
+        tier = raw_tier
+        display = gem
+    return tier, display, raw_tier
+
+
+def board_membership(conn) -> dict:
+    """{symbol: {'tier','score'}} for every symbol /board would show as
+    ON the board — the shared membership set for rosters and any other
+    surface. Same rows, same qual, same overrides, same resolution."""
+    rows = _load_rows(conn)
+    qual = {r[0]: r for r in conn.execute(text("""
+        SELECT symbol, adjusted_tier, direction, rationale,
+               key_bull, key_bear, assessed_at
+        FROM qual_assessments""")).fetchall()}
+    overrides = {r[0]: r for r in conn.execute(text("""
+        SELECT symbol, narrative_raw, narrative_adjusted, rationale,
+               evidence, key_bull, key_bear
+        FROM narrative_overrides WHERE promoted""")).fetchall()}
+    out = {}
+    for row in rows:
+        tier, display, _ = _resolve_tier(row, qual, overrides)
+        if tier:
+            out[row[0]] = {"tier": tier, "score": ten(display)}
+    return out
+
+
 @router.get("/board")
 def get_board():
     engine = get_engine()
@@ -70,13 +117,14 @@ def get_board():
         """)).fetchall()}
 
     stocks = []
-    for (sym, gem, ns, vs, qs, gs, promoted, gem_adj, assessed_tier,
-         raw_board_tier, final_rank) in rows:
+    for row in rows:
+        (sym, gem, ns, vs, qs, gs, promoted, gem_adj, assessed_tier,
+         raw_board_tier, final_rank) = row
         gem = float(gem)
-        raw_tier = tier_for(gem)
         q = qual.get(sym)
         ov = overrides.get(sym) if promoted else None
-        display_score = gem
+        # Tier + display score come from the ONE shared resolver.
+        _tier, display_score, raw_tier = _resolve_tier(row, qual, overrides)
         entry = {
             "symbol": sym,
             "company": companies.get(sym),
@@ -92,23 +140,19 @@ def get_board():
             "qual_promoted": False,
             "buffett": buffett.get(sym),
         }
+        # Tier and display score are already resolved by _resolve_tier —
+        # this block only attaches the decoration (assessed flags,
+        # rationale, override detail) for whichever branch applied.
+        entry["tier"] = _tier
         if ov and assessed_tier in ("Strong Buy", "Buy", "Watch"):
-            # Narrative-override promotion — adjusted score drives display,
-            # raw score stays visible.
             entry.update(
-                tier=assessed_tier, assessed=True, qual_promoted=True,
+                assessed=True, qual_promoted=True,
                 direction="promoted", rationale=ov[3], key_bull=ov[5],
                 key_bear=ov[6], evidence=ov[4],
                 narrative_raw=ten(ov[1]), narrative_adjusted=ten(ov[2]))
-            display_score = float(gem_adj) if gem_adj is not None else gem
         elif q and raw_tier:
-            # Qual verdict applies only while the raw score still clears the
-            # Watch floor; assessor's 'None' string = off board.
-            adj = q[1] if q[1] in ("Strong Buy", "Buy", "Watch") else None
-            entry.update(tier=adj, assessed=True, direction=q[2],
+            entry.update(assessed=True, direction=q[2],
                          rationale=q[3], key_bull=q[4], key_bear=q[5])
-        else:
-            entry["tier"] = raw_tier
         # Disagreement computed from DATA, not the model's self-reported
         # direction (LHX 2026-08-03).
         t = entry["tier"]

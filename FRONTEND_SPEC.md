@@ -603,6 +603,31 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       BLOCKED on methodology data), Portfolio + auth, full review pass
       vs DESIGN_BRIEF.md, product name. Plus the isolation-proof push.
 
+- [x] 2026-08-16 (roster-definition session, external review directive;
+      LOCAL ONLY, not pushed): **"on the board" now has ONE definition.**
+      The force-page roster classified membership with a bare
+      COALESCE(assessed_tier, tier) while /board's merge (override →
+      qual-with-raw-floor-guard → raw) is what readers see — so
+      INTU/PCG/EIX showed "on the board" on force pages while absent
+      from /board, INTU wearing "Buy" at a Watch-range score. Fix is
+      the pattern, not the names: board.py now has `_resolve_tier`
+      (THE single tier+score resolver — get_board itself uses it, so
+      the definitions cannot drift) and `board_membership(conn)`
+      (the shared set); the roster's snap IS that set; off-board
+      attached names carry NO tier/score badge. VERIFIED on three
+      forces (big: 1 AI Infrastructure — 28 on board, ghosts gone to
+      off-board; mid: 11 Data Centre REIT — 16; risk: 40 IT Services
+      Federal — 6): every on_board symbol ∈ /board's 38, every
+      tier/score field-identical to /board, zero off-board badges.
+      Session gotcha confirmed AGAIN: a stale api server on :8010
+      from a prior session served old code and faked a failed verify —
+      kill ports before trusting a localhost check.
+      METHODOLOGY OBSERVATION handed over (V3 #13): the board's
+      raw-floor guard silently drops corridor-held tiers whose raw
+      score sits below the Watch floor (that is WHY INTU's held Buy
+      exists in the DB but not on /board) — corridor-vs-guard
+      precedence needs a deliberate decision, not this session's.
+
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 
 The product's page architecture is now the mock suite: home (Board) ·

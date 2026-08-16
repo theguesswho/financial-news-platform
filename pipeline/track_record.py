@@ -273,9 +273,12 @@ def get_scorecard(engine, era: str = ERA, as_of=None) -> dict:
     as_of (date) marks lots at that session's closes instead of the newest
     prices — regenerated editions must keep their own day's scoreboard,
     not absorb regeneration-day marks (the 8.7% confusion, 2026-08-11).
-    Lots opened after as_of are excluded; exits after as_of count as open."""
-    if as_of is None:
-        _ensure_benchmark_prices(engine)
+    Lots opened after as_of are excluded; exits after as_of count as open.
+    READ-ONLY (2026-08-16): this is served by GET /board/scorecard — it
+    must never write. SPY benchmark freshness is the scheduler's job
+    (_ensure_benchmark_prices in the daily/after-close price steps); a
+    read endpoint that upserts eod_prices 500s mid-sweep and would write
+    production on every Track-record pageview."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             WITH latest AS (

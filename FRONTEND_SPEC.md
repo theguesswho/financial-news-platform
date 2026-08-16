@@ -570,6 +570,40 @@ both concur — these BLOCK step 2):**
    — ALL THREE DONE 2026-08-16, see the step-3 Progress entry; the
    unstarred bullets below (Streamlit cross-check, honesty audit,
    discrepancy traces) remain open:
+   **NEXT SESSION BRIEF (external review 2026-08-16 — LOCAL ONLY, no
+   push, no deploy; the three musts are accepted as done, do not
+   reopen them). Scope to the two open items, then STOP:**
+   (a) **Streamlit cross-check** (same DB): sample must include a
+       top-rank name, a grace-seat/off-board name, and a null-heavy
+       name; product and Streamlit must show the SAME numbers; any
+       mismatch is a PORT BUG, not a one-ticker fix; do not change
+       Streamlit.
+   (b) **Per-page honesty audit vs the 19 laws**: The Board, What
+       changed (EVERY archived edition date), Track record, one
+       force page, three company pages (Sep-YE / calendar-YE /
+       null-TTM). Confirm: no unsourced number; nulls omitted not
+       dashed; mention-set labeled; hold silent; assessor fully
+       dark; TODAY's count equals TODAY's cards; one clock;
+       since-date = min(scorecard.lots[].lot_date); 35-vs-41
+       wrinkle visible.
+   OUT OF SCOPE for that session (external review, binding): do NOT
+   widen the law-17 regex again — a missed phrasing gets RECORDED
+   here and left (V3 #12 is the durable fix); do NOT diagnose
+   35-vs-41 (the why is methodology's); do NOT touch
+   pipeline/daily_report.py; do NOT promote or push Forces
+   (GET /narratives/{id} still local). End of session: record the
+   Streamlit sample results + audit findings here, commit locally,
+   do not push, do not start step 4.
+   **SCORECARD WRITE-ON-READ: FIXED 2026-08-16, methodology track,
+   same day it was reported (the ENS rule — agreed fixes get built,
+   not logged).** GET /board/scorecard was upserting eod_prices via
+   _ensure_benchmark_prices on every call — it 500'd mid-sweep and
+   would have written production on every Track-record pageview.
+   get_scorecard is now PURE READ (verified: no fetch, no write,
+   ~0.9s warm); SPY benchmark freshness moved into the scheduler's
+   price steps (daily step 1 AND after-close step 1). Committed
+   locally; MUST ride the step-4 batched push — step 4 stays blocked
+   until this deploys.
    - the 828 sweep PLUS a law-17 honesty pass over EVERY edition date
      in the archive — the reconciliation regex will fail on phrasings
      it hasn't seen; any miss gets a GENERAL pattern fix, never a

@@ -403,6 +403,13 @@ def daily_data_update():
         r = fetch_prices(s, symbols, days=2)
         s.close()
         _ok(f"{r.get('added', 0)} price records added")
+        # SPY benchmark freshness (moved out of get_scorecard 2026-08-16
+        # — read endpoints must never write; see after-close step 1).
+        from pipeline.track_record import _ensure_benchmark_prices
+        from pipeline.hidden_gem_scorer import get_engine as _ge1s
+        _e1s = _ge1s()
+        _ensure_benchmark_prices(_e1s)
+        _e1s.dispose()
     except Exception as e:
         _err("Prices failed", e)
 
@@ -742,6 +749,14 @@ def after_close_refresh():
         r = fetch_prices(s, symbols, days=2)
         s.close()
         _ok(f"{r.get('added', 0)} price records added")
+        # SPY benchmark freshness lives HERE now, not in get_scorecard —
+        # a read endpoint must never write (scorecard-on-read 500'd the
+        # 828 sweep and would upsert prod on every pageview, 2026-08-16).
+        from pipeline.track_record import _ensure_benchmark_prices
+        from pipeline.hidden_gem_scorer import get_engine as _ge1b
+        _e1b = _ge1b()
+        _ensure_benchmark_prices(_e1b)
+        _e1b.dispose()
     except Exception as e:
         _err("Prices failed", e)
 

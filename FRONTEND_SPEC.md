@@ -643,6 +643,19 @@ both concur — these BLOCK step 2):**
        name; product and Streamlit must show the SAME numbers; any
        mismatch is a PORT BUG, not a one-ticker fix; do not change
        Streamlit.
+       **PRE-FOUND PORT BUG (user caught it on ARE, 2026-08-16; root
+       cause verified — fix it as part of this item):** the API's
+       `annual_history` reads LEGACY `fundamentals_history`, where
+       fcf is NULL in 799/3,933 annual rows (ARE: all years) and roic
+       values DIFFER from canonical (ARE 2025: −5.1% legacy vs −3.7%
+       canonical) — the durability road was lawfully omitting bars
+       fed from a holey, differently-defined table. FIX: switch the
+       annual_history query (api/routers/stocks.py ~line 70) to
+       canonical `fundamentals_annual` (fiscal_year AS period_end;
+       same column shape). VERIFY: ARE renders six FY FCF-margin bars
+       including 2021 NEGATIVE below the baseline; the fiscal triple
+       still passes; cross-check numbers then match Streamlit by
+       construction (both canonical).
    (b) **Per-page honesty audit vs the 19 laws**: The Board, What
        changed (EVERY archived edition date), Track record, one
        force page, three company pages (Sep-YE / calendar-YE /

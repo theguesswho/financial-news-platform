@@ -480,6 +480,67 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
         API_URL=http://localhost:8010 (web MUST get that env or it
         silently reads prod).
 
+- [x] 2026-08-16 (audit session): THE TWO OPEN STEP-3 ITEMS DONE — local
+      only, nothing deployed, nothing pushed. Both items from the
+      next-session brief are complete; step 3 is now FULLY done and
+      step 4 (deploy, user present) is the next session.
+      - (a) STREAMLIT CROSS-CHECK — PASSED, ZERO MISMATCHES. Same DB,
+        local pair (api :8010 / web :3100) vs the running lab bench
+        (:8601). Sample per the brief: ACM (top rank), MLI (off-board;
+        no grace seats existed on the 2026-08-15 board, so off-board
+        fills that slot), EVR (null-TTM fcf_margin). Verified equal at
+        all three levels: board rows (score, tier, all four components
+        — fmt10(raw leaderboard_history values) reproduces the API
+        numbers exactly: ACM 0.5186→5.2, EVR 0.3810→3.8, MLI
+        0.3376→3.4), header counts (3/30/8/41/0/828 both sides),
+        scorecard (+3.28% vs +1.80%, 36/59, 56 open · 3 closed,
+        $5,900, first lot Jul 27 — identical), and full dossiers
+        (Stock Detail vs /stocks/{sym}: every fundamentals field,
+        latest-call date/strength/tone/trajectory, valuation gaps
+        incl. Defence 0.72·63 peers 9.8x-vs-22.6x). No port bugs.
+        Lab-bench observations (NOT touched, methodology track's to
+        take or leave): the sidebar checkbox label "Show full
+        universe (all 498)" is a HARDCODED stale string (data is
+        828); Stock Detail renders EVR's null fcf_margin as an
+        em-dash (allowed on the lab bench; the product omits it).
+      - (b) HONESTY AUDIT vs the 19 laws — ALL PASS, zero violations.
+        Home: since 27 Jul (derived; July 23 nowhere), wrinkle
+        sentence "the edition counts 35; 41 carry a call" visible,
+        no Assessor column/badges/direction words (the one "upgrade"
+        string on the page is inside an edition story body about
+        utility rate cases — prose, not chrome), hold fully silent,
+        both clocks stamped (board 2026-08-15 · edition 14 Aug),
+        TODAY = 3 cards + "all 10 moves" where 10 = masthead.changes
+        (sourced), Moved column silent for unmoved rows, no rank
+        ticks. What changed: ALL 8 archived editions audited; law-17
+        reconciliation verified on the two stored open-lot claims
+        (ENS 2026-08-12 "We do not hold a position." → "The book
+        holds 1 open $100 lot"; SANM 2026-08-09 "Not currently
+        held." → 3 lots) and all zero-lot claims left verbatim;
+        fixPlurals renders "11 entries"/"3 entries" on the two
+        stored-typo dates (08-09, 08-07); no Assessor anywhere.
+        Track record: first lot 2026-07-27 printed, honesty
+        paragraph above the numbers, aggregated per-name rows,
+        losses at full weight (ACM −8.60% plain), 56 open · 3 closed
+        from the scorecard (masthead.closed=16 not used). Forces:
+        checked 9 (Defence) + 40 (risk force) — no momentum word,
+        backfill acknowledged never drawn, "too short to read as a
+        trend" note at 2 observed weeks, "What would break it"
+        present, headwind labels + "not a candidate list" flip on
+        the risk force. Companies (fiscal triple): durability road
+        FY…TTM on all three; EVR null bars omitted (empty slots, no
+        dashes); mention-set label exactly on n≥100 sets (ACM 120,
+        137) and absent on smaller (63, 43); hero gap = smallest-n
+        set (ACM: 63-peer Defence); Street labeled; "board
+        neighbours" control; no ng_score, no Said rail, no judgment
+        badges; BandStrip gets fixedDomain=TIER_DOMAIN in
+        companies/[symbol]/page.tsx.
+      Out-of-scope items honored: law-17 regex untouched, 35-vs-41
+      not diagnosed, pipeline/daily_report.py untouched, Forces not
+      promoted/pushed. NEXT SESSION = ROADMAP STEP 4 (deploy, user
+      at the Railway dashboard; the batched api+web push carrying
+      the scorecard write-on-read fix and GET /narratives/{id}).
+
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 
 The product's page architecture is now the mock suite: home (Board) ·
@@ -570,7 +631,11 @@ both concur — these BLOCK step 2):**
    — ALL THREE DONE 2026-08-16, see the step-3 Progress entry; the
    unstarred bullets below (Streamlit cross-check, honesty audit,
    discrepancy traces) remain open:
-   **NEXT SESSION BRIEF (external review 2026-08-16 — LOCAL ONLY, no
+   **NEXT SESSION BRIEF — COMPLETED 2026-08-16 (audit session): both
+   items done, all pass, zero mismatches / zero law violations — see
+   the 2026-08-16 audit-session Progress entry. Step 3 is FULLY done;
+   next session is step 4. (Brief kept below for history.)**
+   **(external review 2026-08-16 — LOCAL ONLY, no
    push, no deploy; the three musts are accepted as done, do not
    reopen them). Scope to the two open items, then STOP:**
    (a) **Streamlit cross-check** (same DB): sample must include a

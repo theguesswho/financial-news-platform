@@ -431,6 +431,55 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       verify-triple ACM (Sep-YE) / GDDY (calendar-YE) / EVR (null-TTM
       fcf_margin — cells omitted, no dashes) all render FY | TTM.
 
+- [~] 2026-08-16 (step-3 session): THE THREE MUSTS DONE. Local only —
+      NOTHING deployed, prod api/web untouched, Forces still gated on
+      the batched push.
+      - SWEEP: `scripts/product_smoke_sweep.py` is now the permanent
+        pre-deploy smoke test (run against local :8010 this session;
+        step 4 runs it against prod). Covers /board, /board/scorecard,
+        /narratives(+landing), /narratives/{id}+roster for ALL ids,
+        /reports/{date} for ALL dates, /stocks/{symbol} for the full
+        universe (828), expected-404 checks, empty-payload and
+        null-heavy (>60%) detection — AND the law-17 pass (broad
+        negation×position net vs the strict UI regex). Result: zero
+        hard failures, zero null-heavy dossiers.
+      - LAW-17 all-editions pass: ONE miss found — "Not currently
+        held." (2026-08-09, SANM, book holds 3 lots). Fixed with a
+        GENERAL pattern (not/currently/presently + held/owned family)
+        in web/lib/api.ts NO_POSITION_CLAIM, mirrored verbatim in the
+        sweep's STRICT. While generalizing, two FALSE-POSITIVE traps
+        were found and guarded: "has not held up/steady/the gains"
+        (market prose) and bare "we don't have ..." (now requires a
+        position noun). Verified: all 20 strict matches across all 8
+        editions are genuine no-position sentences; open-lot ones
+        rewrite, zero-lot ones untouched; broad-net gaps now 0; 12
+        unit cases incl. traps pass. Also fixed the splice losing its
+        leading space ("dominated.The book…") — reconcileWithBook now
+        pads + collapses doubles.
+      - "11 entrys" in the /changed kicker: pipeline pluralizes kinds
+        with a bare "s" (pipeline/daily_report.py — methodology track,
+        NOT touched; archive rows store the misspelling anyway). Fixed
+        display-side with a general orthography rule, lib/api.ts
+        fixPlurals (consonant+"ys"→"ies"; "buys"/"days" untouched).
+      - FISCAL TRIPLE re-verified at session end in the browser:
+        ACM (Sep-YE) and GDDY (calendar-YE) render FY22–FY25 + TTM on
+        all three metrics; EVR renders null cells as omitted bars, no
+        dashes (op. margin 1 value, FCF margin 4 + empty TTM slot).
+      - tsc clean, `next build` clean, all 9 routes present.
+      Gotchas for next session:
+      - /board/scorecard triggers an eod_prices INSERT (SPY upsert via
+        pipeline.track_record) — a READ endpoint doing a WRITE on
+        every call; the remote PG dropped a connection mid-sweep once
+        (500, retry fine). Both point at the cache-by-cadence item.
+      - Step-3 bullets NOT in the three musts remain OPEN: Streamlit
+        cross-check sample, per-page honesty audit, and the two
+        discrepancy traces (masthead "since July 23" vs first lot
+        Jul 27; masthead.board=35 vs 41 with a call). Do these before
+        step 4.
+      - Dev pair this session: api :8010, web :3100 with
+        API_URL=http://localhost:8010 (web MUST get that env or it
+        silently reads prod).
+
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 
 The product's page architecture is now the mock suite: home (Board) ·
@@ -517,7 +566,10 @@ both concur — these BLOCK step 2):**
      with the web push (same batched-push rule as Phase 2b).
 3. **Data-accuracy pass** (before any deploy):
    THREE MUSTS for this session (2026-08-16, Grok + Claude concur —
-   do not skip, do not add anything else to the session):
+   do not skip, do not add anything else to the session)
+   — ALL THREE DONE 2026-08-16, see the step-3 Progress entry; the
+   unstarred bullets below (Streamlit cross-check, honesty audit,
+   discrepancy traces) remain open:
    - the 828 sweep PLUS a law-17 honesty pass over EVERY edition date
      in the archive — the reconciliation regex will fail on phrasings
      it hasn't seen; any miss gets a GENERAL pattern fix, never a

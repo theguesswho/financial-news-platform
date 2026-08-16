@@ -7,6 +7,7 @@ import {
   getReport,
   getReportLatest,
   getScorecard,
+  fixPlurals,
   openLotCounts,
   reconcileWithBook,
 } from "@/lib/api";
@@ -92,7 +93,7 @@ export default async function ChangedMock({
       <main className="mx-auto max-w-[900px] px-6 py-8">
         <div className="kicker">
           {niceDate} · {m.changes} moves
-          {m.changes_breakdown && <> · {m.changes_breakdown}</>}
+          {m.changes_breakdown && <> · {fixPlurals(m.changes_breakdown)}</>}
         </div>
         <h1 className="mb-2 border-b-2 border-ink pb-3 text-[28px] font-bold tracking-tight">
           What changed

@@ -297,12 +297,20 @@ export function openLotCounts(sc: Scorecard): Record<string, number> {
  * hold nothing is replaced with the open-lot fact. Applies to every
  * symbol, every edition — no special-casing. */
 const NO_POSITION_CLAIM =
-  /[^.!?]*\b(?:we\s+(?:do\s*not|don'?t)\s+(?:hold|own|have)|(?:holds?|holding|have|has)\s+no\s+position|no\s+position\s+(?:is\s+)?held|not\s+a\s+(?:current\s+)?(?:position|holding))\b[^.!?]*[.!?]\s*/i;
+  /[^.!?]*\b(?:we\s+(?:do\s*not|don'?t)\s+(?:hold|own)\b(?!\s+(?:up|back|off|out|on)\b)|we\s+(?:do\s*not|don'?t)\s+have\s+(?:a\s+|any\s+)?(?:position|stake|holding|exposure|shares)|(?:holds?|holding|have|has)\s+no\s+(?:position|stake|holding)|no\s+position\s+(?:is\s+)?held|not\s+(?:a\s+(?:current\s+)?(?:position|holding)\b|(?:currently\s+|presently\s+)?(?:held|owned)\b(?!\s+(?:up|back|off|out|on|down|steady|firm|together|the|a|an|any|much|its|their|his|her)\b)))[^.!?]*[.!?]\s*/i;
+
+/** The pipeline pluralizes move kinds by appending "s", which misspells
+ * consonant-y words ("11 entrys"). The stored editions already carry the
+ * misspelling, so repair it at display time — general orthography rule
+ * (consonant + "ys" → "ies"), not a per-word patch. "buys"/"days"
+ * (vowel + y) are already correct and untouched. */
+export const fixPlurals = (text: string) =>
+  text.replace(/\b(\w*[bcdfghjklmnpqrstvwxz])ys\b/gi, "$1ies");
 
 export function reconcileWithBook(text: string, openLots: number): string {
   if (openLots <= 0 || !NO_POSITION_CLAIM.test(text)) return text;
-  const fact = `The book holds ${openLots} open $100 lot${openLots === 1 ? "" : "s"} in this name. `;
-  return text.replace(NO_POSITION_CLAIM, fact).trim();
+  const fact = ` The book holds ${openLots} open $100 lot${openLots === 1 ? "" : "s"} in this name. `;
+  return text.replace(NO_POSITION_CLAIM, fact).replace(/ {2,}/g, " ").trim();
 }
 
 export type RosterRow = {

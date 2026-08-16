@@ -68,11 +68,11 @@ def get_stock(symbol: str):
 
         # The 10y road: annual rows for the triptych's history pane
         annuals = _rows(conn, """
-            SELECT period_end, revenue, gross_margin, op_margin, net_margin,
-                   fcf, roic
-            FROM fundamentals_history
-            WHERE symbol = :s AND period_type = 'A'
-            ORDER BY period_end DESC LIMIT 10""", s=symbol)
+            SELECT fiscal_year AS period_end, revenue, gross_margin,
+                   op_margin, net_margin, fcf, roic
+            FROM fundamentals_annual
+            WHERE symbol = :s
+            ORDER BY fiscal_year DESC LIMIT 10""", s=symbol)
 
         # Score + band history — every date carries the FINAL tier, so the
         # band-transition memory rule is satisfiable from this one series.

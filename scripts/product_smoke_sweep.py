@@ -99,7 +99,7 @@ t0 = time.time()
 # ---------- 1. core endpoints ----------
 st, board = get("/board")
 check("/board", st, board)
-symbols = [r["symbol"] for r in board.get("board", []) + board.get("off_board", [])] if board else []
+symbols = [r["symbol"] for r in board.get("board", []) + board.get("off_board", [])] if isinstance(board, dict) else []
 print(f"/board ok — universe {len(symbols)}")
 
 st, scorecard = get("/board/scorecard")

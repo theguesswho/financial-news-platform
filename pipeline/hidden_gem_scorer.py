@@ -636,10 +636,19 @@ def compute_gap_score(engine) -> dict:
             auto_adjust=True,
             progress=False,
         )
-        if not spy_raw.empty and len(spy_raw) >= 2:
-            spy_6m = float(spy_raw["Close"].iloc[-1]) / float(spy_raw["Close"].iloc[0]) - 1
+        if not spy_raw.empty:
+            spy_close = spy_raw["Close"]
+            if spy_close.ndim > 1:  # yfinance MultiIndex columns → single column
+                spy_close = spy_close.iloc[:, 0]
+            spy_close = spy_close.dropna()  # a NaN close must not poison the return
+            if not spy_close.empty and len(spy_close) >= 2:
+                spy_6m = float(spy_close.iloc[-1]) / float(spy_close.iloc[0]) - 1
     except Exception:
         pass
+
+    # Non-finite benchmark → force the DB-median fallback (NaN is not None)
+    if spy_6m is not None and not np.isfinite(spy_6m):
+        spy_6m = None
 
     # Fallback: median 6m return across universe if yfinance unavailable
     if spy_6m is None:
@@ -740,7 +749,10 @@ def compute_gap_score(engine) -> dict:
         if p_now and p_6m and float(p_6m) > 0:
             stock_6m = float(p_now) / float(p_6m) - 1
             lag      = spy_6m - stock_6m          # positive = lagged SPY
-            price_lag[sym] = float(np.clip((lag + 0.30) / 0.60, 0.0, 1.0))
+            entry    = float(np.clip((lag + 0.30) / 0.60, 0.0, 1.0))
+            if not np.isfinite(entry):            # belt: never store a non-finite lag
+                continue
+            price_lag[sym] = entry
 
     # ── Component 2: multiple inertia (30%) ───────────────────────────────────
     # Fundamentals improving but PE unchanged/compressed = market not rewarding it.

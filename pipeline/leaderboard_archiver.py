@@ -9,11 +9,46 @@ Table: leaderboard_history
 
 Run automatically from the daily scheduler (Step 5b).
 """
+import math
+
 from datetime import date, timedelta
 from dotenv import load_dotenv
 from sqlalchemy import text
 
 load_dotenv(override=True)
+
+
+class SnapshotSanityError(RuntimeError):
+    """Raised when a snapshot fails the pre-archive sanity gate.
+
+    Deliberately uncaught in the scheduler path: the step must FAIL visibly,
+    leaving the previous day's snapshot as the latest (incident 2026-08-18)."""
+
+
+_GATE_SCORE_FIELDS = ("gem_score", "narrative_score", "value_score",
+                      "quality_score", "gap_score", "priced_in", "ng_score")
+
+
+def check_snapshot_sane(rows, on_board_count, prev_board_count):
+    """Pre-archive sanity gate. Refuses (raises SnapshotSanityError) if any
+    scored component is non-finite, or the board emptied while yesterday's
+    board was populated. No auto-repair, no silent fallback — fail loud,
+    keep yesterday."""
+    for r in rows:
+        for k in _GATE_SCORE_FIELDS:
+            v = r.get(k)
+            if v is not None and not math.isfinite(float(v)):
+                raise SnapshotSanityError(
+                    f"pre-archive gate REFUSED snapshot for {r['date']}: "
+                    f"non-finite {k}={v} on symbol {r['symbol']} — "
+                    f"nothing written, previous snapshot remains latest"
+                )
+    if on_board_count == 0 and prev_board_count > 0:
+        raise SnapshotSanityError(
+            f"pre-archive gate REFUSED snapshot: on-board count is 0 while "
+            f"previous snapshot had {prev_board_count} names on board — "
+            f"nothing written, previous snapshot remains latest"
+        )
 
 
 def create_table(engine):
@@ -124,6 +159,10 @@ def archive_leaderboard(engine, gems=None) -> dict:
                 "priced_in":       g.get("priced_in"),
                 "ng_score":        g.get("ng_score"),
             })
+
+    # Pre-archive sanity gate (incident 2026-08-18): raises SnapshotSanityError
+    # so the scheduler step fails visibly instead of archiving garbage.
+    check_snapshot_sane(rows, len(on_board), len(_prev_board))
 
     upsert = text("""
         INSERT INTO leaderboard_history

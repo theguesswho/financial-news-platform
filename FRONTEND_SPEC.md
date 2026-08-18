@@ -202,6 +202,32 @@ morning run (SANM machinery-downgraded SB→Buy same run).]
   /board and INTU/PCG/EIX have no call badge.
 - Do not start anything else.
 
+### Dated updates (append-only)
+- 2026-08-18: membership fix PUSHED (Edmund at dashboard, explicit
+  "push") and CONFIRMED ON PROD same day — forces 1/11/40 clean,
+  trio unbadged. That "next coding session" item is CLOSED.
+- 2026-08-18 INCIDENT: NaN-poisoned board snapshot took prod /board
+  down. Fix session is governed by INCIDENT_2026-08-18_NAN_BOARD.md
+  (its own opener sentence, hard 21:30 UTC checkpoint). Nothing else
+  runs until it closes.
+- 2026-08-18 DECISION (Edmund, verbatim intent): score-driven and
+  assessor-driven board moves are EQUALLY valid news — "it doesn't
+  matter if it's a pure score putting something on the board or the
+  assessor". The report writer currently classes stamp-only tier
+  changes as "bookkeeping" (one ledger line; DVA 08-17 got this while
+  FDS got the top story). FIX, ASSIGNED to the first session after the
+  incident session closes: in pipeline/daily_report.py, any move that
+  CHANGES BOARD MEMBERSHIP OR TIER is a real move regardless of
+  driver; "bookkeeping" shrinks to stamp changes with NO tier
+  consequence. _significance may rank assessor-driven entries; it may
+  not bury them. While unfixed: the product under-reports
+  assessor-driven moves — treat What-changed as incomplete.
+- 2026-08-18 V3 #14 logged: report masthead counted board=36 while
+  /board showed 41 the same morning — a THIRD membership definition
+  on the report path (pipeline/daily_report.py _masthead). Same
+  disease the roster fix cured; belongs to the board_membership
+  pattern. Logged in V3_FIXLIST, not decided here.
+
 ## How to build (session discipline)
 
 These are rules, not suggestions. Sessions are disposable; this file is not.

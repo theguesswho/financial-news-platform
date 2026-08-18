@@ -257,3 +257,13 @@ fixed.
     board. Decide precedence deliberately (freeze ritual — it changes
     board membership); until then the guard wins and holds below the
     floor are display-dead.
+
+14. **Report masthead has its own board-membership definition (found
+    2026-08-18 during the NaN incident).** daily_report._masthead
+    counted board=36 the same morning /board showed 41. Third parallel
+    definition of "on the board" (force rosters were the second —
+    fixed 2026-08-16 via board_membership). Fix is the same pattern:
+    the report generator derives membership/counts from the shared
+    resolver, never its own query. Do alongside the daily_report
+    bookkeeping-vs-real-move fix assigned in FRONTEND_SPEC (2026-08-18
+    decision).

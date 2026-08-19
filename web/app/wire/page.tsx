@@ -23,13 +23,6 @@ const nice = (d: string) =>
 
 function Signals({ it }: { it: WireItem }) {
   const bits: React.ReactNode[] = [];
-  if (it.board)
-    bits.push(
-      <span key="board" className="inline-flex items-center gap-1.5">
-        <TierChip tier={it.board.tier} />
-        <span className="num text-[12px] font-bold">{fmt(it.board.score)}</span>
-      </span>
-    );
   if (it.signal != null)
     bits.push(
       <span key="sig" className="num text-[12px] text-ink-2">
@@ -143,8 +136,30 @@ export default async function WirePage({
                   {it.type_label}
                 </span>
                 {it.date && <span>{nice(it.date)}</span>}
-                {it.company && <span className="truncate">{it.company}</span>}
               </div>
+              {/* the company, readable — with its call and score when it
+                  is on the board (shared resolver; a name without a call
+                  shows nothing, never an invented rating) */}
+              {(it.company || it.board) && (
+                <div className="mb-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  {it.company && (
+                    <Link
+                      href={`/companies/${it.symbol}`}
+                      className="text-[13.5px] font-semibold text-ink hover:underline"
+                    >
+                      {it.company}
+                    </Link>
+                  )}
+                  {it.board && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <TierChip tier={it.board.tier} />
+                      <span className="num text-[12.5px] font-bold">
+                        {fmt(it.board.score)}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
               <h3 className="mb-1 text-[15px] font-bold leading-snug">
                 <Link href={`/companies/${it.symbol}`} className="hover:underline">
                   {it.headline}

@@ -164,7 +164,7 @@ export default async function WirePage({
                   {it.company && (
                     <Link
                       href={`/companies/${it.symbol}`}
-                      className="text-[12.5px] font-semibold text-ink hover:underline"
+                      className="text-[11px] font-semibold text-ink hover:underline"
                     >
                       {it.company}
                     </Link>
@@ -172,7 +172,7 @@ export default async function WirePage({
                   {it.board && (
                     <span className="inline-flex items-center gap-1.5">
                       <SmallTierChip tier={it.board.tier} />
-                      <span className="num text-[12.5px] font-bold">
+                      <span className="num text-[11px] font-bold">
                         {fmt(it.board.score)}
                       </span>
                     </span>

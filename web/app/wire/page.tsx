@@ -12,7 +12,20 @@
 import Link from "next/link";
 import { getBoard, getWire, getWireAt, WireItem } from "@/lib/api";
 import Chrome from "@/components/mock/Chrome";
-import { TierChip, fmt } from "@/components/signature/shared";
+import { TIER_COLOR, fmt } from "@/components/signature/shared";
+
+/** The board TierChip at wire-line scale — same tier colors, sized to
+ * sit inside a 12.5px text line rather than dominate it. */
+function SmallTierChip({ tier }: { tier: string }) {
+  return (
+    <span
+      className="rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-[0.05em]"
+      style={{ color: "var(--surface)", background: TIER_COLOR[tier] ?? "var(--ink-3)" }}
+    >
+      {tier}
+    </span>
+  );
+}
 
 export const metadata = { title: "News Wire" };
 
@@ -137,22 +150,28 @@ export default async function WirePage({
                 </span>
                 {it.date && <span>{nice(it.date)}</span>}
               </div>
-              {/* the company, readable — with its call and score when it
-                  is on the board (shared resolver; a name without a call
-                  shows nothing, never an invented rating) */}
+              <h3 className="mb-0.5 text-[15px] font-bold leading-snug">
+                <Link href={`/companies/${it.symbol}`} className="hover:underline">
+                  {it.headline}
+                </Link>
+              </h3>
+              {/* the company under the headline, readable — with its call
+                  and score when it is on the board (shared resolver; a
+                  name without a call shows nothing, never an invented
+                  rating) */}
               {(it.company || it.board) && (
-                <div className="mb-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   {it.company && (
                     <Link
                       href={`/companies/${it.symbol}`}
-                      className="text-[13.5px] font-semibold text-ink hover:underline"
+                      className="text-[12.5px] font-semibold text-ink hover:underline"
                     >
                       {it.company}
                     </Link>
                   )}
                   {it.board && (
                     <span className="inline-flex items-center gap-1.5">
-                      <TierChip tier={it.board.tier} />
+                      <SmallTierChip tier={it.board.tier} />
                       <span className="num text-[12.5px] font-bold">
                         {fmt(it.board.score)}
                       </span>
@@ -160,11 +179,6 @@ export default async function WirePage({
                   )}
                 </div>
               )}
-              <h3 className="mb-1 text-[15px] font-bold leading-snug">
-                <Link href={`/companies/${it.symbol}`} className="hover:underline">
-                  {it.headline}
-                </Link>
-              </h3>
               {it.synopsis && it.synopsis !== it.headline && (
                 <p className="text-[13px] leading-relaxed text-ink-2">{it.synopsis}</p>
               )}

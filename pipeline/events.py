@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import anthropic
 import requests
 from bs4 import BeautifulSoup
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db.models import Filing
@@ -185,6 +186,23 @@ Return ONLY valid JSON — no markdown:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _store_filing(session: Session, **kwargs) -> bool:
+    """INSERT one filing; True if stored, False on a uq_filings_url
+    duplicate. A duplicate URL is a SKIP (we already have it — e.g. a
+    concurrent ingest stored it first), never an error: 11 of these
+    printed as false errors on 2026-08-18 (FIXPACK A4). Anything other
+    than the URL unique-violation re-raises as a real error."""
+    session.add(Filing(**kwargs))
+    try:
+        session.commit()
+        return True
+    except IntegrityError as exc:
+        session.rollback()
+        if "uq_filings_url" in str(exc.orig):
+            return False
+        raise
+
+
 def run_events(session: Session, tickers: list[str]) -> dict:
     """
     Fetch and analyse recent 8-K filings for all tracked tickers.
@@ -194,6 +212,7 @@ def run_events(session: Session, tickers: list[str]) -> dict:
     cik_map = _build_cik_map(tickers)
 
     added = 0
+    skipped = 0
     errors = 0
 
     for symbol, cik in cik_map.items():
@@ -201,6 +220,7 @@ def run_events(session: Session, tickers: list[str]) -> dict:
             recent_8ks = _get_recent_8ks(cik)
             for f in recent_8ks:
                 if session.query(Filing).filter_by(url=f["url"]).first():
+                    skipped += 1
                     continue
 
                 print(f"  [8-K] {symbol}: {f['date']}...", end=" ", flush=True)
@@ -228,7 +248,8 @@ def run_events(session: Session, tickers: list[str]) -> dict:
                         content = exhibit
                         classification = _classify_8k(symbol, content, f.get("items", ""))
 
-                session.add(Filing(
+                stored = _store_filing(
+                    session,
                     symbol=symbol,
                     cik=cik,
                     filing_type=f["type"],
@@ -239,10 +260,13 @@ def run_events(session: Session, tickers: list[str]) -> dict:
                     content=content,
                     llm_analysis=json.dumps(classification),
                     sentiment_score=classification["score"],
-                ))
-                session.commit()
-                added += 1
-                print(f"{classification['event_type']} / {classification['impact']}")
+                )
+                if stored:
+                    added += 1
+                    print(f"{classification['event_type']} / {classification['impact']}")
+                else:
+                    skipped += 1
+                    print("already stored")
                 time.sleep(0.1)
 
         except Exception as exc:
@@ -250,5 +274,6 @@ def run_events(session: Session, tickers: list[str]) -> dict:
             print(f"  [8-K] {symbol} error: {exc}")
             session.rollback()
 
-    print(f"\n8-K ingest complete: {added} new events, {errors} errors.")
-    return {"added": added, "errors": errors}
+    print(f"\n8-K ingest complete: {added} new, {skipped} already stored, "
+          f"{errors} errors.")
+    return {"added": added, "skipped": skipped, "errors": errors}

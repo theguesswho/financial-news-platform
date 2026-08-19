@@ -47,14 +47,16 @@ Voice rules (strict):
 - No padding. If a fact list is thin, write fewer, shorter items. Never invent color.
 - 1-3 sentences per item body. Direct, confident, honest about uncertainty.
 - Coverage items: when score_prev/score_now are present, say what the news did to the score ("score held at 5.2" / "score moved 4.8 to 5.2"). When the news is solid but the price FELL (price_move_1d_pct negative), note the setup explicitly: the business delivered, the market made it cheaper — that combination is what tends to RAISE our score next. Never present the price drop itself as bad news about the business.
+- kind "veto": the stock's score crossed the entry line but our assessment kept it off the board. Tell exactly that judgment story — crossed the line, kept off. If the causes include "the assessor's stored reason", use it; if they don't, do NOT invent, infer, or imply a reason. Two sentences maximum.
+- A cause reading "in and out inside a week" is a pattern worth naming: say plainly that the stock entered and exited within days — that instability is itself information.
 - The item under "top_story_pick" is the decided top story — write it as such; do not choose your own.
 - week_ahead input rows have raw "watching" text (often technical prediction claims). For each, return a "watch" phrase of AT MOST 14 plain words saying what we're looking for. Write it as a NORMAL STATEMENT, never a "does/do/will" question and never starting with "watching" — name the thing and the bar. Examples: "sterilization margins need to hold above 45% as new capacity ramps"; "the Texas rate-case decision — most of the $112M ask should stick"; "credit-rating upgrades that would unlock cheaper borrowing". Keep stake labels (held, board tier, under review) out of it — those render separately.
 
 Add to the JSON: "week_ahead": [{"symbol": "...", "watch": "<=14 words"}]
 
 Return ONLY valid JSON:
-{"top_story": {"symbol": "...", "headline": "...", "body": "...", "kind": "exit|entry|upgrade|verdict|birth|info"},
- "moves": [{"symbol": "...", "headline": "...", "body": "...", "kind": "entry|exit|upgrade|downgrade"}],
+{"top_story": {"symbol": "...", "headline": "...", "body": "...", "kind": "exit|entry|upgrade|verdict|birth|veto|info"},
+ "moves": [{"symbol": "...", "headline": "...", "body": "...", "kind": "entry|exit|upgrade|downgrade|veto"}],
  "coverage": [{"symbol": "...", "headline": "...", "body": "...", "kind": "info"}],
  "stories": [{"symbol": "...", "headline": "...", "body": "...", "kind": "birth|verdict|info"}]}"""
 
@@ -83,7 +85,14 @@ def _board_moves(engine, for_date: date | None = None) -> list:
     """Board changes between the two most recent snapshots AS OF for_date
     (default today), with deterministic cause decomposition from stored
     components. The date bound keeps regenerated editions (weekly Friday
-    regen, corrections) diffing their own session, not whatever is newest."""
+    regen, corrections) diffing their own session, not whatever is newest.
+    Membership on BOTH sides comes from the shared resolver semantics
+    (pipeline.board_membership.effective_tier) applied to each snapshot's
+    own stored stamps — the assessor's string-'None' stamp and the
+    raw-floor guard can neither fabricate nor hide a move, and 'None'
+    never reaches a reader (FIXPACK A1/A2, 2026-08-19)."""
+    from pipeline.board_membership import effective_tier
+    from pipeline.tiers import BOARD_EXIT, WATCH, tier_for
     with engine.connect() as conn:
         rows = conn.execute(text("""
             WITH d AS (SELECT DISTINCT date FROM leaderboard_history
@@ -92,31 +101,50 @@ def _board_moves(engine, for_date: date | None = None) -> list:
             cur AS (SELECT * FROM leaderboard_history WHERE date=(SELECT MAX(date) FROM d)),
             prev AS (SELECT * FROM leaderboard_history WHERE date=(SELECT MIN(date) FROM d))
             SELECT COALESCE(c.symbol, p.symbol),
-                   COALESCE(p.assessed_tier, p.tier), COALESCE(c.assessed_tier, c.tier),
+                   p.assessed_tier, c.assessed_tier,
+                   COALESCE(p.qual_promoted, FALSE), COALESCE(c.qual_promoted, FALSE),
                    p.gem_score, c.gem_score, p.priced_in, c.priced_in,
                    p.narrative_score, c.narrative_score, p.value_score, c.value_score,
-                   p.assessed_tier IS NOT NULL, c.assessed_tier IS NOT NULL,
                    p.quality_score, c.quality_score, p.ng_score, c.ng_score
             FROM cur c FULL OUTER JOIN prev p USING (symbol)
-            WHERE COALESCE(COALESCE(c.assessed_tier, c.tier), '_')
-                  IS DISTINCT FROM COALESCE(COALESCE(p.assessed_tier, p.tier), '_')
         """), {"fd": for_date or date.today()}).fetchall()
-    from pipeline.tiers import BOARD_EXIT, WATCH
     moves = []
-    for (sym, pt, ct, pg, cg, pp, cp, pn, cn, pv, cv, p_qual, c_qual,
-         pq, cq, png, cng) in rows:
-        causes = []
+    for (sym, p_stamp, c_stamp, p_prom, c_prom, pg, cg, pp, cp, pn, cn,
+         pv, cv, pq, cq, png, cng) in rows:
         f = lambda x: float(x) if x is not None else None
         pp, cp, pn, cn, pv, cv, pg_f, cg_f, pq, cq, png, cng = map(
             f, (pp, cp, pn, cn, pv, cv, pg, cg, pq, cq, png, cng))
+        p_raw, c_raw = tier_for(pg_f), tier_for(cg_f)
+        pt = effective_tier(p_stamp, p_raw, p_prom)
+        ct = effective_tier(c_stamp, c_raw, c_prom)
+        tier_changed = (pt or "_") != (ct or "_")
+        stamp_changed = (p_stamp != c_stamp) or (p_prom != c_prom)
+        # The assessor VETO (CSL 2026-08-18): the raw score crossed the
+        # entry line the same session the assessor's 'None' kept it off.
+        # No membership change, but real judgment news — storied, never
+        # rendered as ledger noise.
+        veto = (not tier_changed and ct is None and c_stamp == "None"
+                and c_raw is not None and p_raw is None)
+        if not (tier_changed or stamp_changed or veto):
+            continue
+        causes = []
         # Threshold crossings FIRST — a stock leaving because its score
         # crossed the exit line is score-driven, not "assessment lapsed"
         # (the META mislabel, user 2026-08-06).
-        if ct is None and pg_f is not None and cg_f is not None \
+        if tier_changed and ct is None and pg_f is not None and cg_f is not None \
                 and pg_f > BOARD_EXIT >= cg_f:
             causes.append(f"score crossed below the exit line "
                           f"({BOARD_EXIT*10:.1f} on the 10-scale)")
-        if pt is None and cg_f is not None and pg_f is not None \
+        elif tier_changed and ct is None and pt is not None \
+                and pg_f is not None and cg_f is not None \
+                and pg_f > WATCH >= cg_f:
+            # Raw-floor-guard exit: the score slid back below the entry
+            # line and the seat it was holding on judgment lapsed with it
+            # (the old COALESCE diff hid these entirely — INTU 2026-08-18).
+            causes.append(f"score slipped back below the entry line "
+                          f"({WATCH*10:.1f} on the 10-scale)")
+        if tier_changed and pt is None and ct is not None \
+                and cg_f is not None and pg_f is not None \
                 and cg_f > WATCH >= pg_f:
             causes.append("score crossed above the entry line")
         # Causes are FINISHED plain-language phrases — the writer must not
@@ -164,21 +192,92 @@ def _board_moves(engine, for_date: date | None = None) -> list:
         elif r_prev is not None and r_prev < 0.85 and r_now is not None and r_now > 0.85:
             causes.append("delivered growth turned positive again — the "
                           "growth penalty lifted")
-        if p_qual != c_qual and not causes:
-            # Only a cause when nothing real moved: pure stamp bookkeeping
-            causes.append("bookkeeping_only: assessment stamp "
-                          + ("added" if c_qual else "expired"))
-        kind = ("entry" if pt is None else "exit" if ct is None else
-                "upgrade" if ["Watch", "Buy", "Strong Buy"].index(ct)
-                > ["Watch", "Buy", "Strong Buy"].index(pt) else "downgrade") \
-            if (pt in (None, "Watch", "Buy", "Strong Buy")
-                and ct in (None, "Watch", "Buy", "Strong Buy")) else "info"
+        # Assessor-driven tier changes are REAL news (user decision
+        # 2026-08-18: score-driven and assessor-driven moves are equally
+        # valid — DVA's re-rating got one ledger line while FDS led).
+        # "Bookkeeping" shrinks to: stamp changes with NO tier consequence.
+        assessor_drove = tier_changed and stamp_changed and p_raw == c_raw
+        if veto:
+            causes.insert(0, "its score crossed above the entry line, but "
+                             "our assessment kept it off the board")
+        elif assessor_drove:
+            # The raw tier didn't move — the stamp is THE driver; it leads.
+            causes.insert(0,
+                "our assessment ruled it off the board — a judged verdict "
+                "on the evidence, not a score move" if c_stamp == "None" else
+                "our assessment expired — the rating falls back to what "
+                "the score alone says" if c_stamp is None else
+                "our assessment re-rated it — a judged verdict on the "
+                "evidence, not a score move")
+        elif tier_changed and stamp_changed and ct is None \
+                and c_stamp == "None":
+            causes.append("our assessment separately ruled it off the "
+                          "same session")
+        bookkeeping = stamp_changed and not tier_changed and not veto
+        if bookkeeping:
+            causes = ["bookkeeping_only: assessment stamp changed with "
+                      "no tier consequence"]
+        kind = "veto" if veto else (
+            ("entry" if pt is None else "exit" if ct is None else
+             "upgrade" if ["Watch", "Buy", "Strong Buy"].index(ct)
+             > ["Watch", "Buy", "Strong Buy"].index(pt) else "downgrade")
+            if tier_changed else "info")
         moves.append({
             "symbol": sym, "from": pt, "to": ct, "kind": kind,
-            "score_from": round(float(pg) * 10, 1) if pg is not None else None,
-            "score_to": round(float(cg) * 10, 1) if cg is not None else None,
-            "bookkeeping": bool(causes) and all("bookkeeping_only" in c for c in causes),
+            "score_from": round(pg_f * 10, 1) if pg_f is not None else None,
+            "score_to": round(cg_f * 10, 1) if cg_f is not None else None,
+            "assessor_driven": bool(assessor_drove or veto),
+            "bookkeeping": bookkeeping,
             "causes": causes or ["small combined drift across components"]})
+    # Veto stories carry the assessor's STORED reason when one exists —
+    # and only while the stored verdict is still the veto ('None'). When
+    # the live assessment has moved on (CSL was re-rated Watch the next
+    # day), the story is exactly "crossed the line, kept off": no reason
+    # is attached and none is ever invented (user 2026-08-19).
+    vetoes = [m for m in moves if m["kind"] == "veto"]
+    if vetoes:
+        with engine.connect() as conn:
+            reasons = dict(conn.execute(text("""
+                SELECT symbol, LEFT(rationale, 300) FROM qual_assessments
+                WHERE adjusted_tier = 'None' AND rationale IS NOT NULL
+                  AND symbol = ANY(:syms)"""),
+                {"syms": [m["symbol"] for m in vetoes]}).fetchall())
+        for m in vetoes:
+            if reasons.get(m["symbol"]):
+                m["causes"].append("the assessor's stored reason: "
+                                   f"\"{reasons[m['symbol']]}\"")
+    # Flap flag (A3, the FDS case): a name that entered within the last
+    # 3 sessions and exits now — that pattern is information, not noise.
+    exits = [m for m in moves if m["kind"] == "exit"]
+    if exits:
+        from datetime import timedelta
+        fd = for_date or date.today()
+        with engine.connect() as conn:
+            hist = conn.execute(text("""
+                SELECT symbol, date, assessed_tier, gem_score,
+                       COALESCE(qual_promoted, FALSE)
+                FROM leaderboard_history
+                WHERE symbol = ANY(:syms) AND date <= :fd AND date >= :fd0
+                ORDER BY symbol, date"""),
+                {"syms": [m["symbol"] for m in exits], "fd": fd,
+                 "fd0": fd - timedelta(days=9)}).fetchall()
+        series: dict[str, list] = {}
+        for hsym, _hd, hstamp, hgem, hprom in hist:
+            series.setdefault(hsym, []).append(
+                effective_tier(hstamp, tier_for(hgem), hprom))
+        for m in exits:
+            eff = series.get(m["symbol"], [])
+            # eff[-1] is the exit session; look for an off->on entry in
+            # the 3 sessions before it.
+            for back in range(2, 5):
+                if back + 1 > len(eff):
+                    break
+                if eff[-back] and not eff[-back - 1]:
+                    m["flap"] = True
+                    m["causes"].append(
+                        "in and out inside a week — it entered the board "
+                        f"only {back - 1} session(s) before this exit")
+                    break
     return moves
 
 
@@ -376,20 +475,21 @@ def _week_ahead(engine, session=None) -> dict:
 
 def _masthead(engine, moves, for_date: date | None = None) -> dict:
     from pipeline.track_record import get_scorecard
+    # Board count + leaders come from THE shared membership resolver
+    # (V3 #14, 2026-08-18: this function's own bare-COALESCE query said
+    # board=36 the same morning /board showed 41 — a third parallel
+    # membership definition, same disease the force-roster fix cured).
+    # Resolved AS OF the edition's date: a regenerated 08-18 paper counts
+    # the 08-18 board, never whatever the live tables have moved on to.
+    from pipeline.board_membership import TIER_ORDER, board_membership
     with engine.connect() as conn:
-        board_n = conn.execute(text("""
-            SELECT COUNT(*) FROM leaderboard_history
-            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
-              AND COALESCE(assessed_tier, tier) IN ('Strong Buy', 'Buy')""")).scalar()
-        leaders = [{"symbol": r[0], "score": float(r[1]), "tier": r[2]}
-                   for r in conn.execute(text("""
-            SELECT symbol, ROUND(gem_score*10,1), COALESCE(assessed_tier, tier)
-            FROM leaderboard_history
-            WHERE date = (SELECT MAX(date) FROM leaderboard_history)
-              AND COALESCE(assessed_tier, tier) IS NOT NULL
-            ORDER BY CASE COALESCE(assessed_tier, tier)
-                WHEN 'Strong Buy' THEN 0 WHEN 'Buy' THEN 1 ELSE 2 END,
-                gem_score DESC LIMIT 6""")).fetchall()]
+        members = board_membership(conn, as_of=for_date)
+    board_n = len(members)
+    leaders = [{"symbol": s, "score": v["score"], "tier": v["tier"]}
+               for s, v in sorted(
+                   members.items(),
+                   key=lambda kv: (TIER_ORDER.get(kv[1]["tier"], 3),
+                                   -(kv[1]["score"] or 0)))[:6]]
     sc = {}
     try:
         # as_of keeps a regenerated edition's scoreboard on ITS session's
@@ -406,8 +506,8 @@ def _masthead(engine, moves, for_date: date | None = None) -> dict:
 
 # ------------------------------------------------------------- generate
 
-SIG_ORDER = {"exit": 0, "entry": 1, "upgrade": 2, "verdict": 3, "birth": 4,
-             "downgrade": 5, "info": 6}
+SIG_ORDER = {"exit": 0, "entry": 1, "veto": 1, "upgrade": 2, "verdict": 3,
+             "birth": 4, "downgrade": 5, "info": 6}
 
 BIG_ACCEL = 1.0   # 10-scale: tier-3 stocks are storied only above this
 
@@ -430,7 +530,9 @@ def _significance(m, held: set) -> tuple:
         rank = 0
     elif "Buy" in tiers:
         rank = 1
-    elif delta >= BIG_ACCEL:
+    elif delta >= BIG_ACCEL or m.get("assessor_driven"):
+        # Assessor-driven tier changes may be RANKED but never buried in
+        # the ledger (user decision 2026-08-18).
         rank = 2
     else:
         rank = 3   # ledger-only territory
@@ -487,13 +589,18 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
         else:
             m["position"] = "not held"
     top_pick = _pick_top_story(real_moves, stories, held)
-    # Re-rating days can produce 30+ moves: the writer stories only the 10
-    # most significant; the remainder land in the deterministic ledger
-    # (max_tokens lesson #4 — the giant P4 diff overflowed phrasing and
-    # failed the whole report closed, 2026-08-09).
+    # Significance floor (FIXPACK A3, 2026-08-19 — the FDS case): every
+    # membership change and every veto gets a storied item, always. The
+    # "Also moved" ledger is only for shuffles WITHIN the board; those
+    # keep the 10-item cap (max_tokens lesson #4 — the giant P4 diff
+    # overflowed phrasing and failed the whole report closed, 2026-08-09).
     ranked = sorted(real_moves, key=lambda m: _significance(m, held))
-    storyworthy = [m for m in ranked if _significance(m, held)[0] < 3]
-    storied_moves = storyworthy[:10]
+    membership_moves = [m for m in ranked
+                        if m["kind"] in ("entry", "exit", "veto")]
+    within_board = [m for m in ranked
+                    if m["kind"] not in ("entry", "exit", "veto")]
+    storied_moves = membership_moves + [
+        m for m in within_board if _significance(m, held)[0] < 3][:10]
     from pipeline.qual_assessor import _platform_notes
     facts = {"platform_notes": _platform_notes(engine) or "none active",
              "top_story_pick": top_pick, "board_moves": storied_moves,
@@ -510,7 +617,7 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     for attempt in range(3):
         try:
             resp = client.messages.create(
-                model=SONNET, max_tokens=5000, timeout=180,
+                model=SONNET, max_tokens=8000, timeout=180,
                 system=[{"type": "text", "text": VOICE,
                          "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content":
@@ -544,8 +651,11 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     kinds = {}
     for m in real_moves:
         kinds[m["kind"]] = kinds.get(m["kind"], 0) + 1
-    breakdown = " · ".join(f"{v} {k}{'s' if v > 1 and not k.endswith('s') else ''}"
-                           for k, v in sorted(kinds.items()))
+    plural = {"entry": "entries", "veto": "vetoes"}
+    breakdown = " · ".join(
+        f"{v} " + (plural.get(k, k if k.endswith('s') else k + 's')
+                   if v > 1 else k)
+        for k, v in sorted(kinds.items()))
     add("masthead", {"headline": "Morning Report"},
         payload={**masthead, "changes": len(real_moves),
                  "changes_breakdown": breakdown,
@@ -578,9 +688,13 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     if unstoried:
         add("moves", {"headline": "Also moved", "kind": "ledger",
                       "body": " · ".join(
-                          f"{m['symbol']} {m['from'] or 'off board'}→"
-                          f"{m['to'] or 'off board'} "
-                          f"({m['score_from']}→{m['score_to']})"
+                          (f"{m['symbol']} crossed the entry line, kept off "
+                           f"by our assessment "
+                           f"({m['score_from']}→{m['score_to']})")
+                          if m["kind"] == "veto" else
+                          (f"{m['symbol']} {m['from'] or 'off board'}→"
+                           f"{m['to'] or 'off board'} "
+                           f"({m['score_from']}→{m['score_to']})")
                           for m in unstoried)})
     if bookkeeping:
         add("moves", {"headline": "Bookkeeping", "kind": "ledger",

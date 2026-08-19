@@ -13,69 +13,19 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from api.deps import get_engine, ten
-from pipeline.tiers import tier_for, WATCH
+from pipeline.tiers import WATCH
+
+# The membership resolver lives in the pipeline (FIXPACK A2 / V3 #14) —
+# api consumes it, never the other way. board_membership is re-exported
+# here for existing consumers (api/routers/narratives.py).
+from pipeline.board_membership import (  # noqa: F401
+    TIER_ORDER,
+    _load_rows,
+    _resolve_tier,
+    board_membership,
+)
 
 router = APIRouter()
-
-TIER_ORDER = {"Strong Buy": 0, "Buy": 1, "Watch": 2}
-
-
-def _load_rows(conn):
-    return conn.execute(text("""
-        SELECT symbol, gem_score,
-               narrative_score, value_score, quality_score, gap_score,
-               COALESCE(qual_promoted, FALSE), gem_adjusted, assessed_tier,
-               tier, final_rank
-        FROM leaderboard_history
-        WHERE date = (SELECT MAX(date) FROM leaderboard_history)
-    """)).fetchall()
-
-
-def _resolve_tier(row, qual, overrides):
-    """THE single definition of a symbol's final tier + display score.
-    Extracted 2026-08-16 (external review): the force-page roster was
-    classifying on-board membership with a bare COALESCE while this
-    merge (override -> qual-with-raw-floor-guard -> raw) is what /board
-    actually shows — INTU/PCG/EIX appeared 'on the board' on force
-    pages while absent from /board. Any surface that says 'on the
-    board' derives it from THIS function, never from a parallel query."""
-    (sym, gem, ns, vs, qs, gs, promoted, gem_adj, assessed_tier,
-     raw_board_tier, final_rank) = row
-    gem = float(gem)
-    raw_tier = tier_for(gem)
-    q = qual.get(sym)
-    ov = overrides.get(sym) if promoted else None
-    if ov and assessed_tier in ("Strong Buy", "Buy", "Watch"):
-        tier = assessed_tier
-        display = float(gem_adj) if gem_adj is not None else gem
-    elif q and raw_tier:
-        tier = q[1] if q[1] in ("Strong Buy", "Buy", "Watch") else None
-        display = gem
-    else:
-        tier = raw_tier
-        display = gem
-    return tier, display, raw_tier
-
-
-def board_membership(conn) -> dict:
-    """{symbol: {'tier','score'}} for every symbol /board would show as
-    ON the board — the shared membership set for rosters and any other
-    surface. Same rows, same qual, same overrides, same resolution."""
-    rows = _load_rows(conn)
-    qual = {r[0]: r for r in conn.execute(text("""
-        SELECT symbol, adjusted_tier, direction, rationale,
-               key_bull, key_bear, assessed_at
-        FROM qual_assessments""")).fetchall()}
-    overrides = {r[0]: r for r in conn.execute(text("""
-        SELECT symbol, narrative_raw, narrative_adjusted, rationale,
-               evidence, key_bull, key_bear
-        FROM narrative_overrides WHERE promoted""")).fetchall()}
-    out = {}
-    for row in rows:
-        tier, display, _ = _resolve_tier(row, qual, overrides)
-        if tier:
-            out[row[0]] = {"tier": tier, "score": ten(display)}
-    return out
 
 
 @router.get("/board")

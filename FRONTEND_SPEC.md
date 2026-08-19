@@ -118,6 +118,13 @@ Companies and What Changed — they are not pages.
   defaults). Default: Railway unless a concrete need appears.
 - **Design language**: extend the report page's editorial style across the
   app (recommended) vs a fresh design pass first.
+- **News Wire nav placement** (FIXPACK_2026-08-19 Session B): fifth
+  noun vs inside "What changed" — Edmund's call, made in conversation
+  before B runs; current lean (b), four-noun nav LOCKED until he picks.
+  DECIDED 2026-08-19 (scope, not nav — Edmund's words in the FIXPACK
+  B1 amendment): besides the separate News Wire page, /home's right
+  rail gets one-line News headlines ABOVE the Forces rail, linking
+  into the page; same read-only endpoint feeds both.
 
 ## STANDING BRIEF (2026-08-16 — read FIRST, every session; replaces all
 ## one-off session notes. Do not reopen closed items to be helpful.)
@@ -227,6 +234,23 @@ morning run (SANM machinery-downgraded SB→Buy same run).]
   on the report path (pipeline/daily_report.py _masthead). Same
   disease the roster fix cured; belongs to the board_membership
   pattern. Logged in V3_FIXLIST, not decided here.
+- 2026-08-18 (later session): BOTH assigned fixes BUILT, LOCAL ONLY —
+  NOT pushed; prod still under-reports assessor-driven moves and
+  still mastheads its own board count until the next approved push.
+  (a) bookkeeping-vs-real-move in pipeline/daily_report.py: any move
+  that changes the effective tier is real regardless of driver;
+  stamp-driven tier changes get a plain-language assessment cause
+  ("our assessment re-rated it / expired") instead of
+  bookkeeping_only; "bookkeeping" now requires NO tier consequence.
+  Moves carry assessor_driven; _significance caps assessor-driven
+  moves at rank 2 (rankable, never ledger-buried). (b) V3 #14:
+  _masthead board count + leaders now derive from the shared
+  board_membership resolver (api/routers/board.py), own queries
+  deleted. Verified read-only against prod DB: DVA 08-17 diff now
+  real+assessor_driven with the assessment cause; masthead board=40
+  and top-3 ACM/GDDY/LDOS = prod /board exactly. Data quirk seen in
+  passing, not touched: CSL 08-18 row has effective tier as the
+  STRING 'None' (kind falls to "info") — pre-existing, worth a look.
 
 ## How to build (session discipline)
 

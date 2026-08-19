@@ -29,6 +29,31 @@ function SmallTierChip({ tier }: { tier: string }) {
 
 export const metadata = { title: "News Wire" };
 
+/** Headline layout per Edmund 2026-08-19: the company name leads the
+ * headline in uppercase, with the stored title's own scaffolding
+ * removed — "KEYS Q3 2026 Earnings Call" → "KEYSIGHT TECHNOLOGIES INC.
+ * Q3 2026 Earnings Call"; "10-K — Fabrinet (2026-08-18)" → "FABRINET
+ * 10-K (2026-08-18)". Nothing is invented: the lead is the stored
+ * company name (symbol when missing) and the rest is the stored title
+ * minus the part the lead replaces. 8-K headlines are sentences that
+ * usually already name the company — those render untouched. */
+function headlineParts(it: WireItem): { lead: string | null; rest: string } {
+  const lead = (it.company ?? it.symbol).toUpperCase();
+  const t = it.headline;
+  if (it.type === "EARN_CALL" && t.startsWith(`${it.symbol} `))
+    return { lead, rest: t.slice(it.symbol.length + 1) };
+  const m = t.match(/^(10-K|10-Q)(\/A)?\s+—\s+.+?(\(\d{4}-\d{2}-\d{2}\))?$/);
+  if ((it.type === "10-K" || it.type === "10-Q") && m)
+    return { lead, rest: `${m[1]}${m[2] ?? ""}${m[3] ? ` ${m[3]}` : ""}` };
+  const firstWord = (it.company ?? "")
+    .split(/\s+/)[0]
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  if (firstWord && t.toLowerCase().includes(firstWord))
+    return { lead: null, rest: t };
+  return { lead, rest: t };
+}
+
 const nice = (d: string) =>
   new Date(d + "T00:00:00").toLocaleDateString("en-GB", {
     weekday: "short", day: "numeric", month: "short",
@@ -152,31 +177,21 @@ export default async function WirePage({
               </div>
               <h3 className="mb-0.5 text-[15px] font-bold leading-snug">
                 <Link href={`/companies/${it.symbol}`} className="hover:underline">
-                  {it.headline}
+                  {(() => {
+                    const { lead, rest } = headlineParts(it);
+                    return lead ? `${lead} ${rest}` : rest;
+                  })()}
                 </Link>
               </h3>
-              {/* the company under the headline, readable — with its call
-                  and score when it is on the board (shared resolver; a
-                  name without a call shows nothing, never an invented
-                  rating) */}
-              {(it.company || it.board) && (
-                <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {it.company && (
-                    <Link
-                      href={`/companies/${it.symbol}`}
-                      className="text-[12px] font-semibold text-ink hover:underline"
-                    >
-                      {it.company}
-                    </Link>
-                  )}
-                  {it.board && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <SmallTierChip tier={it.board.tier} />
-                      <span className="num text-[12px] font-bold">
-                        {fmt(it.board.score)}
-                      </span>
-                    </span>
-                  )}
+              {/* the call and score when the name is on the board (shared
+                  resolver; a name without a call shows nothing, never an
+                  invented rating) */}
+              {it.board && (
+                <div className="mb-1 flex items-center gap-1.5">
+                  <SmallTierChip tier={it.board.tier} />
+                  <span className="num text-[12px] font-bold">
+                    {fmt(it.board.score)}
+                  </span>
                 </div>
               )}
               {it.synopsis && it.synopsis !== it.headline && (

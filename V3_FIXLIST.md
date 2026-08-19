@@ -257,6 +257,15 @@ fixed.
     board. Decide precedence deliberately (freeze ritual — it changes
     board membership); until then the guard wins and holds below the
     floor are display-dead.
+    Second worked example 2026-08-19 (CSL, found by Edmund comparing
+    surfaces): raw 0.339 sits between exit (0.32) and entry (0.34) —
+    the methodology's hysteresis grace seat keeps it on the board
+    (stored tier Watch) and the assessor affirms Watch, so Streamlit
+    shows it; /board's resolver recomputes tier_for(raw)=None and the
+    guard drops the name entirely. The product board does not honor
+    grace seats the methodology grants. Likely the same mechanism as
+    the 35-vs-38 wrinkle (which stays visible, undiagnosed, per the
+    standing brief). Still Edmund's precedence call — nothing changed.
 
 14. **Report masthead has its own board-membership definition (found
     2026-08-18 during the NaN incident).** daily_report._masthead

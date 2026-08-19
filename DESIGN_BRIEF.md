@@ -74,7 +74,36 @@ FRONTEND_SPEC Phase 7. It joins the nav when it exists, not before.
 Events / Insiders / News Wire are NOT destinations — they dissolve into
 the company page and What changed. (Unchanged from 2026-08-10.)
 
-## Page architecture — DECIDED 2026-08-15
+**AMENDED 2026-08-19 — FIVE nouns (Edmund himself, FIXPACK_2026-08-19
+Session B).** News Wire becomes the fifth nav noun; the line above is
+superseded for News Wire only (Events and Insiders still dissolve).
+His words: "For News Wire, we'll have two places - alongside Board /
+Forces / What Changes / News Wire / Trace Record" and "I then want a
+News Wire pane on the right side of The Board, just like we have
+currently for Forces. I think the News Wire pane should sit above
+Forces. It would be a one line snipped." Order: **The Board / Forces /
+What changed / News Wire / Track record.**
+
+5. **News Wire** — `/wire`. The earnings/filings feed ONLY (the
+   Streamlit reference set: earnings calls, 10-K/Q reports,
+   high-impact 8-Ks). Board moves are What changed's content, never
+   duplicated here; insiders stay off. Dated masthead + date archive;
+   observed filing dates only; synopses are the machinery's stored
+   ones or absent — never written at read time; nulls omitted;
+   assessor stays dark (law 12 unchanged by this page).
+
+**The Board's rail carries a News Wire pane ABOVE Forces** (same rail
+component family): at most 5 one-line items, newest first, format
+**SYMBOL  Company — headline snippet · date**. The headline is the
+FILING's (never the daily-report writer's — the Today block of edition
+headlines stays where it is), verbatim or cropped at a word boundary
+with an ellipsis, never rewritten. Company names longer than ~18 chars
+take a word-boundary short form; nulls omitted — a line shows what it
+has. No scores, no tier badges in the rail (it is news, not a rating).
+Every line links into /wire anchored at its item.
+
+## Page architecture — DECIDED 2026-08-15 (AMENDED 2026-08-19: News
+## Wire added as a sixth surface — see the nav amendment above)
 
 The mock suite IS the design of record. Five surfaces:
 

@@ -11,11 +11,13 @@
 
 import Link from "next/link";
 import {
+  cropWords,
   firstLotDate,
   getBoard,
   getNarrativesLanding,
   getReportLatest,
   getScorecard,
+  getWire,
   openLotCounts,
   reconcileWithBook,
 } from "@/lib/api";
@@ -37,11 +39,12 @@ const nice = (d: string) =>
   });
 
 export default async function HomeMock() {
-  const [board, report, landing, sc] = await Promise.all([
+  const [board, report, landing, sc, wire] = await Promise.all([
     getBoard(),
     getReportLatest(),
     getNarrativesLanding(),
     getScorecard(),
+    getWire(),
   ]);
   const m = report.masthead;
   const names = [...board.board, ...board.off_board].map((e) => ({
@@ -137,6 +140,59 @@ export default async function HomeMock() {
 
           {/* right rail */}
           <aside>
+            {/* News Wire pane above Forces (Edmund 2026-08-19, FIXPACK
+                B2b): one-line filing headlines from the earnings feed —
+                never the report writer's headlines — each cropped, never
+                rewritten, linking into its item on the wire. No scores or
+                tier badges here: it is news, not a rating. Nulls omitted;
+                observed dates only; newest first, capped at 5. */}
+            {wire.items.length > 0 && (
+              <>
+                <div className="mb-1.5 flex items-baseline border-b border-ink pb-1">
+                  <span className="kicker">News Wire</span>
+                  <Link href="/wire" className="num ml-auto text-[12px] text-ink-2 hover:underline">
+                    all →
+                  </Link>
+                </div>
+                <div className="mb-7">
+                  {wire.items.slice(0, 5).map((it) => {
+                    // one shared character budget: the company takes its
+                    // short form (≤18 chars, board-style), the snippet
+                    // gets the remaining width — both cropped at word
+                    // boundaries, never rewritten (B2b). The CSS truncate
+                    // is only a safety net.
+                    const name = it.company ? cropWords(it.company, 18) : null;
+                    const budget = Math.max(42 - (name ? name.length + 3 : 0), 18);
+                    return (
+                      <Link
+                        key={it.id}
+                        href={`/wire#f${it.id}`}
+                        className="flex items-baseline gap-2 border-b border-hairline px-1 py-2 last:border-b-0 hover:bg-surface"
+                      >
+                        <span className="num shrink-0 text-[10.5px] font-bold tracking-[0.05em]">
+                          {it.symbol}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-ink-2">
+                          {name && (
+                            <>
+                              <span className="font-semibold text-ink">{name}</span>{" "}
+                              —{" "}
+                            </>
+                          )}
+                          {cropWords(it.headline, budget)}
+                        </span>
+                        {it.date && (
+                          <span className="num shrink-0 text-[10.5px] text-ink-3">
+                            {nice(it.date)}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             <div className="mb-1.5 flex items-baseline border-b border-ink pb-1">
               <span className="kicker">Forces</span>
               <Link href="/forces" className="num ml-auto text-[12px] text-ink-2 hover:underline">

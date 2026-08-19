@@ -125,6 +125,12 @@ Companies and What Changed — they are not pages.
   B1 amendment): besides the separate News Wire page, /home's right
   rail gets one-line News headlines ABOVE the Forces rail, linking
   into the page; same read-only endpoint feeds both.
+  NAV DECIDED 2026-08-19, same day (Edmund, option a — his words in
+  the FIXPACK B header): News Wire is the FIFTH nav noun, order
+  The Board / Forces / What changed / News Wire / Track record, PLUS
+  the Board-page rail pane above Forces. Built in Session B (see the
+  Session B Progress entry); the STANDING BRIEF's four-noun line is
+  amended by the dated update below, per Edmund himself. RESOLVED.
 
 ## STANDING BRIEF (2026-08-16 — read FIRST, every session; replaces all
 ## one-off session notes. Do not reopen closed items to be helpful.)
@@ -251,6 +257,16 @@ morning run (SANM machinery-downgraded SB→Buy same run).]
   and top-3 ACM/GDDY/LDOS = prod /board exactly. Data quirk seen in
   passing, not touched: CSL 08-18 row has effective tier as the
   STRING 'None' (kind falls to "info") — pre-existing, worth a look.
+- 2026-08-19 NAV AMENDMENT (Edmund himself, FIXPACK_2026-08-19
+  Session B — amends the "Four nav nouns" line in Done-do-not-touch):
+  the nav is now FIVE nouns — The Board / Forces / What changed /
+  News Wire / Track record. His words: "For News Wire, we'll have two
+  places - alongside Board / Forces / What Changes / News Wire /
+  Trace Record" and "I then want a News Wire pane on the right side
+  of The Board, just like we have currently for Forces. I think the
+  News Wire pane should sit above Forces. It would be a one line
+  snipped." Built local-only in Session B (Progress entry below);
+  everything else in the do-not-touch list stands unchanged.
 
 ## How to build (session discipline)
 
@@ -760,6 +776,49 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
       score sits below the Watch floor (that is WHY INTU's held Buy
       exists in the DB but not on /board) — corridor-vs-guard
       precedence needs a deliberate decision, not this session's.
+
+- [x] 2026-08-19 (FIXPACK Session B): NEWS WIRE built — LOCAL ONLY,
+      NOT pushed; prod still has four nouns and no /wire until the
+      next Edmund-at-Railway window.
+      - api/: NEW api/routers/wire.py — GET /wire + GET /wire/{date}
+        (archive nav dates list included, /reports pattern). Read-only
+        port of Streamlit's load_filings_intelligence ONLY (B1 scope:
+        narrative filings strength ≥0.60 or shift ≥0.12 last 14d +
+        8-Ks |sentiment| ≥2 last 7d, merged, cap 14; NO leaderboard
+        moves, NO insiders). Synopses come ONLY from the stored
+        llm_analysis cache — the endpoint NEVER generates one (read
+        endpoints never write; zero INSERT/UPDATE in the file, code
+        path checked). signal crosses at ten(); board tier/score chips
+        resolve through pipeline.board_membership — live for /wire,
+        as_of=the requested date for /wire/{date} (the A2 lesson: a
+        dated page never wears today's board).
+      - web/: Chrome nav is FIVE nouns in the decided order (every
+        page picks it up from the one NAV constant). New /wire page:
+        dated masthead + date archive like /changed, items with type
+        label / observed date / company / headline / stored synopsis /
+        plain-word signals ("story strength 9.2 / 10", "story
+        accelerating", "management confident", "read as positive" in
+        up/down colors), board tier chip only for on-board names —
+        nulls omitted throughout, assessor untouched (dark). Items
+        carry #f{id} anchors. /home right rail: News Wire pane ABOVE
+        Forces (B2b): ≤5 lines newest-first, SYMBOL · short company
+        (≤18 chars, word-boundary crop) — headline snippet (cropped at
+        word boundaries via cropWords, never rewritten) · compact date;
+        no scores/tiers in the rail; each line links /wire#f{id}.
+      - VERIFIED on the local pair (stale :8010/:3100 killed first;
+        api :8010, web :3100 with API_URL): tsc + `next build` clean
+        (/wire in the route list); five nouns render on every page;
+        /wire and /wire?date=2026-08-14 both render with their own
+        dates; rail shows 5 word-boundary-cropped lines above Forces
+        and #f22893 click-through lands on the FN item (browser
+        check). PARITY PROVEN: the Streamlit loader run verbatim
+        against the same DB returns the IDENTICAL 14-item id set as
+        GET /wire, every compared field equal (symbol, type, date,
+        strength→signal ×10, trajectory, tone) — mismatches zero.
+      - Recorded: nav amendment in the STANDING BRIEF dated updates +
+        Open decisions (RESOLVED) + DESIGN_BRIEF Navigation section.
+      - NOT done here: no push, no deploy — prod api has no /wire and
+        prod web still shows four nouns until the next approved push.
 
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 

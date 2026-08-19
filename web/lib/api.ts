@@ -243,6 +243,48 @@ export type NarrativesLanding = {
   weakening: WeakeningNarrative[];
 };
 
+/** One item on the News Wire — the earnings/filings feed only (the
+ * Streamlit load_filings_intelligence parity set, FIXPACK B1). Board
+ * moves live in What changed; insiders are off. `synopsis` is the
+ * machinery's stored synopsis or null (never generated at read time);
+ * `signal` crosses on the 10-point scale; `board` comes from the shared
+ * membership resolver and is null for off-board names. */
+export type WireItem = {
+  id: number;
+  symbol: string;
+  company: string | null;
+  type: string;
+  type_label: string;
+  date: string | null;
+  headline: string;
+  synopsis: string | null;
+  signal: number | null;
+  signal_delta: number | null;
+  trajectory: string | null;
+  tone: string | null;
+  impact: string | null;
+  board: { tier: string; score: number } | null;
+};
+
+export type Wire = {
+  date: string;
+  is_latest: boolean;
+  dates: string[];
+  items: WireItem[];
+};
+
+export const getWire = () => get<Wire>("/wire");
+export const getWireAt = (date: string) => get<Wire>(`/wire/${date}`);
+
+/** Word-boundary crop with an ellipsis — the rail never rewrites a
+ * headline, it only crops it (FIXPACK B2b). */
+export function cropWords(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max + 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > 0 ? cut.slice(0, at) : cut.slice(0, max)).replace(/[\s,;:.—–-]+$/, "")}…`;
+}
+
 export const getBoard = () => get<Board>("/board");
 export const getNarrativesLanding = () =>
   get<NarrativesLanding>("/narratives/landing");

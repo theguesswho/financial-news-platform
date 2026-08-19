@@ -80,10 +80,13 @@ function Search({ names }: { names: SearchName[] }) {
   );
 }
 
+// Five nouns — order decided by Edmund 2026-08-19 (FIXPACK B3): News
+// Wire joins between What changed and Track record.
 const NAV = [
   ["The Board", "/"],
   ["Forces", "/forces"],
   ["What changed", "/changed"],
+  ["News Wire", "/wire"],
   ["Track record", "/record"],
 ] as const;
 

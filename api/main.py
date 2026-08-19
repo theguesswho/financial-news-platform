@@ -31,9 +31,10 @@ def health():
     return {"status": "ok", "service": "api", "version": "2.0.0"}
 
 
-from api.routers import board, narratives, reports, stocks  # noqa: E402
+from api.routers import board, narratives, reports, stocks, wire  # noqa: E402
 
 app.include_router(board.router)
 app.include_router(stocks.router)
 app.include_router(narratives.router)
 app.include_router(reports.router)
+app.include_router(wire.router)

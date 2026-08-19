@@ -267,3 +267,12 @@ fixed.
     resolver, never its own query. Do alongside the daily_report
     bookkeeping-vs-real-move fix assigned in FRONTEND_SPEC (2026-08-18
     decision).
+    DONE 2026-08-19 (local, not pushed): resolver EXTRACTED to
+    pipeline/board_membership.py with an as_of date (per Edmund's A2
+    correction — pipeline never imports api; api re-exports from the
+    pipeline module); _masthead/_board_moves use board_membership(conn,
+    as_of=edition_date); own COALESCE queries deleted. Local /board
+    before/after the extract: byte-identical. Verified read-only vs
+    prod DB: board=40, leaders top-3 ACM/GDDY/LDOS — identical to
+    prod /board the same day. [Wording corrected 2026-08-19: an earlier
+    note here mis-described the fix as importing from api/routers.]

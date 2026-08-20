@@ -259,7 +259,7 @@ Reply 'proceed' to accept the count and build, or 'stop' to re-scope."**
 - [ ] 5. v2d lot-logic consumption verified unchanged
 - [ ] 6. Paperwork: V2_CONSIDERATIONS + V3 #13 Done + FRONTEND_SPEC
        update + platform_notes row
-- [x] 7. Local commit 5d9f1e8 (2026-08-20). NOT PUSHED — prod still
+- [x] 7. Local code commit 0bf2daf (2026-08-20; hash recorded in this follow-up doc commit). NOT PUSHED — prod still
        discards grace seats and corridor holds until the next
        Edmund-at-Railway window. Working tree note: pre-existing
        Streamlit-track modifications (README/STREAMLIT_GUIDE/

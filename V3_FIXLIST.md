@@ -276,7 +276,7 @@ fixed.
     offline diff: additions only, both expected classes, zero
     removals; flip-count stop condition (7/day, Aug 13-16) reported
     and signed off by Edmund ("Proceed"). Local /board 44 -> 46,
-    non-flipped entries byte-identical. Commit 5d9f1e8; hash also in the
+    non-flipped entries byte-identical. Commit 0bf2daf; hash also in the
     spec. Prod verify + 35-vs-38 outcome pending the next
     Edmund-attended push.
 

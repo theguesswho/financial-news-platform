@@ -123,3 +123,38 @@ Independent of the September momentum calibration (different fields),
 but both touch narrative honesty — reasonable to run this design's
 steps 1–2 NOW (shadow only, ~$3), and schedule cutover alongside the
 calibration window so the freeze rituals batch.
+
+## SHADOW SAMPLE RESULTS (2026-08-20, 141 of 150 graded; ~$3)
+Distributions (old → new):
+- Strength: mean 0.77 → 0.59, median 0.78 → 0.50. Top bucket
+  (0.9–1.0) went from 33% of the sample to TWO filings (1.4%) — and
+  both paid for it (WCC: record $6.7B sales +13% reported AND
+  organic, four straight double-digit quarters; URI: +12% to $4.4B).
+  The mode is now the 0.5–0.6 "steady state" band (43%) — adjectives
+  without numbers land there, exactly as specified.
+- Trajectory: 67% accelerating → 26% accelerating / 40% stable / 33%
+  decelerating. The self-referential anchor balanced it with zero
+  quota.
+- Groundedness: 13 filings graded "promotional" (confident without
+  numbers) — the category catches EL's 10-K, NDSN's May 10-Q, ENS's
+  10-K.
+Known cases (the acceptance test):
+- EL 10-K (sales-decline year): 0.82/accelerating → 0.50/decelerating,
+  promotional. EL May 10-Q → 0.30 (cites the 5,800–7,000 position
+  eliminations). EL's call stays 0.80/accelerating GROUNDED — the
+  call genuinely carries numbers; the divergence is the signal.
+- LHX 10-Q post-CEO-exit: 0.85/accelerating → 0.40/decelerating.
+  LHX call keeps 0.85 — guidance raised WITH figures, cited.
+- ACM Aug call (the charge + cut): 0.82/accelerating →
+  0.50/decelerating.
+- Calls still outgrade filings (SANM/SMCI/ENS calls 0.75–0.85
+  grounded) — the call_vs_filing_gap signal SURVIVES, now
+  evidence-based rather than tone-based.
+One defect found, one rule added: a single output (PAG call) returned
+0.00 with EMPTY evidence — a failed extraction, not a grade. CUTOVER
+RULE: any output whose band is not accompanied by at least one cited
+evidence string is INVALID and retries; never stored. (This also
+protects the top bands symmetrically.)
+Next decision (Edmund's): cutover ruling + the 18-month re-extraction
+(~$150–200, firm quote before running), recommended batched with the
+September calibration freeze window.

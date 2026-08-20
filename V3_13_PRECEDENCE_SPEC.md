@@ -3,7 +3,8 @@
 Session opener (Edmund types exactly this, nothing more):
 **"Read V3_13_PRECEDENCE_SPEC.md and continue from the Checklist."**
 
-Status: OPEN. Ruled by Edmund 2026-08-20 in conversation, scoped same
+Status: CLOSED 2026-08-20 (built, pushed, prod-verified; surfaces agree
+46=46). Ruled by Edmund 2026-08-20 in conversation, scoped same
 day. CLAUDE.md + STANDING BRIEF bind. This IS a board-membership
 change → freeze discipline: the offline diff below is MANDATORY and
 gates the commit; the change is logged in V2_CONSIDERATIONS.md as
@@ -265,5 +266,11 @@ Reply 'proceed' to accept the count and build, or 'stop' to re-scope."**
        Streamlit-track modifications (README/STREAMLIT_GUIDE/
        streamlit_app.py deletion, from an earlier session) were left
        unstaged — this session touched no Streamlit file.
-- [ ] 8. (post-push, Edmund present) prod verify + 35-vs-38 outcome
-       recorded; Status flipped CLOSED
+- [x] 8. DONE 2026-08-20 10:24-10:40 UTC. Pushed with Edmund at the
+       dashboard (gate clear, 3ab11e7..7938026). PROD VERIFIED: board
+       46, CSL Watch 3.4 + ADBE Watch 3.2 both exit_grace=true;
+       INTU/PCG/NOC/FN correctly off. GAP RE-MEASURED on the live
+       snapshot: Streamlit-style merge 46, product resolver 46,
+       symmetric difference EMPTY — the 35-vs-38 wrinkle's mechanism
+       is resolved; the two surfaces agree name-for-name for the
+       first time. Status flipped CLOSED.

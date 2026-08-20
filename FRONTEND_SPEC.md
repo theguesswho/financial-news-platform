@@ -222,11 +222,24 @@ morning run (SANM machinery-downgraded SB→Buy same run).]
   (1) RAISED-CALL MARKER — SMCI reads Strong Buy at score 3.5 above
       TPL's Buy 4.7. That is CORRECT methodology (the board ranks by
       call first, score within call) and SMCI is NOT promoted — the
-      assessor RAISED its tier above the score tier. /board already
-      ships `disagreement:{kind:"raised",quant_tier}`; the web must
-      render it: a small, quiet mark by the call (design's choice —
-      not an asterisk footnote soup) with plain-words hover: "our
-      assessment sets the call; the score alone would say Watch."
+      assessor RAISED its tier above the score tier. CORRECTED per
+      Edmund 2026-08-20 (two rounds): (i) internally there are TWO
+      routes to a call above the score tier — the assessor's direct
+      verdict (SMCI) and the narrative-override promotion
+      (qual_promoted + gem_adjusted) — but both ARE the qual layer's
+      judgment; the reader gets ONE concept, ONE mark, never two
+      glyphs for the same judgment. (ii) The denotation IS A SYMBOL,
+      not a wordy label (Edmund: "a symbol, or something easy").
+      Spec: a small ◆ immediately after the call text (e.g. "Strong
+      Buy ◆"), same color as the call chip; ONE legend line at the
+      board's foot: "◆ call set by our assessment"; the plain-words
+      sentence ("our assessment sets the call; the score alone would
+      say <quant tier>") lives ONLY in the hover/tooltip. Detection:
+      disagreement.kind=="raised" OR qual_promoted where the
+      displayed call outranks the score tier. The session may
+      propose a nicer glyph than ◆ at build time, but it must be a
+      single quiet symbol in the call's color — no asterisk footnote
+      soup, no text badge.
       Same session: grace-seated names (exit_grace) currently show
       assessed=false — decorate honestly (known cosmetic gap,
       recorded 2026-08-20).

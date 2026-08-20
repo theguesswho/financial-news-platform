@@ -103,20 +103,21 @@ def _board_moves(engine, for_date: date | None = None) -> list:
             SELECT COALESCE(c.symbol, p.symbol),
                    p.assessed_tier, c.assessed_tier,
                    COALESCE(p.qual_promoted, FALSE), COALESCE(c.qual_promoted, FALSE),
+                   p.tier, c.tier,
                    p.gem_score, c.gem_score, p.priced_in, c.priced_in,
                    p.narrative_score, c.narrative_score, p.value_score, c.value_score,
                    p.quality_score, c.quality_score, p.ng_score, c.ng_score
             FROM cur c FULL OUTER JOIN prev p USING (symbol)
         """), {"fd": for_date or date.today()}).fetchall()
     moves = []
-    for (sym, p_stamp, c_stamp, p_prom, c_prom, pg, cg, pp, cp, pn, cn,
-         pv, cv, pq, cq, png, cng) in rows:
+    for (sym, p_stamp, c_stamp, p_prom, c_prom, p_seat, c_seat,
+         pg, cg, pp, cp, pn, cn, pv, cv, pq, cq, png, cng) in rows:
         f = lambda x: float(x) if x is not None else None
         pp, cp, pn, cn, pv, cv, pg_f, cg_f, pq, cq, png, cng = map(
             f, (pp, cp, pn, cn, pv, cv, pg, cg, pq, cq, png, cng))
         p_raw, c_raw = tier_for(pg_f), tier_for(cg_f)
-        pt = effective_tier(p_stamp, p_raw, p_prom)
-        ct = effective_tier(c_stamp, c_raw, c_prom)
+        pt = effective_tier(p_stamp, p_seat, p_prom, gem=pg_f)
+        ct = effective_tier(c_stamp, c_seat, c_prom, gem=cg_f)
         tier_changed = (pt or "_") != (ct or "_")
         stamp_changed = (p_stamp != c_stamp) or (p_prom != c_prom)
         # The assessor VETO (CSL 2026-08-18): the raw score crossed the
@@ -255,16 +256,16 @@ def _board_moves(engine, for_date: date | None = None) -> list:
         with engine.connect() as conn:
             hist = conn.execute(text("""
                 SELECT symbol, date, assessed_tier, gem_score,
-                       COALESCE(qual_promoted, FALSE)
+                       COALESCE(qual_promoted, FALSE), tier
                 FROM leaderboard_history
                 WHERE symbol = ANY(:syms) AND date <= :fd AND date >= :fd0
                 ORDER BY symbol, date"""),
                 {"syms": [m["symbol"] for m in exits], "fd": fd,
                  "fd0": fd - timedelta(days=9)}).fetchall()
         series: dict[str, list] = {}
-        for hsym, _hd, hstamp, hgem, hprom in hist:
+        for hsym, _hd, hstamp, hgem, hprom, hseat in hist:
             series.setdefault(hsym, []).append(
-                effective_tier(hstamp, tier_for(hgem), hprom))
+                effective_tier(hstamp, hseat, hprom, gem=float(hgem)))
         for m in exits:
             eff = series.get(m["symbol"], [])
             # eff[-1] is the exit session; look for an off->on entry in

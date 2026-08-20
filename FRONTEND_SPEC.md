@@ -819,6 +819,43 @@ These are rules, not suggestions. Sessions are disposable; this file is not.
         Open decisions (RESOLVED) + DESIGN_BRIEF Navigation section.
       - NOT done here: no push, no deploy — prod api has no /wire and
         prod web still shows four nouns until the next approved push.
+- [x] 2026-08-20 (V3 #13 session, Edmund's ruling): PRODUCT BOARD NOW
+      HONOURS METHODOLOGY SEATS — LOCAL ONLY, NOT pushed; prod still
+      discards grace seats and corridor holds until the next
+      Edmund-at-Railway window.
+      - Ruling: seat wins above the exit line (0.32); the guard only
+        kills below it. Change lives ONLY in
+        pipeline/board_membership.py (resolver rides the stored
+        snapshot tier, hard kill below BOARD_EXIT; both twins);
+        daily_report's two effective_tier call sites pass the stored
+        tier + gem (plumbing only). No product surface re-implements
+        the merge — /board, force rosters, wire chips, masthead all
+        inherit. Full evidence + mandatory offline diff:
+        V3_13_PRECEDENCE_SPEC.md; freeze entry: V2_CONSIDERATIONS.md.
+      - Verified locally against the live DB (stale :8010 killed):
+        /board 44 -> 46 (+CSL Watch 3.4, +ADBE Watch 3.2, both
+        exit_grace=true), zero removals, non-flipped entries
+        byte-identical (rank fields aside — none shifted); vetoed
+        names (FN/PCG/NOC) and below-exit INTU stay off; force
+        rosters obey the shared-set law (big force AI-Infra + mid
+        force Defence checked; CSL on force 2, ADBE on force 35);
+        masthead board=46 == membership == /board; v2d lot logic
+        reads snapshot columns directly — inputs untouched, no
+        grace/hold row reads Strong Buy in the last 8 snapshots, lot
+        behaviour unchanged. Streamlit untouched (git status).
+      - Known cosmetic gap (out of scope, consumer-side): the two
+        grace entries show assessed=false on /board because board.py's
+        DECORATION branch still gates on tier_for(gem) — tier and
+        score are correct; rationale/direction chips absent for
+        grace-seated names until a product-track session updates the
+        decoration condition to ride the seat.
+      - 35-vs-38 wrinkle: NOT closed yet — expected to close on
+        deploy, but per the ruling it must be RE-MEASURED on prod
+        (Streamlit count vs product /board count) at the next push
+        window and the outcome recorded here honestly.
+      - platform_notes row inserted (active 2026-08-20 → 08-25):
+        board display now honours corridor holds and grace seats
+        above the exit line; reappearances are not company news.
 
 ## THE AGREED ROADMAP (2026-08-15 — supersedes Phases 3–5 below)
 

@@ -266,6 +266,19 @@ fixed.
     grace seats the methodology grants. Likely the same mechanism as
     the 35-vs-38 wrinkle (which stays visible, undiagnosed, per the
     standing brief). Still Edmund's precedence call — nothing changed.
+    DONE 2026-08-20 (local, not pushed): Edmund ruled — seat wins above
+    the exit line, guard kills below it (V3_13_PRECEDENCE_SPEC.md;
+    freeze entry in V2_CONSIDERATIONS.md). board_membership.py resolver
+    now rides the stored snapshot tier with a hard kill below
+    BOARD_EXIT; both worked examples resolved: CSL back on /board
+    (Watch 3.4, grace seat) and INTU's class of corridor holds honoured
+    (INTU itself is below 0.32 today — correctly off). Mandatory
+    offline diff: additions only, both expected classes, zero
+    removals; flip-count stop condition (7/day, Aug 13-16) reported
+    and signed off by Edmund ("Proceed"). Local /board 44 -> 46,
+    non-flipped entries byte-identical. Commit 5d9f1e8; hash also in the
+    spec. Prod verify + 35-vs-38 outcome pending the next
+    Edmund-attended push.
 
 14. **Report masthead has its own board-membership definition (found
     2026-08-18 during the NaN incident).** daily_report._masthead

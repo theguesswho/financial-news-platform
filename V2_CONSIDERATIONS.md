@@ -310,3 +310,30 @@ Aug 14 breach ruled immaterial drift, demotion independently AFFIRMED
 on the priced-in 5.5 near-disqualifying level; ENS (20% below floor)
 and SANM (10.9%) outside corridor — demotions stand under the user's
 own hard stop. Platform note active to Aug 22.
+
+## 2026-08-20 — V3 #13: seat-vs-guard precedence (Edmund's ruling, freeze ritual)
+RULING (Edmund, 2026-08-20): option (a) with the keep — the seat wins
+above the exit line; the guard only kills below it. Below BOARD_EXIT
+(0.32) a name is off the displayed board, always. At or above it, a
+seat the methodology granted is honoured on every product surface:
+grace seats (CSL-class) display at their held tier and corridor holds
+(INTU-class) display at the stamped tier, with the assessor's verdict
+layered on top as usual. The string-'None' veto still excludes (a veto
+is a ruling, not a seat). Promotions (gem_adjusted) untouched.
+IMPLEMENTATION: pipeline/board_membership.py only — the resolver now
+rides the snapshot's STORED tier (hysteresis-aware, the archiver's
+grant) instead of recomputing tier_for(gem), with a hard kill below
+BOARD_EXIT; both twins (_resolve_tier live, effective_tier dated)
+share the semantics; daily_report's two effective_tier call sites pass
+the stored tier + gem (mechanical plumbing, judgment stays in the
+resolver). No consumer re-implements the merge.
+OFFLINE DIFF (mandatory, run before any code change, latest + 7
+snapshots, both modes): all flips are ADDITIONS in exactly the two
+expected classes (grace seat / corridor hold), every gem >= 0.3207,
+zero removals, zero bare-verdict seats, vetoed names stay off. The
+>~6/day flip-count stop condition fired on Aug 13-16 (7 flips each —
+the same recurring backlog population: INTU NOC PCG TDG EIX FIS SSNC
+ES ADBE); session HALTED per spec and reported. Edmund's sign-off on
+the count, 2026-08-20: "Proceed". Live board effect: 44 -> 46
+(+CSL Watch 3.4, +ADBE Watch 3.2, both exit_grace).
+Full diff + evidence: V3_13_PRECEDENCE_SPEC.md.

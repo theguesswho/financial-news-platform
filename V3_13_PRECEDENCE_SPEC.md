@@ -109,10 +109,149 @@ stored tier, assessed_tier, and which rule seated it.
   Railway dashboard; deploy-gate slots bind.
 
 ## Checklist
-- [ ] 0. Data shapes verified with queries (grace seat / corridor /
-       veto rows) — evidence pasted
-- [ ] 1. Offline OLD-vs-NEW diff over latest + 7 snapshots — pasted,
-       classes as expected, no stop condition
+- [x] 0. Data shapes verified with queries (grace seat / corridor /
+       veto rows) — evidence pasted (see Evidence below, 2026-08-20)
+- [x] 1. Offline OLD-vs-NEW diff over latest + 7 snapshots — RUN and
+       pasted below; all flips are additions in the two expected
+       classes. The >~6/day flip-count stop condition fired on 4 of
+       8 dates (7 flips each, Aug 13-16); session HALTED and reported;
+       Edmund ruled "Proceed" (2026-08-20) accepting the count.
+- [x] 2. _resolve_tier changed to the ruling's semantics — seat = the
+       snapshot's STORED tier, alive only while gem >= BOARD_EXIT;
+       qual branch gates on the seat; else branch returns the seat;
+       veto ('None' string) and promotion branches untouched. Dated
+       twin effective_tier/_stamp_resolve given the identical
+       semantics (same module); daily_report's two effective_tier
+       call sites pass stored tier + gem (plumbing only, judgment
+       stays in the resolver).
+- [x] 3. Local /board before/after (stale :8010 killed, same prod DB):
+       44 -> 46 members; added exactly CSL (Watch 3.4) and ADBE
+       (Watch 3.2), both exit_grace=true, matching the diff; ZERO
+       removals; every non-flipped entry byte-identical (no rank
+       shifts — both flips seat at the board's tail, ranks 45/46);
+       PCG/NOC/FN (vetoed) and INTU (gem 0.3144 < 0.32) stay off.
+       Cosmetic note: the two grace entries show assessed=false —
+       board.py's DECORATION branch (not membership) still gates on
+       tier_for(gem); tier/score/exit_grace all correct. Consumer-
+       side, out of this session's scope; recorded in FRONTEND_SPEC.
+- [x] 4. Ripple checks pass: force rosters obey the shared-set law
+       (AI-Infra big force: 30 on-board, all in /board; Defence mid
+       force: 10/10; CSL on force 2 as Watch 3.4, ADBE on force 35
+       as Watch 3.2). daily_report: _board_moves runs clean on the
+       new columns; masthead board=46 == board_membership == /board;
+       live and dated (as_of 08-20) resolutions agree (46, same set).
+       Note: CSL/ADBE produce NO entry move — both diff sides now
+       resolve seat-aware, so retroactively they were seated
+       yesterday too; the reader-facing explanation rides the
+       platform_notes row, not a fabricated entry. platform_notes id 4
+       inserted, active 2026-08-20 -> 2026-08-25.
+- [x] 5. v2d lot logic verified unchanged: track_record.py reads
+       COALESCE(assessed_tier, tier) directly from snapshot rows —
+       inputs untouched by this change; no grace/hold row in the
+       last 8 snapshots reads Strong Buy (query: zero rows), so no
+       false buys/sells; scorecard endpoint healthy (68 lots).
+- [x] 6. Paperwork done: V2_CONSIDERATIONS.md dated freeze entry
+       (ruling, rationale, diff summary, sign-off "Proceed");
+       V3_FIXLIST.md #13 -> DONE 2026-08-20 (local, not pushed);
+       FRONTEND_SPEC.md dated Progress entry (35-vs-38 honestly still
+       open pending prod re-measure); platform_notes row id 4.
+
+## Evidence (session 2026-08-20, read-only queries against prod)
+
+### Item 0 — data shapes, latest snapshot 2026-08-20
+
+(a) Grace-seat rows (stored tier non-null, gem <= WATCH 0.34):
+```
+symbol  gem      tier    assessed_tier  promoted  gem_adj  final_rank
+PCG     0.3392   Watch   'None'         False     None     None
+CSL     0.3366   Watch   Watch          False     None     45
+NOC     0.3343   Watch   'None'         False     None     None
+ADBE    0.3247   Watch   Watch          False     None     46
+```
+Confirms: the archiver stores hysteresis-aware `tier` for grace
+names. PCG/NOC carry the string-'None' veto and must STAY off.
+
+(b) Corridor-hold / stamped rows with raw gem <= 0.34:
+```
+CSL   0.3366  tier=Watch  assessed=Watch  (grace, verdict agrees)
+ADBE  0.3247  tier=Watch  assessed=Watch  (grace, verdict agrees)
+CRUS  0.2929  tier=NULL   assessed=Buy    promoted, gem_adj=0.44
+UHS   0.2829  tier=NULL   assessed=Watch  promoted, gem_adj=0.3508
+DVA   0.2472  tier=NULL   assessed=Watch  promoted, gem_adj=0.3435
+```
+Corridor holds always ride a non-null stored tier (archiver requires
+`c.tier IS NOT NULL`); worked example INTU 08-19: gem 0.3232,
+tier='Watch', assessed_tier='Buy'. The three promoted names sit BELOW
+0.32 raw but display via gem_adjusted — they are on today's /board via
+the override branch, so the hard kill must NOT apply to promotions or
+the diff would show removals (a stop condition). Promotion branch left
+untouched in the planned change.
+
+(c) String-'None' veto rows on latest: FN (0.379, tier=Buy),
+PCG (0.3392, Watch), NOC (0.3343, Watch) — all must resolve OFF
+under old AND new semantics (verified in the diff: none flip).
+
+Live qual_assessments mirror the stamps for all affected names
+(CSL/ADBE='Watch', PCG/NOC/FN='None', INTU='Buy' assessed 08-19).
+INTU today: gem 0.3144 < BOARD_EXIT, stored tier NULL → stays off
+under new semantics (the guard's kept job) — verified in the diff.
+
+### Item 1 — offline OLD-vs-NEW diff (latest live + 8 stamped dates)
+
+Planned NEW semantics diffed: seat = stored snapshot `tier`, alive
+only while gem >= BOARD_EXIT; qual branch gates on the seat instead
+of tier_for(gem); else branch returns the seat; veto and promotion
+branches byte-identical to today.
+
+```
+=== 2026-08-20 [live] — 2 flips ===
+  CSL   gem=0.3366  stored=Watch  stamped=Watch  OLD=None  NEW=Watch  grace seat
+  ADBE  gem=0.3247  stored=Watch  stamped=Watch  OLD=None  NEW=Watch  grace seat
+=== 2026-08-20 [stamp] — 2 flips ===  (identical: CSL, ADBE)
+=== 2026-08-19 [stamp] — 4 flips ===
+  CSL   0.3393 Watch/Watch -> Watch  grace seat
+  ADBE  0.3348 Watch/Watch -> Watch  grace seat
+  SSNC  0.3260 Watch/Buy   -> Buy    corridor hold
+  INTU  0.3232 Watch/Buy   -> Buy    corridor hold
+=== 2026-08-18 [stamp] — 3 flips ===
+  INTU 0.3361 hold->Buy; SSNC 0.3310 hold->Buy; EIX 0.3282 grace->Watch
+=== 2026-08-17 [stamp] — 6 flips ===
+  NOC 0.3394 grace; PCG 0.3387 grace; TDG 0.3350 hold->Buy;
+  FIS 0.3305 grace; EIX 0.3300 grace; SSNC 0.3292 hold->Buy
+=== 2026-08-16 [stamp] — 7 flips ***STOP: count > ~6*** ===
+  INTU hold->Buy; NOC, PCG grace; TDG hold->Buy; EIX grace;
+  SSNC hold->Buy; FIS grace (gems 0.3232-0.3397)
+=== 2026-08-15 [stamp] — 7 flips ***STOP: count > ~6*** ===
+  INTU hold->Buy; PCG, NOC grace; TDG hold->Buy; EIX grace;
+  SSNC hold->Buy; FIS grace (gems 0.3227-0.3367)
+=== 2026-08-14 [stamp] — 7 flips ***STOP: count > ~6*** ===
+  INTU hold->Buy; NOC, PCG grace; TDG hold->Buy; EIX grace;
+  FIS grace; SSNC hold->Buy (gems 0.3223-0.3368)
+=== 2026-08-13 [stamp] — 7 flips ***STOP: count > ~6*** ===
+  TDG hold->Buy; NOC grace; INTU hold->Buy; ADBE grace; ES grace;
+  EIX grace; FIS grace (gems 0.3207-0.3398)
+```
+Full script: scratchpad offline_diff.py (session 2026-08-20).
+
+### Stop-condition report (for Edmund)
+
+Only the flip-COUNT condition fired; every other check is clean:
+- ZERO removals of displayed names, on every date, both modes.
+- ZERO additions below gem 0.32.
+- ZERO bare-stale-verdict seats (every flip rides a stored-tier seat).
+- Every flip is exactly INTU-class (corridor hold) or CSL-class
+  (grace seat). Vetoed names (FN/PCG/NOC on the 20th) stay off.
+- The 7-flip days are the SAME persistent population (INTU, NOC, PCG,
+  TDG, EIX, FIS, SSNC, ES, ADBE, CSL rotating in/out) — the backlog
+  of names the old resolver was discarding daily, not churn. Today's
+  LIVE board changes by only +2 (CSL, ADBE) → 46 becomes 48.
+Assessment: the count breach looks like the known backlog, not a new
+surprise class — but ~7 > ~6 is Edmund's line, so per spec the
+session halted with nothing committed. One question decides it:
+**"The diff shows 7 flips/day on Aug 13-16 — all additions, all
+corridor-hold or grace-seat class, gem >= 0.3207, zero removals, the
+same recurring names; today's live board gains only CSL and ADBE.
+Reply 'proceed' to accept the count and build, or 'stop' to re-scope."**
 - [ ] 2. _resolve_tier changed to the ruling's semantics
 - [ ] 3. Local /board before/after: non-flipped byte-identical,
        flips match the diff
@@ -120,6 +259,11 @@ stored tier, assessed_tier, and which rule seated it.
 - [ ] 5. v2d lot-logic consumption verified unchanged
 - [ ] 6. Paperwork: V2_CONSIDERATIONS + V3 #13 Done + FRONTEND_SPEC
        update + platform_notes row
-- [ ] 7. Local commit; push status stated honestly
+- [x] 7. Local commit 5d9f1e8 (2026-08-20). NOT PUSHED — prod still
+       discards grace seats and corridor holds until the next
+       Edmund-at-Railway window. Working tree note: pre-existing
+       Streamlit-track modifications (README/STREAMLIT_GUIDE/
+       streamlit_app.py deletion, from an earlier session) were left
+       unstaged — this session touched no Streamlit file.
 - [ ] 8. (post-push, Edmund present) prod verify + 35-vs-38 outcome
        recorded; Status flipped CLOSED

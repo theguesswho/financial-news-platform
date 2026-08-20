@@ -20,7 +20,7 @@ from datetime import date
 
 from sqlalchemy import text
 
-from pipeline.tiers import tier_for
+from pipeline.tiers import BOARD_EXIT, tier_for
 
 TIER_ORDER = {"Strong Buy": 0, "Buy": 1, "Watch": 2}
 _TIERS = ("Strong Buy", "Buy", "Watch")
@@ -50,6 +50,18 @@ def _load_rows(conn, as_of: date | None = None):
     """), {"as_of": as_of}).fetchall()
 
 
+def _seat(raw_board_tier, gem):
+    """The raw SEAT (V3 #13, Edmund's ruling 2026-08-20): the snapshot's
+    STORED tier — the archiver already writes it hysteresis-aware, so a
+    grace seat (CSL-class) survives here where tier_for(gem) is null.
+    The seat counts only while gem >= BOARD_EXIT: below the exit line a
+    collapsed score is off the board, always — no verdict, hold, or
+    seat overrides it."""
+    if raw_board_tier in _TIERS and gem >= BOARD_EXIT:
+        return raw_board_tier
+    return None
+
+
 def _resolve_tier(row, qual, overrides):
     """THE single definition of a symbol's final tier + display score.
     Extracted 2026-08-16 (external review): the force-page roster was
@@ -57,35 +69,45 @@ def _resolve_tier(row, qual, overrides):
     merge (override -> qual-with-raw-floor-guard -> raw) is what /board
     actually shows — INTU/PCG/EIX appeared 'on the board' on force
     pages while absent from /board. Any surface that says 'on the
-    board' derives it from THIS function, never from a parallel query."""
+    board' derives it from THIS function, never from a parallel query.
+    V3 #13 (2026-08-20): the merge rides the stored seat, not a fresh
+    tier_for(gem) — recomputing erased the seats the archiver granted
+    (grace seats and the stored side of corridor holds)."""
     (sym, gem, ns, vs, qs, gs, promoted, gem_adj, assessed_tier,
      raw_board_tier, final_rank) = row
     gem = float(gem)
     raw_tier = tier_for(gem)
+    seat = _seat(raw_board_tier, gem)
     q = qual.get(sym)
     ov = overrides.get(sym) if promoted else None
     if ov and assessed_tier in _TIERS:
         tier = assessed_tier
         display = float(gem_adj) if gem_adj is not None else gem
-    elif q and raw_tier:
+    elif q and seat:
         tier = q[1] if q[1] in _TIERS else None
         display = gem
     else:
-        tier = raw_tier
+        tier = seat
         display = gem
     return tier, display, raw_tier
 
 
-def effective_tier(stamp, raw_tier, promoted=False):
+def effective_tier(stamp, seat_tier, promoted=False, gem=None):
     """_resolve_tier's merge computed from a snapshot row's own stored
     stamp — the dated twin of the live-table resolution. The assessor
     writes 'None' (a STRING) to rule a name off the board: it resolves
-    to off here and must never be printed to a reader."""
+    to off here and must never be printed to a reader.
+    V3 #13 (2026-08-20): seat_tier is the snapshot's STORED tier column
+    (hysteresis-aware), no longer a recomputed tier_for(gem); pass gem
+    so the BOARD_EXIT hard kill applies. A stamp is honoured only while
+    the seat is alive — a bare verdict with no seat never seats a name."""
+    seat = _seat(seat_tier, gem) if gem is not None else \
+        (seat_tier if seat_tier in _TIERS else None)
     if promoted and stamp in _TIERS:
         return stamp
-    if stamp is not None and raw_tier:
+    if stamp is not None and seat:
         return stamp if stamp in _TIERS else None
-    return raw_tier
+    return seat
 
 
 def _stamp_resolve(row):
@@ -93,7 +115,7 @@ def _stamp_resolve(row):
      raw_board_tier, final_rank) = row
     gem = float(gem)
     raw_tier = tier_for(gem)
-    tier = effective_tier(stamp, raw_tier, promoted)
+    tier = effective_tier(stamp, raw_board_tier, promoted, gem=gem)
     display = (float(gem_adj) if gem_adj is not None else gem) \
         if (promoted and stamp in _TIERS) else gem
     return tier, display, raw_tier

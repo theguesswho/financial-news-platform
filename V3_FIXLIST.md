@@ -298,3 +298,23 @@ fixed.
     prod DB: board=40, leaders top-3 ACM/GDDY/LDOS — identical to
     prod /board the same day. [Wording corrected 2026-08-19: an earlier
     note here mis-described the fix as importing from api/routers.]
+
+15. **Filings-intelligence positivity skew (user observation 2026-08-20,
+    CONFIRMED in data).** Last 30 days: trajectory 72% "accelerating"
+    (962/1335) vs 7.5% decelerating; strength wildly top-heavy (mode =
+    the 0.9-1.0 bucket, 36% of all filings; almost nothing below 0.6);
+    tone 66% "confident"; 8-K impact 11:1 positive (795 vs 71). The
+    extractor grades what management CLAIMS, and management always
+    claims acceleration — same disease as "every macro accelerating =
+    zero signal" (#3). The wire's display floor (strength >= 0.60)
+    then hides the few weak ones, making the surfaced feed look even
+    rosier. Protections that exist: believability/claims grading and
+    checkpoint verdicts (real but slow — they accrue over quarters).
+    Candidate fixes (methodology, freeze ritual, user decides —
+    LOGGED not decided): (a) re-anchor the rubric to deltas in FILED
+    numbers rather than narrative enthusiasm; (b) display honesty:
+    show strength as a percentile of the trailing cross-section
+    ("9.2 — 64th pctile of recent filings") so compression is visible
+    instead of flattering; (c) feed checkpoint-miss history into the
+    tone/strength prompt as a per-company caution. NOT a forced
+    curve — grading on a curve would be its own dishonesty.

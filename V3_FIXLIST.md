@@ -310,11 +310,14 @@ fixed.
     then hides the few weak ones, making the surfaced feed look even
     rosier. Protections that exist: believability/claims grading and
     checkpoint verdicts (real but slow — they accrue over quarters).
-    Candidate fixes (methodology, freeze ritual, user decides —
-    LOGGED not decided): (a) re-anchor the rubric to deltas in FILED
-    numbers rather than narrative enthusiasm; (b) display honesty:
-    show strength as a percentile of the trailing cross-section
-    ("9.2 — 64th pctile of recent filings") so compression is visible
-    instead of flattering; (c) feed checkpoint-miss history into the
-    tone/strength prompt as a per-company caution. NOT a forced
-    curve — grading on a curve would be its own dishonesty.
+    WORKED DESIGN 2026-08-20 (Edmund: high effort, "not arbitrary in
+    either direction"): see V3_15_STORY_GRADING_DESIGN.md — anchored
+    evidence-cited strength bands, trajectory graded vs the company's
+    OWN prior artifact, tone→groundedness (the "promotional"
+    category), 8-K impact anchors. Percentile display and post-hoc
+    deflation REJECTED as curves. NOTE: narrative_strength feeds the
+    live scorer (call_vs_filing_gap) → full freeze ritual; and
+    narrative_believability is EMPTY (0 rows) — the truthfulness
+    protection is not operating; populating it is the companion
+    build. Shadow sample ~$3 runnable now; 18-month re-extraction
+    ~$150-200 quoted before any run. Awaiting Edmund's ruling.

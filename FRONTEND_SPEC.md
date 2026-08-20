@@ -216,6 +216,32 @@ morning run (SANM machinery-downgraded SB→Buy same run).]
 - Do not start anything else.
 
 ### Dated updates (append-only)
+- 2026-08-20 HOUSEKEEPING SESSION ASSIGNED (Edmund's review of the
+  live board + wire; product track, api/+web/ only, one session,
+  local commit no push):
+  (1) RAISED-CALL MARKER — SMCI reads Strong Buy at score 3.5 above
+      TPL's Buy 4.7. That is CORRECT methodology (the board ranks by
+      call first, score within call) and SMCI is NOT promoted — the
+      assessor RAISED its tier above the score tier. /board already
+      ships `disagreement:{kind:"raised",quant_tier}`; the web must
+      render it: a small, quiet mark by the call (design's choice —
+      not an asterisk footnote soup) with plain-words hover: "our
+      assessment sets the call; the score alone would say Watch."
+      Same session: grace-seated names (exit_grace) currently show
+      assessed=false — decorate honestly (known cosmetic gap,
+      recorded 2026-08-20).
+  (2) BOARD COLUMN ALIGNMENT — Name/Call/Score/Moved/Story headers
+      do not line up with their columns. CSS fix.
+  (3) WIRE DELTA TIEBREAK (api, small) — signal_delta uses
+      LAG(...ORDER BY filing_date) with NO same-date tiebreak: EL's
+      same-day 10-K + call order is ambiguous, so which one counts
+      as "prior" is nondeterministic. Add a deterministic tiebreak
+      (filing_date, then type priority 10-K/10-Q before call, then
+      id) and state it in the router docstring. Semantics otherwise
+      CONFIRMED correct: caret = strength vs the symbol's previous
+      filing, shown when the move >= 0.5 on the 10-pt scale.
+  NOT in this session: V3 #15 positivity skew (methodology, Edmund's
+  ruling), any scoring change.
 - 2026-08-18: membership fix PUSHED (Edmund at dashboard, explicit
   "push") and CONFIRMED ON PROD same day — forces 1/11/40 clean,
   trio unbadged. That "next coding session" item is CLOSED.

@@ -321,3 +321,19 @@ fixed.
     protection is not operating; populating it is the companion
     build. Shadow sample ~$3 runnable now; 18-month re-extraction
     ~$150-200 quoted before any run. Awaiting Edmund's ruling.
+
+16. **Edition date is midnight-unsafe + off-schedule regeneration
+    (found 2026-08-21 via Edmund's SARO question).** Both scheduler
+    call sites pass for_date=date.today() evaluated WHEN THE STEP
+    RUNS: any invocation crossing/starting after 00:00 UTC stamps
+    tomorrow's date onto yesterday's snapshots. Observed: an 00:39
+    UTC invocation (likely dead-run rescue after a restart; logs
+    rotated, trigger unproven) wrote an Aug-21-dated edition from
+    Aug-19/20 snapshots — no moves section, SARO's entry missing
+    from headlines while the board correctly flagged it New. Fix:
+    derive the session date from the LATEST SNAPSHOT date (the data
+    the diff actually uses), never wall-clock at step time; and log
+    trigger + for_date + snapshot-dates on every generation (V3 #10
+    audit-columns companion) so the next orphan is attributable.
+    Self-heals nightly via DELETE+INSERT, so severity is
+    hours-of-stale-headlines, not permanent corruption.

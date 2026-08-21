@@ -215,6 +215,12 @@ Amendments (Phase 4 cutover gate):
       Observational only; touches no judgment. Deliverable: the metas'
       trajectory table shown to user (prototype 2026-08-12 already
       demonstrated feasibility from ledger history).
+- [x] **Phase 1b — LIVE 2026-08-21.** Shadow fortnight reviewed in
+      NARRATIVE_SYSTEM_REVIEW_2026-08-21.md (85 shadow strikes, zero
+      would-be score effects, isolation proven); Edmund signed off
+      2026-08-21 ("Signed off"). scheduler_light 5h now runs
+      run_decay_pass(shadow=False); counters start at zero. First
+      live pass = the next weekly after the flip is deployed.
 - [x] **Phase 1b — silence decay (user-approved 2026-08-11). BUILT IN
       SHADOW 2026-08-11 — live cutover awaits user sign-off (Progress).** When an
       exposed company REPORTS (call + filing ingested) and its

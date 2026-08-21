@@ -1155,17 +1155,19 @@ def weekly_deep_refresh():
     except Exception as e:
         _err("Negative-control audit check failed", e)
 
-    _step("5h", "Silence decay (SHADOW) + narrative vital signs (NARRATIVE_SPEC Phase 1/1b)")
+    _step("5h", "Silence decay (LIVE) + narrative vital signs (NARRATIVE_SPEC Phase 1/1b)")
     try:
         from pipeline.narrative_decay import run_decay_pass
         from pipeline.narrative_vital_signs import run_vital_signs
         from pipeline.hidden_gem_scorer import get_engine as _ge5h
         _e5h = _ge5h()
         # decay runs BEFORE vital signs so its ops land in the week being
-        # computed. shadow=True until user sign-off in NARRATIVE_SPEC Progress.
+        # computed. LIVE since 2026-08-21: Edmund's sign-off ("Signed off",
+        # review doc NARRATIVE_SYSTEM_REVIEW_2026-08-21.md) — counters
+        # start from zero; shadow strikes deliberately not carried over.
         try:
-            d = run_decay_pass(_e5h, shadow=True)
-            _ok(f"Silence decay (shadow): events={d['events']} "
+            d = run_decay_pass(_e5h, shadow=False)
+            _ok(f"Silence decay (LIVE): events={d['events']} "
                 f"checked={d['pairs_checked']} decayed={d['decayed']} "
                 f"reconfirmed={d['reconfirmed_judge'] + d['reconfirmed_themes']}")
         except Exception as e:

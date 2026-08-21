@@ -68,5 +68,7 @@ has only one earnings window of evidence behind it, and 69 names
 carrying a first silent strike will step down next cycle unless
 reconfirmed — that is the intended teeth, but it is teeth.
 
-Sign-off: ____ (date, Edmund's words)          Not signed = shadow
-continues, nothing changes.
+Sign-off: SIGNED 2026-08-21 — Edmund, in conversation with the
+methodology desk, after reading this review: "Signed off". Decay goes
+LIVE at the weekly pass (scheduler_light step 5h flipped shadow=False
+same day; counters start from zero, shadow strikes not carried over).

@@ -337,3 +337,14 @@ fixed.
     audit-columns companion) so the next orphan is attributable.
     Self-heals nightly via DELETE+INSERT, so severity is
     hours-of-stale-headlines, not permanent corruption.
+    BUILT 2026-08-21 (local, same conversation, per the incident-fix
+    rule): latest_snapshot_date() in daily_report.py is the anchor for
+    BOTH scheduler call sites (after-close step 8, weekly step F —
+    whose friday calc mapped any Friday-daytime catch-up to the
+    UPCOMING session, the exact 00:39 shape); generation audit line
+    prints for_date + the two diffed snapshot dates + wall clock on
+    every edition. Verified read-only: anchor returns 2026-08-21,
+    audit pair [08-21, 08-20], SARO None->Buy in that diff. Rides the
+    next push; tonight's 22:00 run still executes the OLD code (its
+    wall-clock date is safe at 22:2x) and overwrites the orphan
+    either way.

@@ -540,6 +540,18 @@ def _significance(m, held: set) -> tuple:
     return (rank, SIG_ORDER.get(m["kind"], 9), -delta)
 
 
+def latest_snapshot_date(engine) -> date | None:
+    """The date of the newest board snapshot — THE anchor for an edition's
+    for_date (V3 #16, 2026-08-21): a wall-clock date.today() evaluated when
+    the step runs is midnight-unsafe (a 00:39 UTC invocation stamped a
+    Friday edition from Wednesday/Thursday snapshots — no moves section,
+    SARO's entry missing). The edition must be stamped with the date of
+    the newest data its diff actually uses, never the wall clock."""
+    with engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT MAX(date) FROM leaderboard_history")).scalar()
+
+
 def generate_report(engine, for_date: date | None = None, force: bool = False) -> dict:
     """Assemble facts, phrase once, store rows — one report per US TRADING
     SESSION (user redesign 2026-08-09): generated right after that
@@ -553,6 +565,17 @@ def generate_report(engine, for_date: date | None = None, force: bool = False) -
     if force is False and for_date.weekday() >= 5:
         print(f"daily report: {for_date} is not a trading session — skipped")
         return {"status": "skipped_weekend"}
+    # Generation audit (V3 #16): every edition states what it was built
+    # from, so an off-schedule invocation is attributable, not a cold case.
+    with engine.connect() as conn:
+        _dd = [r[0] for r in conn.execute(text("""
+            SELECT DISTINCT date FROM leaderboard_history
+            WHERE date <= :fd ORDER BY date DESC LIMIT 2"""),
+            {"fd": for_date}).fetchall()]
+    from datetime import datetime as _dtnow, timezone as _tz
+    print(f"daily report AUDIT: for_date={for_date} diffing snapshots "
+          f"{_dd} wall_clock_utc="
+          f"{_dtnow.now(_tz.utc).isoformat(timespec='seconds')}")
     moves = _board_moves(engine, for_date)
     coverage = _coverage_facts(engine)
     stories = _story_facts(engine)

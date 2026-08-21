@@ -964,13 +964,16 @@ def after_close_refresh():
 
     _step(8, "Session report (this session's Morning Report edition)")
     try:
-        from datetime import date as _rd
-        from pipeline.daily_report import generate_report
+        from pipeline.daily_report import generate_report, latest_snapshot_date
         from pipeline.hidden_gem_scorer import get_engine as _ge8r
         _e8r = _ge8r()
-        r = generate_report(_e8r, for_date=_rd.today())
+        # V3 #16: anchor the edition to the newest SNAPSHOT date, never
+        # date.today() at step time — a run crossing 00:00 UTC stamped
+        # tomorrow's edition from yesterday's data (the SARO orphan).
+        _sd = latest_snapshot_date(_e8r)
+        r = generate_report(_e8r, for_date=_sd)
         _e8r.dispose()
-        _ok(f"Session report: {r}")
+        _ok(f"Session report (anchored to snapshot {_sd}): {r}")
     except Exception as e:
         _err("Session report failed", e)
 
@@ -1218,14 +1221,18 @@ def weekly_deep_refresh():
 
     _step("F", "Regenerate Friday's session report with weekly results")
     try:
-        from datetime import date as _wd, timedelta as _wtd
-        from pipeline.daily_report import generate_report
+        from pipeline.daily_report import generate_report, latest_snapshot_date
         from pipeline.hidden_gem_scorer import get_engine as _gewr
         _ewr = _gewr()
-        friday = _wd.today() - _wtd(days=(_wd.today().weekday() - 4) % 7)
-        r = generate_report(_ewr, for_date=friday)
+        # V3 #16: the old wall-clock friday calc mapped ANY invocation on
+        # a Friday (e.g. a 00:39 catch-up) to the UPCOMING session and
+        # stamped an edition before its data existed. The newest snapshot
+        # IS Friday's when the weekly runs at its 23:30 slot — and on a
+        # Saturday catch-up it is still Friday's. Anchor there.
+        _fd = latest_snapshot_date(_ewr)
+        r = generate_report(_ewr, for_date=_fd)
         _ewr.dispose()
-        _ok(f"Friday edition regenerated with weekly output: {r}")
+        _ok(f"Friday edition regenerated (anchored to snapshot {_fd}): {r}")
     except Exception as e:
         _err("Friday-edition regeneration failed", e)
 

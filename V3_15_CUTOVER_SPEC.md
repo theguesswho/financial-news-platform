@@ -46,6 +46,15 @@ vocab and is out of scope → STOP and report before coding.
   this one — same tiebreak class as the wire delta fix); groundedness
   vocabulary. The shadow script's prompt is the validated reference —
   transcribe it faithfully, don't re-draft from memory.
+- SYNOPSIS PARITY (Edmund 2026-08-21): the v2 output adds "synopsis"
+  — 2–4 sentences in the 8-K events style, grounded in the SAME cited
+  numbers the band evidence uses (the WMT one-liner vs the Sysco
+  paragraph was the gap: calls/10-Ks stored ~130 chars, 8-Ks ~420).
+  Stored into the same llm_analysis synopsis slot the wire already
+  displays — no display change needed; the backfill fills 18 months
+  of history at marginal output-token cost (fold into the GATE 1
+  quote — roughly +$5–10). A synopsis that states figures not present
+  in the evidence list is INVALID (same validation class as below).
 - VALIDATION RULE (from the PAG defect): an output whose strength
   band has no non-empty cited evidence string is INVALID → retry
   (max 3) → on final failure store NOTHING for that filing and count

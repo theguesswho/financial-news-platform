@@ -1,7 +1,9 @@
 # V3 #15 — anchored story grading: cutover build spec
 
-Session opener (Edmund types exactly this, nothing more):
-**"Read V3_15_CUTOVER_SPEC.md and continue from the Checklist."**
+Session opener for the FIRST sitting (Edmund types exactly this,
+nothing more):
+**"Read V3_15_CUTOVER_SPEC.md and V3_15_STORY_GRADING_DESIGN.md. Do
+Sitting 1 (Phase 0–1). Present the GATE 1 sentence. Stop."**
 
 Status: OPEN. Design and shadow validation live in
 V3_15_STORY_GRADING_DESIGN.md (read it FIRST — the rubric text,
@@ -9,9 +11,22 @@ shadow results, and rejection rationale are there and are BINDING;
 this file is the build procedure). CLAUDE.md + STANDING BRIEF bind.
 This IS a scoring change (narrative_strength feeds
 compute_call_vs_filing_gap in the live scorer) → full freeze
-discipline. TWO HARD GATES inside this session require Edmund's
-in-session reply; if he is not present at a gate, STOP there, record
-state, end the session. Nothing after a gate runs without his words.
+discipline.
+
+## Sittings (amended 2026-08-22, external review) — the ONLY way
+## through this spec
+- SITTING 1: Phase 0–1 only, then present the GATE 1 quote sentence.
+  STOP — whether or not Edmund replies.
+- SITTING 2: starts ONLY after Edmund has replied "approved" to the
+  GATE 1 sentence IN THAT SITTING. Phase 3 backfill only. STOP.
+- SITTING 3: Phase 4, ending at the GATE 2 presentation. Phase 5–6
+  run ONLY after Edmund replies "cut over" AND is at the Railway
+  dashboard and has said "push".
+Running "continue from the Checklist" straight through to CLOSED is
+FORBIDDEN. A gate with no reply ends the sitting with state recorded.
+Consent is never carried over from the scoping conversation or a
+previous sitting — each gate's words are given fresh, in that
+sitting.
 
 ## Scope — exactly this, nothing else
 IN: pipeline/narrative_extractor.py (rubric v2 + validation), a
@@ -101,31 +116,64 @@ All offline, against the side table:
   formula): score_all with the v2-based gap, today's other inputs
   fixed; diff displayed membership + tiers vs today's board. Paste
   every flip with its cause.
+  INJECTION PATH (amended 2026-08-22): running the real scorer and
+  the gap query against the SIDE table requires a named injection
+  point — an env var or argument (e.g. FILING_THEMES_TABLE=
+  filing_themes_v2) consumed by compute_call_vs_filing_gap and any
+  other filing_themes reader in the offline path. Offline only —
+  the deployed default stays the live table. If the injection point
+  does not exist, STOP and add it as a reviewed code change FIRST;
+  NEVER hand-copy the formula into a parallel script.
+- WIRE-COUNT ARTIFACT (amended 2026-08-22 — shown BEFORE Edmund is
+  asked to cut over): count the items passing the current >=0.60
+  display floor under v1 vs v2 over the same window /wire uses. The
+  new mode is 0.5–0.6, so starvation is EXPECTED, not a surprise.
+  If the v2 count is <5, present the floor options AT THIS GATE
+  (keep 0.60 / drop to 0.50 / drop the floor) with the counts each
+  would give — do NOT wait for three thin editions to force the
+  question. Phase 6's three-edition watch applies only if 0.60 is
+  kept.
 - STOP CONDITIONS: any flip NOT traceable to the gap input; >5
   membership changes; a tier change of more than one step on any
   name. Otherwise present to Edmund: "Board diff under the new
   grading: <summary>. Reply 'cut over' to swap and push." No reply →
   STOP, everything recorded, side table kept, end session.
 
-## Phase 5 — cutover (only inside an Edmund-at-Railway push window)
-Ordering matters — DB swap and code push must land in ONE window,
-outside deploy-gate slots (05:50–07:00, 21:50–23:00 UTC; Fri
-23:20–00:40), or new filings keep grading v1 into a v2 table:
-1. Archive: rename live rows' table to filing_themes_v1_archive (or
-   copy — state which, prove row counts match before and after).
-2. Swap the side table in as filing_themes (single transaction;
-   verify consumer reads succeed immediately after — hit local
-   /wire + run the gap query).
-3. Commit extractor v2 + wire/web vocabulary changes; Edmund says
-   "push" at the dashboard; push; verify on prod: /wire 200 and
-   items carry sane grades, scheduler restarted with jobs re-armed.
-4. platform_notes row (active ~7 days): story grades re-anchored
+## Phase 5 — cutover (REWRITTEN 2026-08-22, external review: reader
+## code ships BEFORE the data swap — the old swap-then-push order
+## would have /wire serving 'promotional' into v1 pills)
+All inside ONE Edmund-at-Railway window, outside the deploy-gate
+slots (05:50–07:00, 21:50–23:00 UTC; Fri 23:20–00:40):
+a. PAUSE the scheduler (or prove by CLI that no job is running and
+   none fires inside the window).
+b. Push READER-TOLERANT code first: wire/web accept
+   grounded/promotional, and any unknown tone vocabulary renders as
+   plain text — prove Streamlit's EXISTING fallback renders unknown
+   vocab as plain gray (verify only; NO Streamlit edits). This is
+   push #1.
+c. COPY live filing_themes → filing_themes_v1_archive (prefer COPY
+   over RENAME if anything references the table by name — foreign
+   keys, views, matviews; check and STATE WHICH was found and why
+   the choice). Prove row counts match before proceeding.
+d. SWAP the side table in as filing_themes in ONE transaction.
+   Immediately hit local /wire + run the gap query — both must
+   succeed on the swapped table.
+e. Extractor v2 goes live ONLY AFTER the swap, still in this window,
+   so new rows stamp rubric_version=2 into the v2 table: commit the
+   extractor change, Edmund says "push" (push #2), verify on prod:
+   /wire 200 with sane grades, scheduler resumed/re-armed.
+   NOTE (desk, 2026-08-22): two pushes in one window brushes the
+   no-back-to-back-rebuilds rule; the mitigation is the paused
+   scheduler (a) and push #2 being extractor-only. Watch each
+   rebuild green before the next step; if push #1 goes unhealthy,
+   the window ABORTS before any data is touched.
+f. platform_notes row (active ~7 days): story grades re-anchored
    platform-wide; lower numbers are the new honest scale, not
    company deterioration. The assessor must never narrate the
    re-grade as company news.
-5. The next after-close run grades new filings v2 — verify its wire
-   edition the following morning (grades in the new distribution,
-   zero unevidenced rows).
+DEFAULT: do NOT start a long local extractor run against prod inside
+this window — side-table workers belong to Sitting 2 only; if a
+scheduler job is mid-run during Sitting 2, throttle workers.
 
 ## Phase 6 — post-cutover paperwork + the floor watch
 - V2_CONSIDERATIONS.md: dated entry — design pointer, shadow + full
@@ -152,16 +200,25 @@ outside deploy-gate slots (05:50–07:00, 21:50–23:00 UTC; Fri
 - Streamlit untouched. Recorded ≠ fixed. Stop on any surprise.
 
 ## Checklist (evidence pasted inline, top to bottom)
-- [ ] 0. Consumer sweep list + per-consumer vocabulary verdicts
-- [ ] 1. Extractor v2 + validation + era stamp; unit proofs pasted
-- [ ] 2. GATE 1 quote presented; Edmund's approval quoted (or STOP
-       recorded)
-- [ ] 3. Side-table backfill complete; counts + failure list + error
-       rate pasted (<=2%)
-- [ ] 4. GATE 2: distribution + gap movers + board diff pasted;
-       Edmund's cutover approval quoted (or STOP recorded)
-- [ ] 5. Swap + push + prod verify (wire grades sane, scheduler
-       re-armed); platform_notes row id noted
+- [ ] 0. [Sitting 1] Consumer sweep list + per-consumer vocabulary
+       verdicts (out-of-scope breakers -> STOP before coding)
+- [ ] 1. [Sitting 1] Extractor v2 + validation + era stamp; unit
+       proofs pasted
+- [ ] 2. [Sitting 1 ends here] GATE 1 quote presented; Edmund's
+       approval quoted (or STOP recorded — no reply ends the sitting)
+- [ ] 3. [Sitting 2] Side-table backfill complete; counts + failure
+       list + error rate pasted (<=2%)
+- [ ] 4. [Sitting 3] GATE 2: distribution + gap movers + board diff
+       (real scorer via the named injection path) + WIRE-COUNT
+       artifact (v1 vs v2 items over the >=0.60 floor; floor options
+       presented here if v2 <5) pasted; Edmund's cutover approval
+       quoted (or STOP recorded)
+- [ ] 5. [Sitting 3, after "cut over" + "push"] Scheduler paused /
+       no-job proven; reader-tolerant push BEFORE data swap;
+       copy-then-swap with row-count proof (copy-vs-rename choice
+       stated); extractor v2 pushed only after the swap; prod verify
+       (wire grades sane, scheduler re-armed); platform_notes row id
+       noted
 - [ ] 6. Next-edition check: v2 grades flowing, zero unevidenced rows
 - [ ] 7. Paperwork done (V2_CONSIDERATIONS, V3 #15 Done, FRONTEND_SPEC
        floor-watch); Status flipped CLOSED

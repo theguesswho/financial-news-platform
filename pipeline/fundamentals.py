@@ -259,7 +259,21 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             # consensus two-leg fallback in peg_normalizer fills peg_ratio.
             _vendor_peg = _safe(info.get("pegRatio"))
             row.peg_vendor = _vendor_peg
-            if _vendor_peg is not None and 0 < _vendor_peg < 99:
+            # CONFLICT GUARD (user 2026-08-23, the CRUS lesson): a vendor
+            # PEG whose implied consensus growth (~fwd_pe/peg %) is near
+            # zero while DELIVERED earnings growth is strong is junk-grade
+            # (CRUS: 9.35 -> implied 1.4%/yr vs delivered +26.6%). Such a
+            # value must not overwrite a consensus-computed PEG; the
+            # normalizer replaces it on its next pass.
+            _fwd = _safe(info.get("forwardPE"))
+            _eg  = _safe(info.get("earningsGrowth"))
+            _conflict = (
+                _vendor_peg is not None and _vendor_peg > 0 and _fwd and _fwd > 0
+                and (_fwd / _vendor_peg) < 3          # implied growth < 3%/yr
+                and _eg is not None and _eg > 0.15    # delivered > 15%
+            )
+            if _vendor_peg is not None and 0 < _vendor_peg < 99 and not (
+                    _conflict and row.peg_source == "consensus"):
                 row.peg_ratio  = _vendor_peg
                 row.peg_source = "vendor"
             # else: leave peg_ratio for the consensus fallback — never null it here

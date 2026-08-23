@@ -158,6 +158,7 @@ ASSESSMENT_USER = """QUANTITATIVE SCORES:
   Gem score: {gem_score} → Raw tier: {raw_tier}
   Exposure E: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Priced-in P: {priced_in} | NG: {ng_score}
   PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC (TTM): {roic}
+  PEG reading rule: a HIGH PEG means the price is HIGH relative to expected growth (or consensus growth is near zero) — it NEVER means growth is unpriced. A LOW PEG is the cheap-for-growth signal. If the PEG line above is tagged CONFLICT, the figure is unreliable: do not build any argument on it in either direction.
 
 TOP THEMES (from filings + earnings calls):
 {themes}
@@ -206,6 +207,38 @@ def _platform_notes(engine) -> str:
     except Exception:
         _NOTES_CACHE["v"] = ""
     return _NOTES_CACHE["v"]
+
+
+def _peg_context_line(fund) -> str:
+    """PEG with provenance, implied-vs-delivered growth, and a CONFLICT
+    tag (2026-08-23, the CRUS lesson: vendor 9.35 was narrated as
+    'market not crediting growth' — an inversion built on a junk value).
+    fund = (peg, pe_forward, rev_growth, earn_growth, roic, sector,
+    peg_analysts)."""
+    if not fund or fund[0] is None:
+        return "n/a"
+    peg = float(fund[0])
+    out = f"{peg:.2f}"
+    n = fund[6]
+    if n:
+        n = int(n)
+        out += (f" (consensus of {n} analyst{'s' if n != 1 else ''}"
+                + (" — THIN coverage, treat with caution" if n <= 4 else "")
+                + ")")
+    else:
+        out += " (vendor)"
+    fwd = float(fund[1]) if fund[1] else None
+    earn = float(fund[3]) if fund[3] is not None else None
+    if fwd and fwd > 0 and peg > 0:
+        implied = fwd / peg   # PEG = PE/(g*100) -> g% = PE/PEG
+        out += f" — implies consensus growth ≈{implied:.1f}%/yr"
+        if earn is not None:
+            out += f" vs delivered {earn * 100:+.1f}%"
+            if implied < 3 and earn > 0.15:
+                out += (" — CONFLICT: the implied growth contradicts the"
+                        " delivered numbers; this PEG is unreliable, do"
+                        " NOT lean on it in either direction")
+    return out
 
 
 def get_stock_context(engine, symbol: str) -> dict:
@@ -392,12 +425,7 @@ def build_prompt(gem: dict, ctx: dict) -> str:
         ng_score             = fmt(gem.get("ng_score", 0)),
         # PEG carries its evidence weight (user 2026-08-12): a 3-analyst
         # consensus PEG deserves less trust than a 25-analyst one.
-        peg                  = (fmt(fund[0]) + (
-                                    f" (consensus of {int(fund[6])} analyst"
-                                    f"{'s' if int(fund[6]) != 1 else ''}"
-                                    + (" — THIN coverage, treat with caution" if int(fund[6]) <= 4 else "")
-                                    + ")" if fund[6] else " (vendor)")
-                                ) if fund and fund[0] is not None else "n/a",
+        peg                  = _peg_context_line(fund),
         fwd_pe               = fmt(fund[1] if fund else None),
         rev_growth           = fmt(fund[2] if fund else None, pct=True),
         earn_growth          = fmt(fund[3] if fund else None, pct=True),

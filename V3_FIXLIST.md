@@ -348,3 +348,22 @@ fixed.
     next push; tonight's 22:00 run still executes the OLD code (its
     wall-clock date is safe at 22:2x) and overwrites the orphan
     either way.
+
+17. **DONE 2026-08-23 (the CRUS lesson — PEG conflict class).** The
+    2026-07-22 ruling (vendor PEG primary, consensus fallback for
+    MISSING values) left a hole: present-but-junk vendor values (CRUS
+    9.35 -> implied 1.4%/yr vs delivered +26.6%) passed through with
+    only a "(vendor)" tag, and the assessor INVERTED the reading
+    ("not yet crediting growth"). Three-part fix, built in-conversation
+    per the incident rule: (a) fundamentals.py vendor-write guard —
+    a conflict-class vendor value never overwrites a consensus PEG;
+    (b) peg_normalizer trigger extended — conflict-class vendor rows
+    (implied <3%/yr while delivered >15%) recompute to consensus;
+    (c) qual_assessor context now prints implied-vs-delivered growth
+    with a CONFLICT tag and a PEG reading rule (high PEG never means
+    unpriced growth). Applied to prod: 79 rows recomputed (56 updated,
+    21 honestly nulled — consensus growth <=0 makes PEG undefined,
+    incl. CRUS; 2 fetch-failed kept w/ flag); conflict class now ZERO.
+    CRUS + CMC re-assessed through the machinery on corrected context:
+    CRUS SB reinforced (no PEG lean), CMC Buy held. PEG confirmed
+    absent from all scoring math — no rescore was needed.

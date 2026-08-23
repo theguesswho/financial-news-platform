@@ -71,10 +71,24 @@ def recompute_pegs(engine, max_age_days: int = 3) -> dict:
             "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_source VARCHAR(10)"))
 
     with engine.connect() as conn:
+        # Two trigger classes (amended 2026-08-23, the CRUS lesson —
+        # vendor stays primary EXCEPT conflict-class values):
+        #   1. no usable vendor PEG (the original 2026-07-22 fallback);
+        #   2. CONFLICT-CLASS vendor PEG: implied consensus growth
+        #      (fwd_pe/peg, in %) under 3%/yr while DELIVERED earnings
+        #      growth exceeds 15% — junk-grade (CRUS 9.35 -> 1.4% implied
+        #      vs +26.6% delivered). Consensus replaces it when the fetch
+        #      succeeds; on fetch failure the vendor value is KEPT and the
+        #      assessor context flags the conflict.
         funds = conn.execute(text("""
             SELECT symbol, pe_forward, peg_ratio, peg_vendor
             FROM fundamentals
-            WHERE (peg_vendor IS NULL OR peg_vendor <= 0 OR peg_vendor >= 99)
+            WHERE (
+                    (peg_vendor IS NULL OR peg_vendor <= 0 OR peg_vendor >= 99)
+                 OR (peg_source = 'vendor' AND peg_ratio > 0 AND pe_forward > 0
+                     AND (pe_forward / peg_ratio) < 3
+                     AND earnings_growth_yoy > 0.15)
+                  )
               AND (peg_updated IS NULL OR peg_updated < NOW() - (:d || ' days')::interval)
             ORDER BY symbol
         """), {"d": max_age_days}).fetchall()

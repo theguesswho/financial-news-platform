@@ -31,9 +31,12 @@ load_dotenv(override=True)
 # 2026-08-22): the offline board diff must run the REAL scorer against the
 # side table — never a hand-copied formula. FILING_THEMES_TABLE redirects
 # every filing_themes read below; FILING_THEMES_RUBRIC_ERA restricts the
-# graded-field reads (gap strength, velocity trajectory) to one rubric era
-# for the within-era diff. Both are offline-only knobs: the deployed
-# default is the live table, no era filter.
+# graded-field reads (gap strength, velocity trajectory) to one rubric era.
+# FILING_THEMES_TABLE is offline-only (unset in prod — since the Phase 5
+# swap the live table IS the v2 data). FILING_THEMES_RUBRIC_ERA is a
+# PRODUCTION setting (Edmund's within-era ruling 2026-08-23): the Railway
+# scheduler service runs with =2; unset means mixed-era reads, which in
+# prod is a misconfiguration, not a fallback.
 import re as _re
 
 

@@ -28,7 +28,8 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from pipeline.narrative_extractor import extract_themes_from_filing, store_themes
+from pipeline.narrative_extractor import (extract_themes_v2, fetch_prior_claims,
+                                          store_themes_v2, write_synopsis)
 
 load_dotenv(override=True)
 
@@ -155,15 +156,21 @@ def process_one_quarter(engine, client, symbol, quarter, year, date_s, force):
 
     filing_id = store_transcript(engine, symbol, quarter, year, date_s, content)
 
-    themes = extract_themes_from_filing(
-        client, symbol, "EARN_CALL",
-        date_s[:10] if date_s else None,
-        content
-    )
+    # V3 #15 cutover (2026-08-23): transcripts grade through the anchored
+    # rubric v2 — the flip site the Sitting 1 consumer sweep flagged; the
+    # v1 call here would write era-1 rows into the swapped table.
+    fdate = date_s[:10] if date_s else None
+    with engine.connect() as conn:
+        prior_label, prior_claims = fetch_prior_claims(
+            conn, symbol, fdate, filing_id)
+    themes, _reason = extract_themes_v2(
+        client, symbol, "EARN_CALL", fdate, content,
+        prior_label, prior_claims)
 
     if themes:
-        store_themes(engine, filing_id, symbol, "EARN_CALL",
-                     date_s[:10] if date_s else None, themes)
+        store_themes_v2(engine, filing_id, symbol, "EARN_CALL",
+                        fdate, themes)
+        write_synopsis(engine, filing_id, themes.get("synopsis"))
         return "done"
     else:
         return "failed"

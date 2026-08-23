@@ -27,6 +27,35 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+# V3 #15 Phase 4 injection point (V3_15_CUTOVER_SPEC.md, amended
+# 2026-08-22): the offline board diff must run the REAL scorer against the
+# side table — never a hand-copied formula. FILING_THEMES_TABLE redirects
+# every filing_themes read below; FILING_THEMES_RUBRIC_ERA restricts the
+# graded-field reads (gap strength, velocity trajectory) to one rubric era
+# for the within-era diff. Both are offline-only knobs: the deployed
+# default is the live table, no era filter.
+import re as _re
+
+
+def _filing_themes_table() -> str:
+    t = os.getenv("FILING_THEMES_TABLE", "filing_themes")
+    if not _re.fullmatch(r"[a-z_][a-z0-9_]*", t):
+        raise ValueError(f"invalid FILING_THEMES_TABLE: {t!r}")
+    return t
+
+
+def _rubric_era_clause() -> str:
+    """SQL fragment (or '') filtering graded reads to one rubric era.
+    Applies to narrative_strength / trajectory reads only — the
+    divestiture guard is a text search over themes, not a graded field,
+    so era-1 divestiture disclosures must keep standing down the growth
+    penalty regardless of which era graded the row."""
+    era = os.getenv("FILING_THEMES_RUBRIC_ERA")
+    if era is None or era == "":
+        return ""
+    return f"AND ft.rubric_version = {int(era)}"
+
+
 # Hard ceiling — above this forward PE, value score is zeroed out
 PE_CEILING = 75.0
 PEG_CEILING = 6.0
@@ -144,7 +173,7 @@ def compute_call_vs_filing_gap(engine) -> dict:
     are more bullish than filings. Stored in results as 'call_filing_gap'.
     """
     with engine.connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(text(f"""
             SELECT
                 symbol,
                 AVG(CASE WHEN filing_type = 'EARN_CALL' THEN narrative_strength END)
@@ -157,9 +186,10 @@ def compute_call_vs_filing_gap(engine) -> dict:
                     AS filing_count
             FROM (
                 SELECT ft.symbol, ft.filing_type, ft.narrative_strength
-                FROM filing_themes ft
+                FROM {_filing_themes_table()} ft
                 WHERE ft.filing_type IN ('10-K','10-Q','EARN_CALL')
                   AND ft.filing_date >= NOW() - INTERVAL '18 months'
+                  {_rubric_era_clause()}
             ) sub
             GROUP BY symbol
             HAVING COUNT(CASE WHEN filing_type = 'EARN_CALL' THEN 1 END) >= 2
@@ -862,15 +892,16 @@ def score_all_stocks(engine=None) -> list:
 
         # Velocity guard input: last two earnings-call trajectories per stock.
         # Two consecutive 'decelerating' readings = negative narrative velocity.
-        vel_rows = conn.execute(text("""
+        vel_rows = conn.execute(text(f"""
             SELECT symbol, ARRAY_AGG(trajectory ORDER BY filing_date DESC) AS trajs
             FROM (
                 SELECT ft.symbol, ft.trajectory, f.filing_date,
                        ROW_NUMBER() OVER (PARTITION BY ft.symbol
                                           ORDER BY f.filing_date DESC) rn
-                FROM filing_themes ft
+                FROM {_filing_themes_table()} ft
                 JOIN filings f ON f.id = ft.filing_id
                 WHERE f.filing_type = 'EARN_CALL' AND ft.trajectory IS NOT NULL
+                  {_rubric_era_clause()}
             ) t WHERE rn <= 2 GROUP BY symbol
         """)).fetchall()
     neg_velocity = {r[0] for r in vel_rows
@@ -884,8 +915,8 @@ def score_all_stocks(engine=None) -> list:
     # growth penalty stands down and judgment is left to the qual layer
     # (which the |change| trigger summons anyway).
     with engine.connect() as conn:
-        divest_rows = conn.execute(text("""
-            SELECT DISTINCT ft.symbol FROM filing_themes ft
+        divest_rows = conn.execute(text(f"""
+            SELECT DISTINCT ft.symbol FROM {_filing_themes_table()} ft
             JOIN filings f ON f.id = ft.filing_id
             WHERE f.filing_date > NOW() - INTERVAL '12 months'
               AND (ft.raw_themes::text ILIKE '%divestit%'

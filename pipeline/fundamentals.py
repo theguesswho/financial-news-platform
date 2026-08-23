@@ -31,6 +31,20 @@ def _safe(val) -> Optional[float]:
         return None
 
 
+def _vendor_peg_writable(vendor_peg, fwd_pe, earn_growth) -> bool:
+    """True iff a vendor PEG may be written into peg_ratio (2026-08-23,
+    the CRUS rule): in the sane range AND not conflict-class. Conflict =
+    implied consensus growth (fwd_pe/peg, %) < 3 while delivered
+    earnings growth > 15% — a junk value that must live only on
+    peg_vendor. Pure function so the guard is unit-provable."""
+    if vendor_peg is None or not (0 < vendor_peg < 99):
+        return False
+    if (fwd_pe and fwd_pe > 0 and (fwd_pe / vendor_peg) < 3
+            and earn_growth is not None and earn_growth > 0.15):
+        return False   # conflict-class: never into peg_ratio
+    return True
+
+
 def _pct(val) -> Optional[float]:
     v = _safe(val)
     return round(v, 6) if v is not None else None
@@ -259,21 +273,19 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             # consensus two-leg fallback in peg_normalizer fills peg_ratio.
             _vendor_peg = _safe(info.get("pegRatio"))
             row.peg_vendor = _vendor_peg
-            # CONFLICT GUARD (user 2026-08-23, the CRUS lesson): a vendor
-            # PEG whose implied consensus growth (~fwd_pe/peg %) is near
-            # zero while DELIVERED earnings growth is strong is junk-grade
-            # (CRUS: 9.35 -> implied 1.4%/yr vs delivered +26.6%). Such a
-            # value must not overwrite a consensus-computed PEG; the
-            # normalizer replaces it on its next pass.
-            _fwd = _safe(info.get("forwardPE"))
-            _eg  = _safe(info.get("earningsGrowth"))
-            _conflict = (
-                _vendor_peg is not None and _vendor_peg > 0 and _fwd and _fwd > 0
-                and (_fwd / _vendor_peg) < 3          # implied growth < 3%/yr
-                and _eg is not None and _eg > 0.15    # delivered > 15%
-            )
-            if _vendor_peg is not None and 0 < _vendor_peg < 99 and not (
-                    _conflict and row.peg_source == "consensus"):
+            # CONFLICT GUARD (user 2026-08-23, the CRUS lesson; hole
+            # closed same day per external review): a conflict-class
+            # vendor PEG — implied consensus growth (fwd_pe/peg, in %)
+            # under 3%/yr while DELIVERED earnings growth exceeds 15%
+            # (CRUS: 9.35 -> implied 1.4% vs delivered +26.6%) — is
+            # NEVER written into peg_ratio, REGARDLESS of what
+            # peg_source currently holds (the first cut only protected
+            # source='consensus'; a nulled row would have taken 9.35
+            # back on the next fetch). It is still stored on peg_vendor
+            # for audit; the normalizer owns the consensus replace.
+            if _vendor_peg_writable(_vendor_peg,
+                                    _safe(info.get("forwardPE")),
+                                    _safe(info.get("earningsGrowth"))):
                 row.peg_ratio  = _vendor_peg
                 row.peg_source = "vendor"
             # else: leave peg_ratio for the consensus fallback — never null it here

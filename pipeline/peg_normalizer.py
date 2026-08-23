@@ -71,38 +71,58 @@ def recompute_pegs(engine, max_age_days: int = 3) -> dict:
             "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_source VARCHAR(10)"))
 
     with engine.connect() as conn:
-        # Two trigger classes (amended 2026-08-23, the CRUS lesson —
-        # vendor stays primary EXCEPT conflict-class values):
-        #   1. no usable vendor PEG (the original 2026-07-22 fallback);
-        #   2. CONFLICT-CLASS vendor PEG: implied consensus growth
-        #      (fwd_pe/peg, in %) under 3%/yr while DELIVERED earnings
-        #      growth exceeds 15% — junk-grade (CRUS 9.35 -> 1.4% implied
-        #      vs +26.6% delivered). Consensus replaces it when the fetch
-        #      succeeds; on fetch failure the vendor value is KEPT and the
-        #      assessor context flags the conflict.
+        # Two trigger classes (amended 2026-08-23, the CRUS lesson;
+        # re-amended same day per external review — vendor stays primary
+        # EXCEPT conflict-class values):
+        #   1. no usable vendor PEG (the original 2026-07-22 fallback) —
+        #      subject to the staleness gate as before;
+        #   2. CONFLICT-CLASS vendor PEG, tested on peg_VENDOR (the
+        #      audit copy — peg_ratio may already be nulled/consensus):
+        #      implied consensus growth (fwd_pe/peg_vendor, %) under
+        #      3%/yr while DELIVERED earnings growth exceeds 15%
+        #      (CRUS 9.35 -> 1.4% implied vs +26.6%). NO staleness gate:
+        #      eligible on the SAME run — a same-day vendor write must
+        #      not buy junk three days of display. On consensus fetch
+        #      failure the junk vendor value is NEVER restored into
+        #      peg_ratio: it goes/stays blank (peg_vendor keeps the
+        #      audit copy).
         funds = conn.execute(text("""
-            SELECT symbol, pe_forward, peg_ratio, peg_vendor
+            SELECT symbol, pe_forward, peg_ratio, peg_vendor,
+                   (peg_vendor > 0 AND pe_forward > 0
+                    AND (pe_forward / peg_vendor) < 3
+                    AND earnings_growth_yoy > 0.15) AS is_conflict
             FROM fundamentals
             WHERE (
-                    (peg_vendor IS NULL OR peg_vendor <= 0 OR peg_vendor >= 99)
-                 OR (peg_source = 'vendor' AND peg_ratio > 0 AND pe_forward > 0
-                     AND (pe_forward / peg_ratio) < 3
-                     AND earnings_growth_yoy > 0.15)
+                    ((peg_vendor IS NULL OR peg_vendor <= 0 OR peg_vendor >= 99)
+                     AND (peg_updated IS NULL
+                          OR peg_updated < NOW() - (:d || ' days')::interval))
+                 OR (peg_vendor > 0 AND pe_forward > 0
+                     AND (pe_forward / peg_vendor) < 3
+                     AND earnings_growth_yoy > 0.15
+                     AND (peg_ratio IS NOT NULL OR peg_source IS DISTINCT FROM 'consensus'))
                   )
-              AND (peg_updated IS NULL OR peg_updated < NOW() - (:d || ' days')::interval)
             ORDER BY symbol
         """), {"d": max_age_days}).fetchall()
 
-    stats = {"updated": 0, "nulled": 0, "fetch_failed": 0}
+    stats = {"updated": 0, "nulled": 0, "fetch_failed": 0,
+             "conflict_blanked": 0}
     batch = []
-    for sym, pe_fwd, peg_now, vendor_stored in funds:
+    for sym, pe_fwd, peg_now, vendor_stored, is_conflict in funds:
         vendor = vendor_stored if vendor_stored is not None else peg_now
         growth, n_analysts = _consensus_growth(sym)
         time.sleep(0.3)   # polite to Yahoo
 
         if growth is None and n_analysts is None:
-            stats["fetch_failed"] += 1     # transient/no data — keep existing PEG
-            batch.append({"s": sym, "peg": peg_now, "vendor": vendor, "n": None})
+            stats["fetch_failed"] += 1
+            if is_conflict:
+                # NEVER keep/restore a conflict-class value in peg_ratio —
+                # blank beats junk (2026-08-23 rule). Audit copy stays on
+                # peg_vendor.
+                stats["conflict_blanked"] += 1
+                batch.append({"s": sym, "peg": None, "vendor": vendor, "n": None})
+            else:
+                # transient/no data on a non-conflict row — keep existing
+                batch.append({"s": sym, "peg": peg_now, "vendor": vendor, "n": None})
             continue
 
         peg = None

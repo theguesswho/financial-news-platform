@@ -158,7 +158,7 @@ ASSESSMENT_USER = """QUANTITATIVE SCORES:
   Gem score: {gem_score} → Raw tier: {raw_tier}
   Exposure E: {narrative_score} | Value: {value_score} | Quality: {quality_score} | Priced-in P: {priced_in} | NG: {ng_score}
   PEG (sanity stat): {peg} | Fwd PE: {fwd_pe} | Revenue growth: {rev_growth} | Earnings growth: {earn_growth} | ROIC (TTM): {roic}
-  PEG reading rule: a HIGH PEG means the price is HIGH relative to expected growth (or consensus growth is near zero) — it NEVER means growth is unpriced. A LOW PEG is the cheap-for-growth signal. If the PEG line above is tagged CONFLICT, the figure is unreliable: do not build any argument on it in either direction.
+  PEG reading rule (BINDS THE RATING, not just the prose): a HIGH PEG means the price is HIGH relative to expected growth, or consensus growth is near zero — it NEVER means "the market hasn't paid for the growth", and it may NEVER serve as a cheapness, Dell-setup, or upgrade reason. A LOW PEG is the cheap-for-growth signal. A high PEG is a reason for CAUTION only. If the PEG line is tagged CONFLICT, ignore the figure for the rating entirely, in both directions — it may not support Strong Buy, Buy, or any "unpriced option" language. Cheapness, where real, comes from the forward PE and the value score, never from a high PEG. CONTINUITY: if the prior assessment used PEG backwards (e.g. read a high PEG as unpriced growth), say plainly that the prior reading was wrong, then rate from the corrected meaning — no silent rewrite.
 
 TOP THEMES (from filings + earnings calls):
 {themes}

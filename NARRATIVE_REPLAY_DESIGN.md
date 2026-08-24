@@ -369,3 +369,38 @@ menu, in ascending order of caution:
 5. Survivorship: acceptable as named-and-bounded for a foundation
    exercise, or does it demand delisted-name inclusion even at v1?
 6. Anything in §8's integration tiers that should be stricter?
+
+## Amendment 2026-08-24 — the coverage cliff (post-cutover measurement)
+The cutover's Sitting-2 coverage ruling (4,919 of 9,098 window filings
+have source text; 4,179 text-less rows stay era-1, NOT re-fetched)
+changes this design's feed assumptions. Measured by month (text
+coverage of filing_themes rows): Feb-Mar 2025 ~0-2%; Apr 2025-Jan
+2026 ~10-41%; Feb 2026 onward 62-77%; Jul-Aug 2026 100%. Two
+consequences:
+1. The assumed Feb-2025 window START is untenable without a vendor
+   re-fetch — no text means no in-sequence claims extraction and no
+   v2 grades there (§5's "one payment, two uses" now covers only the
+   dense region).
+2. The dense region ≈ the NEAR-CLEAN post-model-snapshot segment —
+   fortunate for judge-knowledge honesty, but it guts §7's
+   tune-on-the-dirty-half split as written (the dirty half barely
+   exists as data).
+DECISION FOR EDMUND (with an R0 probe + quote before ruling):
+  (a) SHORT WINDOW — replay Feb→Aug 2026 (dense, near-clean, cheap).
+      Smaller foundation: 1-2 claim-resolution cycles, ~7 months of
+      momentum baselines; refinement split becomes a time split
+      inside the clean segment (weaker, honest).
+  (b) FULL WINDOW — quote a vendor re-fetch of the ~4,179 text-less
+      documents (feasibility itself unproven: the vendor may not
+      retain old transcripts — R0 must probe a sample before any
+      quote). Restores the 18-month ambition and the snapshot split.
+      NOTE: Edmund's cutover ruling against re-fetching was scoped to
+      the CUTOVER; the replay is a separate purpose needing its own
+      ruling either way.
+  (c) HYBRID — dense core (Feb→Aug 2026) plus the thin Oct-2025→Jan-
+      2026 shoulder as-is, with era-1-graded evidence barred from
+      voting on births/exposures (the same rule class as the 8-K
+      era-mix decision in §5).
+Until Edmund rules, the window in §1 is UNPINNED; R0 gains the
+coverage-by-month table and the re-fetch feasibility probe as
+standing inventory items.

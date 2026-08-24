@@ -404,3 +404,30 @@ DECISION FOR EDMUND (with an R0 probe + quote before ruling):
 Until Edmund rules, the window in §1 is UNPINNED; R0 gains the
 coverage-by-month table and the re-fetch feasibility probe as
 standing inventory items.
+
+### R0 probe results (2026-08-25, live, read-only — nothing stored)
+Feasibility of backfilling the missing window data, per feed:
+- SEC filings (2,075 text-less 10-K/10-Q): every row carries its
+  sec.gov URL; probe GETs returned HTTP 200 with full documents
+  (2MB+). Re-download is mechanical. (The 1,663 text-less 8-Ks are
+  NOT needed — their analyzer layer is 100% complete.)
+- Transcripts (2,775 text-less calls): vendor archive probe 4/4 FOUND
+  for 2025 calls (DHI, CBOE, NEM, GRMN — 35–56k chars each). The
+  vendor retains history. MANDATORY on ingest: internal-date
+  verification before storing under any label (V3 #2 / the ACM rule);
+  expect 85–95% recovery, not 100%.
+- Prices (Feb 3–Apr 4 2025 gap): yfinance serves unadjusted closes
+  for the window (probe: 5/5 rows, auto_adjust=False) — the §4b
+  as-printed rule is satisfiable.
+COST: fetching ≈ $0 (existing vendor subscription + free SEC/yfinance);
+v2 grading overlay of ~4,850 recovered docs ≈ $120–200; 8-K design-D
+re-anchor ≈ $50–100; replay-side claims for recovered calls ≈ +$60
+inside the replay quote. TOTAL NEW LLM SPEND ≈ $250–350.
+TIME: elapsed 3–7 days, dominated by vendor rate limits (dripped,
+resumable, throttled to protect the nightly pipeline's quota — the
+Aug-16 429 lesson); EDGAR ~1–2h; prices <1h; grading overlay ~4–6h.
+One build sitting for the fetcher (with date verification), then
+unattended.
+CONSEQUENCE: option (b) FULL WINDOW is confirmed feasible and cheap —
+it restores the 18-month ambition, the §7 refinement split, and the
+price gap. The (a)/(b)/(c) ruling remains Edmund's.

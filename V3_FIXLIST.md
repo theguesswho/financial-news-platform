@@ -367,3 +367,15 @@ fixed.
     CRUS + CMC re-assessed through the machinery on corrected context:
     CRUS SB reinforced (no PEG lean), CMC Buy held. PEG confirmed
     absent from all scoring math — no rescore was needed.
+
+18. **Deploy gate is more permissive than the written rule (found
+    2026-08-25, harmless outcome).** CLAUDE.md rule 1 says never push
+    DURING a slot (~50-min window); the gate actually blocks only (a)
+    a live scheduler_runs row and (b) the 10 minutes BEFORE a slot
+    start. A 22:25 push cleared because the run had finished at 22:20
+    — correct in substance (nothing to kill), but inside the written
+    window. Decide one way: harden the gate to block the whole
+    nominal window, or amend CLAUDE.md rule 1 to match the gate's
+    live-run semantics ("no push while a run is live or within 10 min
+    of a start"). Edmund's call; the desk also re-learned to check
+    the clock BEFORE pushing rather than lean on the gate.

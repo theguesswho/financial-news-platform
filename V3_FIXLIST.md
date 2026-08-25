@@ -379,3 +379,27 @@ fixed.
     live-run semantics ("no push while a run is live or within 10 min
     of a start"). Edmund's call; the desk also re-learned to check
     the clock BEFORE pushing rather than lean on the gate.
+
+19. **Some wire items still show a one-line stub instead of the full
+    paragraph — add one retry before giving up (noted 2026-08-26,
+    the Home Depot 10-Q example).**
+    THE SITUATION IN PLAIN WORDS: when the machine grades a new
+    filing, it also writes the 2-4 sentence "expanded narrative" for
+    the wire. Before we display that paragraph we check its honesty:
+    every number in it must also appear in the evidence the machine
+    cited. If the check fails, we throw the paragraph away and keep
+    the grade — showing NO paragraph beats showing an unverified
+    number (Edmund's Sitting-2 rule). When that happens, the reader
+    sees the old short one-liner instead (that's what happened to
+    HD's 10-Q: grade 6.2 fine, paragraph discarded, stub shown).
+    THE GAP: today the paragraph gets ONE attempt. If it fails the
+    honesty check, we discard immediately — no second try. In the
+    backfill this discarded 13-27% of paragraphs, so a visible
+    minority of wire items will always be stubs.
+    THE FIX (small): on a paragraph-only failure, retry ONCE with the
+    instruction "rewrite using only the figures in your evidence
+    list", then drop if it still fails. The honesty bar does not
+    move — we just give the writer a second chance to meet it.
+    WHERE: pipeline/narrative_extractor.py (extract_themes_v2's
+    synopsis handling). Natural home: the V3 #15 close-out session.
+    Cost: a few extra tokens on the minority of filings that fail.

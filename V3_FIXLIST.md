@@ -140,6 +140,39 @@ fixed.
    Railway) and legacy step 5 explicitly PARKED with a loud weekly
    warning — the P leg stays frozen-and-documented; nothing unfreezes
    outside the Phase 2 ritual.
+   **BLAST RADIUS WIDER THAN RECORDED (found 2026-09-05, diagnostic
+   only).** This item was logged as freezing stock_theme_alignment
+   (the 20% leg of priced-in). It ALSO starves SILENCE DECAY, which
+   reads the same field: narrative_decay._event_embeddings requires
+   filing_themes.embedding IS NOT NULL. With step 5 parked, NO
+   filing_themes row has carried an embedding since week-of
+   2026-08-10 (rows/embedded by week: 08-10 51/0, 08-17 22/0,
+   08-24 63/0, 08-31 30/0; the 08-03 week still has 534/560 from
+   before the park).
+   CONSEQUENCE — LIVE DECAY HAS BEEN INERT SINCE ITS 2026-08-21
+   CUTOVER. Not crashed: starved. Counters reproduced read-only from
+   the pass's own logic for the last two weeklies:
+     weekly 08-28: events 58, pairs_checked 286, reconfirmed_judge
+       108, already_judged 0, reconfirmed_themes 0, reached
+       similarity 14, SKIPPED-NO-EMBEDDING 164; symbols with usable
+       embeddings 4 of 58.
+     weekly 09-04: events 49, pairs_checked 246, reconfirmed_judge
+       95, already_judged 0, reconfirmed_themes 0, reached
+       similarity 7, SKIPPED-NO-EMBEDDING 144; symbols with usable
+       embeddings 2 of 49.
+   (Earnings were plentiful — the earlier "no reports" reading was
+   WRONG and is corrected here.) Zero live decay ops exist: all 85
+   decay rows carry trigger='shadow', 2026-08-11..14.
+   THE SILENT-FAILURE SHAPE: the skip at `if best is None: continue`
+   has NO stat key, so the pass reports success with zeros and no
+   reason — the same shape as the NaN incident (run completes,
+   output empty).
+   GATE IMPACT: the Phase 2 decay-tail precondition (NARRATIVE_SPEC)
+   is BLOCKED — unsatisfiable until embeddings are restored for new
+   filings. Waiting for the October wave does NOT fix it.
+   NOT ACTIONED (Edmund 2026-09-05): step 5 stays parked,
+   stock_theme_alignment stays frozen, Phase 2 stays shut. Scope note
+   for a later sitting is recorded in NARRATIVE_SPEC.
 
 6. **processed_at is vestigial — retire it.** Full-audit finding
    2026-08-11: the huge processed_at NULL counts are NOT unprocessed

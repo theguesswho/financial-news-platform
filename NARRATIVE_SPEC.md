@@ -216,6 +216,31 @@ Momentum (Phase 2 cutover gate):
   If the negative tail is missing (erosion still a rounding error
   across recent clean weeks), DO NOT OPEN THE SITTING. Record the
   reading and stop.
+- **PRECONDITION IS CURRENTLY BLOCKED — decay cannot produce a tail
+  (found 2026-09-05, diagnostic only; full evidence in V3_FIXLIST
+  item 0).** Live decay has been INERT since its 2026-08-21 cutover.
+  Not crashed — starved: `_event_embeddings` requires
+  filing_themes.embedding IS NOT NULL, and no row has carried an
+  embedding since week-of 2026-08-10 because the weekly embeddings
+  step is PARKED (V3 #0). Last two weeklies skipped 164 and 144
+  pairs for missing embeddings (only 4 of 58, then 2 of 49 reporting
+  symbols had any usable embedding); reconfirmed_themes 0 both
+  times; zero live decay ops exist. The skip has NO counter, so the
+  pass reports success with zeros — a silent failure of the NaN
+  incident's shape. CONSEQUENCE: waiting for the October wave does
+  NOT satisfy the decay-tail precondition; embeddings for NEW
+  filings must be restored first. Re-read this line before quoting
+  the precondition as merely "waiting for October".
+- **SCOPE NOTE for a later sitting (prep only, Edmund 2026-09-05 —
+  no code written, nothing scheduled):** NULL-only re-embed of
+  filing_themes since 2026-08-10 (plus any other NULL era-2 rows);
+  prove decay can then SEE embeddings (event symbols with usable
+  embeddings goes from ~2/49 to near-full, reconfirmed_themes and/or
+  decayed become non-zero); add a `skipped_no_embedding` counter to
+  run_decay_pass so this failure can never again read as success.
+  EXPLICITLY OUT OF THAT SITTING: do NOT re-enable scheduler step 5,
+  do NOT rebuild stock_theme_alignment, do NOT unfreeze the
+  priced-in leg, do NOT open Phase 2.
 **V3 #0 IS DECOUPLED FROM THIS GATE (Edmund's ruling 2026-09-03).**
 The stale embeddings leg of priced-in (weekly embeddings build has
 failed on Railway since setup; stock_theme_alignment frozen

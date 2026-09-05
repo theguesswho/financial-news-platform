@@ -195,6 +195,40 @@ Momentum (Phase 2 cutover gate):
   rolling 28 days.
 - Lead: state downgrades precede exposed-weight declines more often
   than they follow them (measured over the shadow period).
+- **PRECONDITION — the decay negative tail (Edmund's ruling
+  2026-09-03).** Live cutover waits until decay has produced a REAL
+  negative tail in exposure_history — NOT merely until an October
+  flood has passed. Evidence for why: a clean BUSY week does not
+  supply erosion on its own (w/c 2026-08-03 was clean and busy —
+  742 adds, 356 strengthens, 8 weakens, ZERO removes; across the
+  five clean weeks to 08-31 the judge produced 9 weakens and no
+  removes). July's heavy erosion was seeding-era pruning and is
+  excluded by the seeding flag. Decay IS counted as erosion
+  (EROSION_OPS = weaken, remove, decay) and went live 2026-08-21
+  with counters at zero, so its step-downs arrive per company at the
+  next report that fails to reconfirm.
+  RULE: before ANY calibration sitting is opened, run the
+  precondition query and PASTE the result:
+    SELECT DATE_TRUNC('week', judged_at)::date wk, op, COUNT(*)
+    FROM exposure_history
+    WHERE judged_at >= '2026-08-03' AND op IN ('weaken','remove','decay')
+    GROUP BY 1,2 ORDER BY 1,2;
+  If the negative tail is missing (erosion still a rounding error
+  across recent clean weeks), DO NOT OPEN THE SITTING. Record the
+  reading and stop.
+**V3 #0 IS DECOUPLED FROM THIS GATE (Edmund's ruling 2026-09-03).**
+The stale embeddings leg of priced-in (weekly embeddings build has
+failed on Railway since setup; stock_theme_alignment frozen
+2026-07-12; it supplies 20% of the priced-in P component in LIVE
+scoring) was previously scheduled for decision AT the Phase 2 gate.
+Phase 2 has now moved to a decay-tail precondition with no fixed
+date — so V3 #0 must NOT ride it silently. It is its own decision,
+takeable on its own timetable (replace P's leg with narrative-brain
+momentum and retire the legacy path, vs revive the dependency —
+either way freeze discipline). Anyone reading this gate must NOT
+assume V3 #0 travels with it. Current staleness compounds while it
+waits and should be stated plainly whenever the item is raised.
+
 Amendments (Phase 4 cutover gate):
 - Every amendment lists ≥B distinct-company evidence ids.
 - Grounding audit style check: sampled amendments trace to real rows.

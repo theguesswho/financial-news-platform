@@ -89,6 +89,54 @@ Rules, absolute:
    X in context" may only be said after confirming the context builder
    actually includes X. Trace the code path, don't infer it.
 
+## Data integrity AND data coherence (user directive 2026-09-06 — the
+## AECOM growth lesson; real money was on it)
+AECOM's 10-Q (11 Aug) showed revenue −14% and a loss. Our wire had the
+filing the same day. The quant score did not see it for 25 DAYS,
+because revenue/earnings growth still came from Yahoo's statement
+tables, which publish a quarter weeks after the filing — while FMP
+(the vendor we pay for, declared owner of "what companies report" on
+2026-08-09) had it stamped the same afternoon. The error was not that
+a source lags — some of our data is not immediate and that is a known,
+accepted quantity. The error was that EVERYTHING statement-based ran
+off FMP except two values, the two that decide the growth penalty,
+and nobody knew, because nobody had listed the fields when the vendor
+was re-homed and nothing compared what the score used to what the
+company had filed. That is a lack of coherence and of oversight.
+Edmund bought the stock on our review. Rules, absolute:
+1. DATA COHERENCE: one source owns each fact (FMP: what companies
+   report; Yahoo: what the market says; SEC/EarningsCall: the
+   documents). Two vendors' versions of the same fact never coexist in
+   a scoring path — ES and INTU carried positive Yahoo earnings growth
+   while FMP showed negative for the same quarter. The wire, the
+   assessor and the quant score see the SAME quarter for a company.
+2. KNOWN LATENCY, NOT DISCOVERED LATENCY. Every scoring input has a
+   stated source and a stated expected latency, written down. A lag
+   that is known and accepted is fine; a lag nobody knew about is an
+   integrity failure. If the actual latency is found to differ from
+   the stated one, that is an incident, not a footnote.
+3. A REFRESH IS NOT PROOF. "fetched_at is recent" says nothing about
+   content. Scoring inputs carry provenance (source, quarter end,
+   filing date), and the sentinel compares the quarter in the score to
+   the latest filing on record against the stated latency — a breach
+   is an alarm in the daily brief, by name, the day it opens.
+4. WHEN A VENDOR IS RE-HOMED, EVERY FIELD IS LISTED AND EVERY FIELD IS
+   MOVED OR EXPLICITLY LEFT, with the reason written down. A doctrine
+   sentence is not a migration. Oversight means someone can answer
+   "where does this number come from and how old can it be" for every
+   field in the score, from a document, not from memory.
+5. VERIFIED, NOT ASSUMED. After any data-path change, pick a company
+   that filed this week and show its filed quarter in the score's
+   inputs before calling the change done.
+6. READOUTS READ BACK THE ALARMS. Every "how's the board" / status
+   answer states the open freshness violations (env_diagnostics
+   source='freshness') by name, or says "none open". Silent green
+   while a source is red is forbidden — historical_metrics was red
+   from 2026-09-04 through three board readouts nobody surfaced.
+The living inventory is DATA_SCORECARD.md (field → source → expected
+latency → consumer → status). It is updated in the same change as any
+data-path change; the incidents are V3_FIXLIST #20/#21/#22.
+
 ## Narrative system (the living-narratives build)
 ALL narrative-system work (momentum, vital signs, amendments,
 checkpoint minting, lifecycle) is governed by NARRATIVE_SPEC.md — read

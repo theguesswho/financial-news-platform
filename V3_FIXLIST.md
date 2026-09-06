@@ -249,6 +249,106 @@ fixed.
 8. **Assessor cache hit rate** — verify the warm-up fix moved ~55% to
    ~85% in llm_usage after a week of runs (check ~Aug 16).
 
+20. **GROWTH INPUTS LAG THE FILING BY WEEKS — the ACM class
+    (found 2026-09-06; confirmed by external review against the live
+    DB; real money was on it). NOT FIXED. Owner: a freeze sitting
+    Edmund opens; no build, no push before that.**
+    WHAT HAPPENED: ACM's 10-Q and call were ingested 2026-08-11 (the
+    8-K with the $337M charge on 08-10). The wire had them the same
+    day; the assessor read them 08-11 and held Strong Buy. The QUANT
+    score kept gem ~5.15 through 2026-09-05. On 2026-09-06
+    revenue_growth_yoy = -0.1418 and earnings_growth_yoy = -1.4794
+    appeared, the both-shrinking 0.5x penalty fired, gem 2.57, off
+    the board — 25 days after the filing.
+    WHY: revenue/earnings/FCF growth come from Yahoo's quarterly
+    statement tables (pipeline/fundamentals.py `_quarterly_trends` →
+    `_yoy_growth`, info-field fallback), NOT from the filing text we
+    already hold and NOT from FMP, which on 2026-08-09 was declared
+    owner of "what companies report". Everything statement-based was
+    moved to FMP except the quarterly block — the two values that
+    decide the growth penalty were left on Yahoo, unlisted. Yahoo
+    published ACM's June quarter between our 09-05 and 09-06 morning
+    fetches. FMP had it stamped fillingDate 2026-08-10 (checked live
+    09-06; SEC XBRL also had it 08-11). freshness_sentinel checks
+    MAX(fetched_at) only — a fresh fetch of a stale quarter is "fresh".
+    The 22:00 dirty-symbol re-fetch (step 3d) re-fetches Yahoo, so it
+    re-fetched March numbers on 08-11.
+    SCALE (offline diff 2026-09-06, FMP quarter vs stored, growth
+    multiplier only): 831 symbols; 46 multipliers change (29 harsher,
+    17 softer); 156 differ >2pts on revenue growth for the SAME
+    quarter (two vendors, two definitions of net income — ES: Yahoo
+    earnings +10%, FMP -85%; INTU: +9% vs -5%). Board: ES, INTU, BDX
+    would fall below the exit line; DTE, ZTS, EMN would enter as Buy,
+    CMI as Watch; CSL's grace seat would end. 11 symbols' stored
+    quarter still older than their latest 10-Q on 09-06 (GATX, CMI,
+    LNT, AEIS, BEN among them).
+    THE SITTING (scoring-input change — freeze ritual, before/after
+    board diff incl. margin-trend and FCF-trajectory effects, Edmund's
+    sign-off, push with him at Railway):
+    a. Re-home the quarterly block (dates, revenue, gross/op margin,
+       net income, FCF) onto FMP quarterly income + cash-flow
+       statements for ALL symbols; growth computed from it; Yahoo
+       only when FMP returns nothing. Align income/cash-flow by
+       position not date (52/53-week filers: ACM 06-30 vs 07-03).
+    b. Store provenance on the row: source, quarter end, filing date.
+    c. Sentinel: per symbol, quarter in the score vs latest 10-Q/10-K
+       on record, against the stated latency in DATA_SCORECARD.md;
+       breaches named in the daily brief.
+    d. Prove, in the sitting, on a company that filed that week, that
+       the filed quarter is in the score's inputs the same evening.
+       Prove FMP had ACM's June quarter on/near file day (fillingDate
+       2026-08-10 shown live 09-06 — re-show it in the sitting).
+    OUT OF SCOPE FOR THIS ARC: redesigning the one-off vs structural
+    growth penalty; embeddings/decay/Phase 2; replay; backfill.
+
+21. **historical_metrics IS BROKEN — value score's TTM revenue (P/S
+    leg) dead since spring (found 2026-09-06; confirmed by external
+    review). NOT FIXED. Same sitting as #20 or its own; no build, no
+    push before Edmund opens it.**
+    hidden_gem_scorer's value pass reads TTM revenue as the lateral
+    SUM of the last 4 historical_metrics rows. The weekly refresh
+    (scheduler step 6, pipeline/fmp_historical.py, FMP key-metrics +
+    income-statement quarterly) upserts ON CONFLICT (symbol, date) —
+    and the live table has NO unique constraint on (symbol, date)
+    (only NOT NULLs + ix_hm_symbol; the Railway migration dropped it,
+    the 2026-07-05 constraint repair missed this table). Friday
+    2026-09-04's weekly log: every one of 827 symbols failed with
+    "no unique or exclusion constraint matching the ON CONFLICT
+    specification". MAX(date) = 2026-05-10 (~119 days). ACM has ZERO
+    rows; ~334 of 831 symbols have none — their P/S leg is scored as
+    "no data". FMP itself returns the June quarter fine (checked live).
+    env_diagnostics has recorded the freshness violation
+    (historical_metrics age ~117-119d vs max 115) on every run since
+    2026-09-04, including 09-06 — and this desk's board readouts that
+    week did not read it back to Edmund. Swept all 29 ON CONFLICT
+    targets in the codebase against the DB: this is the only broken
+    one.
+    THE FIX: restore UNIQUE (symbol, date) (dedupe first if needed);
+    re-run the refresh for the universe; cut the sentinel max age
+    from 115 days to 10 (weekly table); prove ACM and a board sample
+    have current TTM revenue; before/after board diff (P/S leg moves
+    for all 831).
+
+22. **PROCESS: coherence and oversight failures, encoded as hard
+    rules + a living inventory (Edmund 2026-09-06). RECORDED —
+    CLAUDE.md "Data integrity AND data coherence" section +
+    DATA_SCORECARD.md (new). Rules: one owner per scoring fact; every
+    scoring input listed field → source → expected latency → consumer;
+    known latency allowed, undiscovered latency is an incident;
+    fetched_at ≠ content current, alarm on quarter/filing mismatch by
+    symbol; vendor re-homes list every field moved or explicitly left;
+    after any data-path change prove a this-week filer's quarter in
+    the score inputs; status/board readouts MUST read back open
+    freshness violations — silent green while a source is red is
+    forbidden.**
+    Also logged in the scorecard: roe and debt_to_equity are written
+    DAILY by the Yahoo fetch (fundamentals.py 296/305) and WEEKLY by
+    the FMP canonical sync — the same field alternates vendors within
+    a week. Not LIVE scoring inputs today (verified 09-06: roe is
+    selected by the quality query but unused; debt_to_equity feeds
+    only score.py, whose callers are off the scheduler path), but a
+    live example of the rule being broken; resolve in the #20 sitting.
+
 ## Standing gates (not fixes, reminders)
 
 - Chunk 4 + ALNY/LITE/SNDK additions stay gated behind the board-size

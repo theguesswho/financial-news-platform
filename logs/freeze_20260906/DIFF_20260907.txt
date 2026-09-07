@@ -1,0 +1,78 @@
+
+==================== before -> mid ====================
+board (gem > WATCH 0.34): 45 -> 47   [exit line BOARD_EXIT 0.32]
+ENTER: [('CW', '3.34', '3.40', 'Watch'), ('MORN', '3.11', '3.42', 'Watch'), ('XYL', '3.36', '3.46', 'Watch')]
+DROP below WATCH: [('ES', '3.66', '3.21')]
+  of which below BOARD_EXIT (true exits): []
+TIER FLIPS (names on board either side): [('BSY', 'Watch', 'Buy', '3.51', '3.80'), ('CW', None, 'Watch', '3.34', '3.40'), ('ES', 'Buy', None, '3.66', '3.21'), ('EXC', 'Buy', 'Watch', '3.76', '3.56'), ('FTAI', 'Strong Buy', 'Buy', '4.71', '4.53'), ('INTU', 'Buy', 'Watch', '3.68', '3.57'), ('MORN', None, 'Watch', '3.11', '3.42'), ('XYL', None, 'Watch', '3.36', '3.46')]
+GROWTH MULTIPLIER CHANGED: 0 (harsher 0, softer 0)
+TTM revenue (historical_metrics) changed: 819 names; had no rows before: 328
+VALUE LEG (scorer value_score, holds the P/S rank): moved 0; of which with a TTM-revenue change: 0
+  value_score moves on board names (0) [sym, value a->b, gem a->b, rev_ttm a->b]:
+  (P3 value_v3 — multiples-based, no historical_metrics input — moved 0; price drift only)
+gem moved >= 0.2 (10-scale): 27 [('ZM', 1.41, 1.94), ('ES', 3.66, 3.21), ('PATH', 2.31, 2.74), ('PCTY', 2.35, 2.76), ('PSX', 0.97, 1.37), ('NI', 2.57, 2.19), ('AFRM', 0.72, 1.08), ('STZ', 1.89, 2.22), ('GEV', 1.09, 0.77), ('MORN', 3.11, 3.42), ('ABBV', 1.06, 1.36), ('BSY', 3.51, 3.8), ('PBF', 1.4, 1.69), ('TWLO', 0.61, 0.9), ('SARO', 3.96, 4.24), ('EXPE', 0.5, 0.78), ('AR', 2.14, 2.42), ('RGA', 2.08, 2.33), ('DUOL', 1.86, 2.11), ('SOLV', 1.54, 1.78), ('SWK', 1.37, 1.61), ('OHI', 1.93, 2.16), ('HII', 4.23, 4.46), ('SFM', 2.46, 2.68), ('TRU', 1.55, 1.76), ('VMC', 1.4, 1.6), ('EXC', 3.76, 3.56)]
+
+==================== mid -> mid2 ====================
+board (gem > WATCH 0.34): 47 -> 44   [exit line BOARD_EXIT 0.32]
+ENTER: []
+DROP below WATCH: [('ACN', '3.42', '3.34'), ('BKH', '3.41', '3.37'), ('FLEX', '3.41', '3.37')]
+  of which below BOARD_EXIT (true exits): []
+TIER FLIPS (names on board either side): [('ACN', 'Watch', None, '3.42', '3.34'), ('BKH', 'Watch', None, '3.41', '3.37'), ('FLEX', 'Watch', None, '3.41', '3.37')]
+GROWTH MULTIPLIER CHANGED: 0 (harsher 0, softer 0)
+TTM revenue (historical_metrics) changed: 0 names; had no rows before: 0
+VALUE LEG (scorer value_score, holds the P/S rank): moved 53; of which with a TTM-revenue change: 0
+  value_score moves on board names (2) [sym, value a->b, gem a->b, rev_ttm a->b]:
+     ('LDOS', '7.65', '7.66', '5.31', '5.31', 17634000000.0, 17634000000.0)
+     ('TDG', '4.91', '4.92', '3.48', '3.44', 10007000000.0, 10007000000.0)
+  (P3 value_v3 — multiples-based, no historical_metrics input — moved 53; price drift only)
+gem moved >= 0.2 (10-scale): 0 []
+
+==================== mid2 -> after ====================
+board (gem > WATCH 0.34): 44 -> 44   [exit line BOARD_EXIT 0.32]
+ENTER: []
+DROP below WATCH: []
+  of which below BOARD_EXIT (true exits): []
+TIER FLIPS (names on board either side): []
+GROWTH MULTIPLIER CHANGED: 11 (harsher 7, softer 4)
+    CHE    0.75->1.0  gem 0.79->1.05  rev 0.0163->0.088  earn -0.076->0.2898
+    CHWY   1.0->0.75  gem 1.49->1.12  rev 0.0774->0.0477  earn 0.5192->-0.3718
+    CPT    1.0->0.5  gem 0.45->0.23  rev -0.0046->-0.0025  earn 0.0934->-0.7671
+    CTVA   1.0->0.5  gem 0.87->0.43  rev 0.1105->-0.0119  earn 0.089->-0.1164
+    ILMN   1.0->0.75  gem 0.27->0.20  rev 0.048->0.0965  earn 0.0229->-0.1191
+    MDLN   1.0->0.75  gem 0.94->0.70  rev 0.116->0.116  earn 2.62->-0.8198
+    STWD   0.5->1.0  gem 1.48->2.95  rev -0.0566->0.0793  earn -0.9495->-0.9495
+    SYF    1.0->0.5  gem 1.51->0.76  rev 0.0195->-0.004  earn -0.0848->-0.0848
+    TTEK   0.5->1.0  gem 1.56->3.13  rev -0.0447->0.1349  earn -0.0374->-0.0374
+    UNM    1.0->0.5  gem 1.33->0.67  rev 0.0013->-0.0164  earn -0.2345->-0.2345
+    VOYA   0.5->1.0  gem 1.03->2.06  rev -0.013->None  earn -0.4337->-0.4337
+TTM revenue (historical_metrics) changed: 0 names; had no rows before: 0
+VALUE LEG (scorer value_score, holds the P/S rank): moved 0; of which with a TTM-revenue change: 0
+  value_score moves on board names (0) [sym, value a->b, gem a->b, rev_ttm a->b]:
+  (P3 value_v3 — multiples-based, no historical_metrics input — moved 0; price drift only)
+gem moved >= 0.2 (10-scale): 10 [('TTEK', 1.56, 3.13), ('STWD', 1.48, 2.95), ('VOYA', 1.03, 2.06), ('SYF', 1.51, 0.76), ('UNM', 1.33, 0.67), ('CTVA', 0.87, 0.43), ('CHWY', 1.49, 1.12), ('CHE', 0.79, 1.05), ('MDLN', 0.94, 0.7), ('CPT', 0.45, 0.23)]
+
+==================== before -> after ====================
+board (gem > WATCH 0.34): 45 -> 44   [exit line BOARD_EXIT 0.32]
+ENTER: [('CW', '3.34', '3.44', 'Watch'), ('MORN', '3.11', '3.41', 'Watch'), ('XYL', '3.36', '3.45', 'Watch')]
+DROP below WATCH: [('ACN', '3.42', '3.34'), ('BKH', '3.41', '3.37'), ('ES', '3.66', '3.18'), ('FLEX', '3.58', '3.37')]
+  of which below BOARD_EXIT (true exits): ['ES']
+TIER FLIPS (names on board either side): [('ACN', 'Watch', None, '3.42', '3.34'), ('BKH', 'Watch', None, '3.41', '3.37'), ('BSY', 'Watch', 'Buy', '3.51', '3.80'), ('CW', None, 'Watch', '3.34', '3.44'), ('ES', 'Buy', None, '3.66', '3.18'), ('EXC', 'Buy', 'Watch', '3.76', '3.54'), ('FLEX', 'Watch', None, '3.58', '3.37'), ('FTAI', 'Strong Buy', 'Buy', '4.71', '4.54'), ('INTU', 'Buy', 'Watch', '3.68', '3.57'), ('MORN', None, 'Watch', '3.11', '3.41'), ('XYL', None, 'Watch', '3.36', '3.45')]
+GROWTH MULTIPLIER CHANGED: 11 (harsher 7, softer 4)
+    CHE    0.75->1.0  gem 0.80->1.05  rev 0.0163->0.088  earn -0.076->0.2898
+    CHWY   1.0->0.75  gem 1.47->1.12  rev 0.0774->0.0477  earn 0.5192->-0.3718
+    CPT    1.0->0.5  gem 0.46->0.23  rev -0.0046->-0.0025  earn 0.0934->-0.7671
+    CTVA   1.0->0.5  gem 0.86->0.43  rev 0.1105->-0.0119  earn 0.089->-0.1164
+    ILMN   1.0->0.75  gem 0.30->0.20  rev 0.048->0.0965  earn 0.0229->-0.1191
+    MDLN   1.0->0.75  gem 0.95->0.70  rev 0.116->0.116  earn 2.62->-0.8198
+    STWD   0.5->1.0  gem 1.48->2.95  rev -0.0566->0.0793  earn -0.9495->-0.9495
+    SYF    1.0->0.5  gem 1.51->0.76  rev 0.0195->-0.004  earn -0.0848->-0.0848
+    TTEK   0.5->1.0  gem 1.56->3.13  rev -0.0447->0.1349  earn -0.0374->-0.0374
+    UNM    1.0->0.5  gem 1.35->0.67  rev 0.0013->-0.0164  earn -0.2345->-0.2345
+    VOYA   0.5->1.0  gem 1.03->2.06  rev -0.013->None  earn -0.4337->-0.4337
+TTM revenue (historical_metrics) changed: 819 names; had no rows before: 328
+VALUE LEG (scorer value_score, holds the P/S rank): moved 53; of which with a TTM-revenue change: 51
+  value_score moves on board names (2) [sym, value a->b, gem a->b, rev_ttm a->b]:
+     ('LDOS', '7.65', '7.66', '5.15', '5.31', 17329000000.0, 17634000000.0)
+     ('TDG', '4.91', '4.92', '3.51', '3.44', 9503000000.0, 10007000000.0)
+  (P3 value_v3 — multiples-based, no historical_metrics input — moved 53; price drift only)
+gem moved >= 0.2 (10-scale): 39 [('TTEK', 1.56, 3.13), ('STWD', 1.48, 2.95), ('VOYA', 1.03, 2.06), ('SYF', 1.51, 0.76), ('UNM', 1.35, 0.67), ('ZM', 1.41, 1.91), ('ES', 3.66, 3.18), ('PATH', 2.31, 2.75), ('CTVA', 0.86, 0.43), ('PSX', 0.97, 1.37), ('NI', 2.57, 2.2), ('AFRM', 0.72, 1.08), ('CHWY', 1.47, 1.12), ('STZ', 1.89, 2.23), ('PCTY', 2.35, 2.69), ('MORN', 3.11, 3.41), ('BSY', 3.51, 3.8), ('PBF', 1.4, 1.69), ('TWLO', 0.61, 0.9), ('ABBV', 1.06, 1.34), ('AR', 2.14, 2.42), ('GEV', 1.09, 0.84), ('CHE', 0.8, 1.05), ('MDLN', 0.95, 0.7), ('SARO', 3.96, 4.21), ('DUOL', 1.86, 2.11), ('RGA', 2.08, 2.32), ('CPT', 0.46, 0.23), ('EXPE', 0.5, 0.73), ('HII', 4.23, 4.46)]

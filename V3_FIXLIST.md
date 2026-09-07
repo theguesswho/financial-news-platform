@@ -300,6 +300,42 @@ fixed.
        2026-08-10 shown live 09-06 — re-show it in the sitting).
     OUT OF SCOPE FOR THIS ARC: redesigning the one-off vs structural
     growth penalty; embeddings/decay/Phase 2; replay; backfill.
+    STATUS 2026-09-07 — BUILT, GATE PRESENTED, NOT PUSHED (freeze
+    sitting 2026-09-06 evening + 2026-09-07). (a) pipeline/fmp_quarterly.py
+    re-homes the block (income + cash-flow by position; Q vs Q-4
+    positional growth; 2 FMP calls/symbol, 4 workers); scheduler daily
+    2a + weekly 2a (full universe) + 22:00 step 3d (just-reported);
+    fundamentals.py writes the block only while growth_source != 'fmp'.
+    Applied on the LIVE DB 2026-09-07 10:15–11:17 UTC: 830/831 rows
+    source=fmp (GLD: FMP and Yahoo both empty — an ETF). (b) provenance
+    columns growth_source / growth_quarter_end / growth_filing_date
+    (FMP fillingDate — a VENDOR STAMP, not the SEC date) /
+    growth_fetched_at, mirrored as `_provenance` inside the JSON.
+    (c) sentinel per-symbol growth_quarter check — keys on quarter end
+    vs the latest 10-Q/10-K (>95d behind = not the filed quarter; 3d
+    latency), after the first cut on fillingDate false-alarmed NUE /
+    MDLN / PNFP; open at build: GLD only. (d) PROVED: ACM FMP income
+    fillingDate 2026-08-10 16:35 (cash-flow 08-11); live row quarter
+    2026-06-30 rev −14.18% earn −166% (Yahoo had −148%: two vendors,
+    two net-income definitions). This-week filers HPE / MDT / LULU
+    (10-Q 2026-09-03): quarter 07-31 / 07-31 / 08-02, filing 09-03 in
+    the score inputs. Yahoo guard proved on ACM: fetch_fundamentals ran
+    11:17 UTC, growth fields and provenance untouched.
+    BOARD DIFF (real scorer, mid2→after = #20 alone, same day): 0
+    membership changes, 0 tier flips, 11 growth multipliers changed
+    (7 harsher: CHWY CPT CTVA ILMN MDLN SYF UNM; 4 softer: CHE STWD
+    TTEK VOYA). The 09-06 preview's 46 / ES-INTU-BDX exits / DTE-ZTS-EMN
+    entries applied the raw growth rule; the live scorer's divestiture
+    guard (233 flagged names incl. ES BDX DTE ZTS EMN CMI) and the
+    narrative<0.40 gate (INTU 0.71, CSL 0.57) remove 33 of the 44 raw
+    changes. 153 revenue-growth and 136 earnings-growth values differ
+    >2pts from Yahoo's for the same quarter; 34 earnings signs flip.
+    FMP quarter newer than Yahoo's for 75 names (GATX CMI AEIS PATH
+    DOCU TTC a full quarter ahead), same 675, "older" 73 — all date
+    convention (69 ≤7d; AZO COST PEP DPZ 16–22d are Yahoo month-end
+    rounding of 52/53-week quarter ends). PROD STILL YAHOO until the
+    push; until then the 06:00 UTC daily rewrites the values while
+    growth_source reads 'fmp'.
 
 21. **historical_metrics IS BROKEN — value score's TTM revenue (P/S
     leg) dead since spring (found 2026-09-06; confirmed by external
@@ -328,6 +364,26 @@ fixed.
     from 115 days to 10 (weekly table); prove ACM and a board sample
     have current TTM revenue; before/after board diff (P/S leg moves
     for all 831).
+    STATUS 2026-09-07 — APPLIED ON THE LIVE DB 2026-09-06 13:43 UTC,
+    code local, GATE presented, NOT PUSHED. UNIQUE (symbol,date)
+    `_hm_symbol_date_uc` re-asserted (0 duplicate pairs), fetched_at
+    column added and stamped on every touched row, upsert switched to
+    ON CONFLICT DO UPDATE; full-universe refresh: 828 symbols, 7036
+    rows, 0 errors; 827/831 with rows (missing OZK ASND CHKP GTLS GLD —
+    zombie/stale-price names); MAX(date) 2026-08-02; ACM 20 quarters
+    through 2026-06-30, TTM revenue 15.39B. Upsert re-proved
+    2026-09-07 on 10 symbols: 200 rows, 0 errors, counts unchanged,
+    fetched_at moved. Sentinel: 10d on MAX(fetched_at) + 60d on
+    MAX(date) (was 115d on date). CORRECTION: the live consumer is NOT
+    the P/S rank — compute_value_score has no caller (score_all_stocks
+    takes value from quality_v3.value_v3). historical_metrics feeds
+    compute_gap_score's multiple_inertia (pe_ratio now vs 12m ago,
+    roic/op_margin trend), 30% of the gap → priced-in multiplier.
+    BOARD DIFF (real scorer, before→mid = #21 alone, same evening):
+    27 names moved ≥0.2; ES 3.66→3.21 (Buy→off, above the exit line),
+    EXC Buy→Watch, FTAI Strong Buy→Buy, INTU Buy→Watch, BSY Watch→Buy;
+    CW / MORN / XYL enter as Watch. All via gap_score / priced_in; 328
+    names gained rows they never had. DATA_SCORECARD corrected.
 
 22. **PROCESS: coherence and oversight failures, encoded as hard
     rules + a living inventory (Edmund 2026-09-06). RECORDED —
@@ -348,6 +404,9 @@ fixed.
     selected by the quality query but unused; debt_to_equity feeds
     only score.py, whose callers are off the scheduler path), but a
     live example of the rule being broken; resolve in the #20 sitting.
+    RESOLVED IN CODE 2026-09-07 (with #20, not pushed): fundamentals.py
+    no longer writes roe or debt_to_equity; the FMP canonical sync is
+    the only writer. Prod's Yahoo writer stays live until the push.
 
 ## Standing gates (not fixes, reminders)
 

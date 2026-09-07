@@ -337,3 +337,36 @@ ES ADBE); session HALTED per spec and reported. Edmund's sign-off on
 the count, 2026-08-20: "Proceed". Live board effect: 44 -> 46
 (+CSL Watch 3.4, +ADBE Watch 3.2, both exit_grace).
 Full diff + evidence: V3_13_PRECEDENCE_SPEC.md.
+
+## 2026-09-07 — V3 #20/#21: growth block re-homed onto FMP + historical_metrics repair (freeze ritual) — GATE PRESENTED, AWAITING EDMUND
+WHAT CHANGES IN THE SCORE'S INPUTS (not the formula): revenue /
+earnings / FCF growth and the 8-quarter block now come from FMP
+quarterly statements (filing-day stamp) instead of Yahoo's statement
+tables (weeks late); provenance on the row; Yahoo only while FMP has
+never returned a block. historical_metrics (UNIQUE (symbol,date) lost
+in the Railway migration; dead since May) repaired and refreshed on
+the live DB 2026-09-06; it feeds compute_gap_score's multiple inertia
+(NOT the P/S rank — compute_value_score has no caller; DATA_SCORECARD
+corrected). Sentinel: 10d/60d bars on historical_metrics; per-symbol
+growth_quarter check (quarter end vs latest 10-Q/10-K, >95d = stale).
+OFFLINE DIFF (real scorer, logs/freeze_20260906, four snapshots):
+  #21 alone (before→mid, same evening): board 45→47; ES 3.66→3.21
+  (Buy→off; exit line 3.2 not crossed), EXC Buy→Watch, FTAI Strong
+  Buy→Buy, INTU Buy→Watch, BSY Watch→Buy; CW MORN XYL enter Watch;
+  27 names moved ≥0.2 — all through gap_score/priced_in.
+  drift (mid→mid2, the 09-07 daily, not ours): ACN BKH FLEX slip
+  below Watch (3.34/3.37/3.37; above the exit line).
+  #20 alone (mid2→after, same day): 0 membership changes, 0 tier
+  flips; 11 multipliers changed (harsher CHWY CPT CTVA ILMN MDLN SYF
+  UNM; softer CHE STWD TTEK VOYA); 10 names moved ≥0.2 (TTEK 1.56→3.13,
+  STWD 1.48→2.95, VOYA 1.03→2.06, SYF 1.51→0.76, UNM 1.33→0.67).
+  total (before→after): board 45→44; enter CW MORN XYL (Watch); drop
+  ACN BKH ES FLEX (ES 3.18 — the only true exit below 3.2).
+WHY THE 09-06 PREVIEW DIFFERS (46 multipliers, ES/INTU/BDX exits,
+DTE/ZTS/EMN/CMI entries): it applied the raw growth rule. The live
+scorer's divestiture guard (233 names, incl. ES BDX DTE ZTS EMN CMI)
+pins the multiplier at 1.0 and the narrative<0.40 gate spares INTU
+(0.71) and CSL (0.57); 33 of the 44 raw changes vanish.
+NOT PUSHED. Cutover needs Edmund's "push" in a deploy window before
+the next 06:00 UTC daily, which on prod still runs the Yahoo writer.
+Sign-off line to be filled by Edmund.

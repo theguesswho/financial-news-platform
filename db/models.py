@@ -75,6 +75,12 @@ class Fundamentals(Base):
     # {"revenue": [...], "gross_margin": [...], "operating_margin": [...],
     #  "net_income": [...], "fcf": [...], "dates": [...]}
     quarterly_trends    = Column(Text)
+    # Provenance of the growth/quarterly block (V3 #20, 2026-09-06):
+    # 'fmp' (owner) | 'yahoo' (fallback only while FMP returns nothing)
+    growth_source       = Column(String(10))
+    growth_quarter_end  = Column(Date)
+    growth_filing_date  = Column(Date)
+    growth_fetched_at   = Column(DateTime)
 
     # ── Market context ─────────────────────────────────────
     market_cap          = Column(Numeric(20, 0))
@@ -122,6 +128,8 @@ class HistoricalMetrics(Base):
     interest_coverage = Column(Numeric(10, 2))
     debt_to_equity  = Column(Numeric(10, 4))
     current_ratio   = Column(Numeric(10, 4))
+
+    fetched_at      = Column(DateTime)             # refresh heartbeat (V3 #21)
 
     # Raw financials (for growth calculation)
     revenue         = Column(Numeric(20, 0))

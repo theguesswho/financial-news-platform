@@ -72,6 +72,23 @@ def fetch_historical_metrics(session: Session, symbols: list[str]) -> dict:
         )
     """))
     session.execute(text("CREATE INDEX IF NOT EXISTS ix_hm_symbol ON historical_metrics (symbol)"))
+    # Refresh heartbeat (V3 #21, 2026-09-06): `date` is the quarter-end and
+    # lags 30-50 days by construction, so it cannot carry a 10-day
+    # freshness bar. fetched_at is stamped on EVERY row the weekly run
+    # touches (upsert below updates on conflict), so MAX(fetched_at) is
+    # the last successful refresh — that is what the sentinel reads.
+    session.execute(text(
+        "ALTER TABLE historical_metrics ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMP DEFAULT NOW()"))
+    # The live table lost UNIQUE (symbol, date) in the Railway migration;
+    # every ON CONFLICT upsert failed silently from ~May to 2026-09-06.
+    # Re-assert it (no-op when present; the 2026-07-05 repair missed it).
+    session.execute(text("""
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '_hm_symbol_date_uc') THEN
+                ALTER TABLE historical_metrics ADD CONSTRAINT _hm_symbol_date_uc UNIQUE (symbol, date);
+            END IF;
+        END $$
+    """))
     session.commit()
 
     stored = 0
@@ -127,13 +144,19 @@ def fetch_historical_metrics(session: Session, symbols: list[str]) -> dict:
                 })
 
             if rows:
-                stmt = pg_insert(HistoricalMetrics).values(rows).on_conflict_do_nothing(
-                    index_elements=["symbol", "date"]
+                # Update on conflict (was DO NOTHING): a healthy week with no
+                # new quarter still stamps fetched_at, and FMP restatements
+                # of an existing quarter are picked up instead of frozen.
+                ins = pg_insert(HistoricalMetrics).values(rows)
+                upd = {c: getattr(ins.excluded, c) for c in rows[0] if c not in ("symbol", "date")}
+                upd["fetched_at"] = text("NOW()")
+                stmt = ins.on_conflict_do_update(
+                    index_elements=["symbol", "date"], set_=upd
                 )
                 result = session.execute(stmt)
                 session.commit()
                 stored += result.rowcount
-                print(f"{len(rows)} quarters stored (back to {rows[-1]['date']})")
+                print(f"{len(rows)} quarters upserted (back to {rows[-1]['date']})")
             else:
                 print("no data")
 

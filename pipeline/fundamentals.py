@@ -5,8 +5,9 @@ Calculates:
   Valuation  : P/E, forward P/E, PEG, P/Book, P/FCF, EV/EBITDA, EV/FCF
   Quality    : ROE, ROIC (approx), gross/operating/net/FCF margins
   Balance    : Debt/Equity, current ratio, interest coverage
-  Growth     : Revenue, earnings, FCF growth YoY
-  Trends     : Last 8 quarters of revenue, margins, FCF (for trajectory analysis)
+  Growth     : Revenue, earnings, FCF growth YoY — FALLBACK ONLY; FMP owns
+               the block (pipeline/fmp_quarterly.py, V3 #20 2026-09-06)
+  Trends     : Last 8 quarters of revenue, margins, FCF — same ownership
 
 Free via Yahoo Finance. ~8-12 min for 500 symbols.
 """
@@ -293,22 +294,47 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.price_to_fcf        = price_to_fcf
             row.ev_to_ebitda        = _safe(info.get("enterpriseToEbitda"))
             row.ev_to_fcf           = ev_to_fcf
-            row.roe                 = _pct(info.get("returnOnEquity"))
+            # roe deliberately NOT written (DUAL-writer fix 2026-09-06, V3 #20
+            # sitting): the canonical FMP TTM sync owns it; Yahoo wrote it
+            # daily and FMP weekly, so the field alternated vendors.
             # roic deliberately NOT written — canonical sync owns it; a
             # None here must never clobber the FMP value (P2 2026-08-09).
             # margins deliberately NOT written — canonical FMP sync owns
             # every statement-derived field (audit 2026-08-11); a Yahoo
             # value here would reintroduce mixed definitions between syncs.
             row.fcf_margin          = fcf_margin
-            # yfinance returns debtToEquity as a percentage (e.g. 35.78 = 0.3578x ratio)
-            _raw_de = _safe(info.get("debtToEquity"))
-            row.debt_to_equity      = round(_raw_de / 100, 4) if _raw_de is not None else None
+            # debt_to_equity deliberately NOT written (DUAL-writer fix
+            # 2026-09-06): the canonical FMP TTM sync owns it.
             row.current_ratio       = _safe(info.get("currentRatio"))
             row.interest_coverage   = int_cov
-            row.revenue_growth_yoy  = rev_growth
-            row.earnings_growth_yoy = earn_growth
-            row.fcf_growth_yoy      = fcf_growth
-            row.quarterly_trends    = json.dumps(trends) if trends else None
+            # Growth / quarterly block (V3 #20, 2026-09-06): FMP owns it
+            # (pipeline/fmp_quarterly.py). Yahoo is the FALLBACK, written
+            # only while FMP has never returned a block for this symbol
+            # (growth_source != 'fmp'). Provenance is stamped either way.
+            if getattr(row, "growth_source", None) != "fmp":
+                row.revenue_growth_yoy  = rev_growth
+                row.earnings_growth_yoy = earn_growth
+                row.fcf_growth_yoy      = fcf_growth
+                _stash = {}
+                if row.quarterly_trends:
+                    try:
+                        _stash = {k: v for k, v in json.loads(row.quarterly_trends).items()
+                                  if k.startswith("_") and k != "_provenance"}
+                    except Exception:
+                        _stash = {}
+                if trends:
+                    trends["_provenance"] = {
+                        "source": "yahoo",
+                        "quarter_end": trends["dates"][-1] if trends.get("dates") else None,
+                        "filing_date": None,
+                        "fetched_at": datetime.utcnow().isoformat(timespec="seconds"),
+                    }
+                    _stash.update(trends)
+                row.quarterly_trends    = json.dumps(_stash) if _stash else None
+                row.growth_source       = "yahoo"
+                row.growth_quarter_end  = trends["dates"][-1] if trends.get("dates") else None
+                row.growth_filing_date  = None
+                row.growth_fetched_at   = datetime.utcnow()
             row.market_cap          = int(mkt_cap) if mkt_cap else None
             row.enterprise_value    = int(ev) if ev else None
             row.fifty_two_week_low  = _safe(info.get("fiftyTwoWeekLow"))

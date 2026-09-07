@@ -424,6 +424,17 @@ def daily_data_update():
     except Exception as e:
         _err("Fundamentals failed", e)
 
+    _step("2a", "Growth / quarterly block (FMP-owned, full universe — V3 #20)")
+    try:
+        from pipeline.fmp_quarterly import refresh_growth_block
+        from pipeline.hidden_gem_scorer import get_engine as _ge2a
+        _e2a = _ge2a()
+        r = refresh_growth_block(_e2a, symbols)
+        _e2a.dispose()
+        _ok(f"Growth block: {r['written']} written, {r['empty_count']} FMP-empty (Yahoo fallback)")
+    except Exception as e:
+        _err("Growth block failed", e)
+
     _step("2b", "PEG normalization (sustainable-growth denominator)")
     try:
         from pipeline.peg_normalizer import recompute_pegs
@@ -869,6 +880,18 @@ def after_close_refresh():
                 _ed.dispose()
             except Exception as _e:
                 _err("Canonical TTM refresh failed", _e)
+            # Growth / quarterly block for the same symbols — FMP stamps
+            # the quarter on filing day; this is what puts the filed
+            # quarter into the score the same evening (V3 #20d).
+            try:
+                from pipeline.fmp_quarterly import refresh_growth_block
+                from pipeline.hidden_gem_scorer import get_engine as _geg
+                _eg = _geg()
+                rg = refresh_growth_block(_eg, dirty)
+                _eg.dispose()
+                _ok(f"Growth block (dirty): {rg['written']} written, {rg['empty_count']} FMP-empty")
+            except Exception as _e:
+                _err("Growth block (dirty) failed", _e)
             s.close()
             _ok(f"Dirty re-fetch: {len(dirty)} just-reported symbols: {', '.join(dirty[:10])}")
         else:
@@ -997,6 +1020,17 @@ def weekly_deep_refresh():
         _ok(f"{r.get('updated', 0)} updated")
     except Exception as e:
         _err("Fundamentals failed", e)
+
+    _step("2a", "Growth / quarterly block (FMP-owned, full universe — V3 #20)")
+    try:
+        from pipeline.fmp_quarterly import refresh_growth_block
+        from pipeline.hidden_gem_scorer import get_engine as _ge2a
+        _e2a = _ge2a()
+        r = refresh_growth_block(_e2a, symbols)
+        _e2a.dispose()
+        _ok(f"Growth block: {r['written']} written, {r['empty_count']} FMP-empty (Yahoo fallback)")
+    except Exception as e:
+        _err("Growth block failed", e)
 
     _step("2b", "PEG normalization (sustainable-growth denominator)")
     try:

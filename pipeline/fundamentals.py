@@ -347,9 +347,17 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
             row.analyst_target_price = _safe(info.get("targetMeanPrice"))
             row.analysts_count      = info.get("numberOfAnalystOpinions") or None
 
+            # Read the values for the log line BEFORE commit: commit
+            # expires the ORM row, and touching row.* afterwards issues a
+            # lazy SELECT that opens a new transaction nobody commits —
+            # the "idle in transaction" share lock behind the 2026-09-09
+            # outage (a later ALTER TABLE queued on it and froze the site).
+            _log = (f"P/E={row.pe_trailing or '—'}  PEG={row.peg_ratio or '—'}  "
+                    f"ROE={round(row.roe*100,1) if row.roe else '—'}%  "
+                    f"sector={row.sector or '—'}")
             session.commit()
             done += 1
-            print(f"P/E={row.pe_trailing or '—'}  PEG={row.peg_ratio or '—'}  ROE={round(row.roe*100,1) if row.roe else '—'}%  sector={row.sector or '—'}")
+            print(_log)
             time.sleep(0.3)  # polite to Yahoo
 
         except Exception as exc:

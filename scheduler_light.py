@@ -869,7 +869,18 @@ def after_close_refresh():
             from db.session import get_session
             from pipeline.fundamentals import fetch_fundamentals
             s = get_session()
-            fetch_fundamentals(s, dirty)
+            try:
+                fetch_fundamentals(s, dirty)
+            finally:
+                # CLOSE BEFORE any other engine touches `fundamentals`.
+                # 2026-09-09 outage: this session was left "idle in
+                # transaction" (a post-commit ORM refresh) while
+                # refresh_growth_block -> ensure_columns() issued an
+                # ALTER TABLE on a second connection. The ALTER waited on
+                # our own share lock forever and queued every reader
+                # behind it — /board and /wire hung, site down 14h.
+                # Daily step 2 already closes first; 3d now matches it.
+                s.close()
             # Canonical TTM refresh for the same symbols so statement
             # fields stay FMP-owned even between weekly sweeps (P2).
             try:
@@ -892,7 +903,6 @@ def after_close_refresh():
                 _ok(f"Growth block (dirty): {rg['written']} written, {rg['empty_count']} FMP-empty")
             except Exception as _e:
                 _err("Growth block (dirty) failed", _e)
-            s.close()
             _ok(f"Dirty re-fetch: {len(dirty)} just-reported symbols: {', '.join(dirty[:10])}")
         else:
             _ok("No dirty symbols — nothing re-fetched")

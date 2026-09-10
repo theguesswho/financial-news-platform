@@ -408,6 +408,97 @@ fixed.
     no longer writes roe or debt_to_equity; the FMP canonical sync is
     the only writer. Prod's Yahoo writer stays live until the push.
 
+23. **GAP HONESTY — sitting 1 (A + B). Grok rulings locked 2026-09-08,
+    pasted 2026-09-10. NOT BUILT. Opens only when Edmund opens it; no
+    score math; one push when Edmund says, at Railway.**
+    THE CASE (closed): INTU Buy→Watch on 2026-09-07 was caused by the
+    V3 #21 historical_metrics repair landing on a seat partly built on
+    a stale cross-quarter P/E (Apr-26 8.75 vs Jul-25 144.33 → after
+    repair Jul-26 58.97 vs the same Jul-25). multiple_inertia 0.970 →
+    0.796 is the entire gap move (0.7909 → 0.7387); price_lag 1.000
+    both days (saturated), narrative_momentum 0.0 both days (parked
+    table). No price input changed — last INTU close 2026-09-04
+    $332.70, Labor Day 09-07. Scorer code not in ef825ee. The sitting
+    DIFF listed INTU (DIFF_20260907.txt line 7). The evening report
+    still wrote "the market catches up" because daily_report.py VOICE
+    hard-wires "priced_in UP = the market caught up" and only forces
+    the "our measuring stick changed" language when the LEADING cause
+    is a quality or value re-reading — never for priced_in.
+    platform_notes id 6 (active 09-07 → 09-14) DID name the
+    historical_metrics repair and said priced-in readings would shift
+    ("that is our measuring stick, not the market") — the note was
+    adequate; the VOICE rule was the gap. Grok's ruling accepted with
+    that one correction.
+    A — pipeline/daily_report.py: per moved symbol, pass the writer
+    input-change flags since the prior snapshot: new close y/n;
+    growth_quarter_end / growth_source changed; historical_metrics
+    latest date changed; narrative rows changed. Prompt rule: "market
+    caught up / backed off" ONLY when a price input changed; otherwise
+    plain words that our data was updated/repaired and the corrected
+    figures moved the reading. platform_notes row mandatory for every
+    data-path deploy, naming WHICH measurement paths changed (growth,
+    HM/P-E, sentinel, …); the measuring-stick rule must bind priced_in
+    and gap leads, not only quality/value.
+    B — pipeline/freshness_sentinel.py + DATA_SCORECARD.md: per board
+    name, latest historical_metrics quarter vs latest 10-Q/10-K on
+    record against a stated latency; breaches named in the brief.
+    Scorecard rows for the three gap inputs: (1) eod_prices + live SPY
+    fetch (+ median-fallback health); (2) historical_metrics P/E path
+    + fundamentals_history annual ROIC/op-margin; (3)
+    stock_theme_alignment — parked/frozen until embeddings revive.
+    Preferred if cheap: snapshot price_lag / multiple_inertia /
+    narrative_momentum per name so the report can name which piece
+    moved without reverse-engineering.
+    OUT OF SCOPE: any compute_gap_score math; TTM P/E; ±30 band /
+    tanh; Phase 2 decay / re-embed.
+    REPORT BACK BEFORE CODE: exact flag schema for A, latency bar for
+    B, scorecard row text.
+
+24. **GAP MATH — sitting 2 (C + D), FREEZE. Grok rulings locked
+    2026-09-08. NOT BUILT. Full before/after board DIFF; Edmund GATE.**
+    C — hidden_gem_scorer.compute_gap_score multiple_inertia: replace
+    FMP quarterly P/E (price ÷ QUARTERLY EPS — seasonal; INTU 8.75 /
+    59 / 144 across quarters with no re-rating) with TTM P/E from the
+    same table: market_cap ÷ Σ(last 4 quarters net_income), now vs
+    ~12 months ago. Seasonality-free, no new vendor. NOT the weaker
+    same-fiscal-quarter compare as primary. Fallbacks: negative TTM
+    earnings → no P/E (existing lean-away path); <4 quarters → same;
+    never annualise one quarter. Market cap must align with the
+    quarter window summed.
+    D — price_lag ±30 saturation: SOFT CURVE (tanh / diminishing
+    extremes), NOT widen-to-±50 (that raises falling-knife credit).
+    Keeps a ceiling, still registers direction past ±30. Every name's
+    gap re-scores → full DIFF.
+    REPORT BACK AFTER GATE: DIFF summary + names that flip solely from
+    C or solely from D.
+    STILL PARKED: embeddings NULL / decay Phase 2; narrative replay;
+    growth-penalty redesign; INTU assessor override unless Edmund asks.
+
+25. **OUTAGE 2026-09-09 23:24 → 09-10 14:09 UTC: self-deadlock on
+    `fundamentals` took the site down ~14.7h. FIX WRITTEN 2026-09-10
+    (local, not pushed): scheduler step 3d closes the Yahoo session
+    BEFORE ttm_sweep / refresh_growth_block (matches daily step 2);
+    fmp_quarterly.ensure_columns looks in information_schema first and
+    returns without DDL when the four growth_* columns exist, else
+    ALTERs under `SET LOCAL lock_timeout='5s'` and logs instead of
+    hanging; fundamentals.py reads the log-line values BEFORE commit
+    (the post-commit `row.pe_trailing` touch re-opened a transaction
+    nobody committed = the share lock the ALTER queued behind).
+    Unblocked by Grok/Edmund: pg_terminate_backend(29877) at 14:09 UTC;
+    /board 200 again. Wed after-close + Thu daily resumed overlapping;
+    no manual clear.**
+    FMP QUOTA — DESIGN NOTE ONLY (not built): on 09-08 and 09-09 the
+    evening transcript step got HTTP 429 "Limit Reach" for every symbol
+    (204 / 210 lines) — the new 06:00 growth sweep (2 calls × 831) plus
+    existing FMP use exhausts the plan's daily quota by evening, so the
+    FMP transcript fallback returned nothing (1 EARN_CALL row on 09-09).
+    Proposed: refresh the growth block daily ONLY for symbols whose
+    latest 10-Q/10-K/8-K-earnings on record is newer than their stored
+    growth_filing_date (a handful per day), full-universe sweep weekly;
+    put the transcript step's FMP calls ahead of bulk sweeps in the
+    day's budget; record the plan's daily limit in DATA_SCORECARD and
+    have the sentinel count 429s per run. Needs Edmund's plan tier.
+
 ## Standing gates (not fixes, reminders)
 
 - Chunk 4 + ALNY/LITE/SNDK additions stay gated behind the board-size

@@ -64,6 +64,16 @@ green while a row is red is forbidden.
 
 ## D. Change log
 
+- 2026-09-10 — Grok rulings recorded (V3 #23/#24). Gap-score inputs
+  (price_lag: eod_prices + live SPY; multiple_inertia:
+  historical_metrics quarterly P/E + fundamentals_history annual
+  ROIC/op-margin; narrative_momentum: stock_theme_alignment, parked)
+  are NOT yet rows in section A — they are added in sitting 1 (B),
+  with a per-board-name historical_metrics quarter-vs-filing check.
+  Until then: multiple_inertia compares FMP QUARTERLY P/E (seasonal;
+  fixed in sitting 2, C) and narrative_momentum is frozen at the last
+  parked value.
+
 - 2026-09-06 — created. Findings #20 (growth block on Yahoo, weeks
   late; FMP same-day), #21 (historical_metrics dead — missing UNIQUE
   (symbol,date)), DUAL roe/debt_to_equity. No code changed; no push.

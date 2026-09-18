@@ -155,6 +155,14 @@ IN THAT CONVERSATION or explicitly assigned to the very next session —
 never parked on a list. "High priority" with no owner and no date is
 how SMCI's diagnosed bug was left to hit ENS the next day. Lists hold
 ideas and designs; agreed fixes get built.
+A fix that is WRITTEN BUT NOT PUSHED for an outage-class bug is an
+OPEN INCIDENT with a deadline, not a done item (user lesson
+2026-09-18): the 09-09 lock fix sat local and "ready for push" from
+09-10 while the same fault took the site down again 09-14 → 09-18,
+3.5 days, with every scheduled run skipped and no one told. Until
+such a fix is live on prod, every readout leads with "prod still has
+X — push needed before <next exposure>", and the desk asks for the
+push window itself instead of waiting to be asked.
 
 ## Other standing rules
 - Scoring changes: freeze discipline — explicit user sign-off, log in

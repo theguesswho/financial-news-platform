@@ -487,6 +487,26 @@ fixed.
     Unblocked by Grok/Edmund: pg_terminate_backend(29877) at 14:09 UTC;
     /board 200 again. Wed after-close + Thu daily resumed overlapping;
     no manual clear.**
+    **RECURRED 2026-09-14 23:43 UTC → 2026-09-18 12:28 UTC (~3.5 days
+    down) because the fix (1da4983, written 09-10, "ready for push")
+    was never pushed — no push was called and the desk did not chase
+    it. Same pids pattern (idle-in-txn 37932 / ALTER 38043) in the
+    Mon 09-14 after-close step 3d. Every scheduled job from 09-15
+    06:00 onward was SKIPPED (wedged run counted as running): no
+    prices, no snapshots, no editions for 09-15/16/17; the sentinel
+    could not fire because it runs inside the wedged process — a
+    silent-death mode the sentinel does not cover. Unblocked 09-18
+    12:28 UTC by the desk on Edmund's "go" (pg_terminate_backend
+    37932 → True; queue drained in <3s; /board 200). Both stuck runs
+    resumed on OLD code; they re-score under today's date with
+    09-14 prices until the pushed restart lets dead-run rescue run the
+    09-18 daily. Track-record lots for 09-15..17 were never opened/
+    filled — a real gap, not repairable by rescue. LESSON (rule for
+    CLAUDE.md incident section): a written-not-pushed fix for an
+    outage-class bug is an open incident with a deadline, restated in
+    every readout until shipped; and the sentinel needs an
+    out-of-process heartbeat (scheduler_runs finished_at age) checked
+    by the API or an external ping.**
     FMP QUOTA — DESIGN NOTE ONLY (not built): on 09-08 and 09-09 the
     evening transcript step got HTTP 429 "Limit Reach" for every symbol
     (204 / 210 lines) — the new 06:00 growth sweep (2 calls × 831) plus

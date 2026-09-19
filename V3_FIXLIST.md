@@ -519,6 +519,70 @@ fixed.
     day's budget; record the plan's daily limit in DATA_SCORECARD and
     have the sentinel count 429s per run. Needs Edmund's plan tier.
 
+26. **POST-OUTAGE RESILIENCE — Grok rulings locked 2026-09-19. Two
+    parts. NO inventing 15–17 Sep boards/editions/lots — ever.**
+    VERIFIED 2026-09-19 05:30 UTC: origin has the lock fix (c9fe7cd);
+    /board 200, date 09-18; eod_prices 15–17 Sep ALREADY FILLED (823
+    rows each — the weekly refresh caught them; no price backfill);
+    18 Sep edition regenerated 01:54 UTC by the weekly on real closes
+    (stale-edition delete moot); DB timeouts 0/0/0; single login role
+    `postgres`; zombie scheduler_runs ids 82 (daily 08-08) and 228
+    (daily 09-15) still open; leaderboard_history has no 15/16/17 Sep.
+    TODAY — DONE 2026-09-19 06:12 UTC on Edmund's "go" (SQL shown
+    first): role config now idle_in_transaction_session_timeout=10min,
+    lock_timeout=30s (verified on a NEW connection; statement_timeout
+    left 0); zombie rows 82 + 228 closed (finished_at 06:12); platform
+    _notes id 7 inserted (15–17 Sep outage, active 09-15 → 09-22);
+    /board 200 after. Settings bind new sessions only — the scheduler
+    ORM pool and API pool pick them up at the next restart (R1 push).
+    Items as executed:
+    a. ALTER ROLE postgres SET idle_in_transaction_session_timeout =
+       '10min' — both outages would have ended themselves.
+    b. ALTER ROLE postgres SET lock_timeout = '30s' — DDL/readers fail
+       loud instead of freezing the site.
+    c. NOT statement_timeout on the role (single role; would kill the
+       long Yahoo/FMP/LLM jobs) — API-only via connect_args in R1.
+    d. Close zombies: UPDATE scheduler_runs SET finished_at =
+       COALESCE(finished_at, NOW()) WHERE id IN (82, 228) AND
+       finished_at IS NULL. Close, never delete.
+    e. platform_notes row: 15–17 Sep outage — no snapshots/editions/
+       lots those days; not a quiet market; prices recovered, scores/
+       editions not and must not be backfilled. Active 09-15 → 09-22.
+    f. Settings bind NEW sessions only: the scheduler's shared ORM pool
+       (db/session.py) and the API pool keep old settings until the
+       process restarts (next push = R1) or a manual Railway restart
+       outside a slot — Edmund's call.
+    SITTING R1 (one push when Edmund says push at Railway):
+    - migrate-at-startup: ONE migrate() (under lock_timeout) holding
+      every runtime ALTER TABLE / ADD COLUMN IF NOT EXISTS; run steps
+      assume the schema. Inventory of sites listed in the R1 design.
+    - deploy-gate lint: fail the push if ALTER TABLE / ADD COLUMN
+      appears under run-step paths.
+    - hung-run ceiling: daily / after_close / weekly each in a
+      subprocess with a hard time limit; on timeout mark scheduler_runs
+      failed and free the slot.
+    - startup catch-up: newest FINISHED daily older than 30h → run one
+      (covers the "slot never recorded" case the rescue misses).
+    - session hygiene: every scheduler get_session() in try/finally or
+      a context manager that closes; no post-commit ORM attribute
+      reads. (expire_on_commit=False is NOT the primary fix.)
+    - GET /health/platform: 503 if no scheduler_runs finish in 26h, or
+      blocked readers on core tables, or board snapshot older than the
+      last trading day. External monitor (UptimeRobot-class) set up by
+      Edmund after it exists; desk supplies exact URLs.
+    - fetch_prices days=2 → 7 at every scheduler call site.
+    - optional --job daily CLI for one-command catch-up.
+    - sentinel: exclude non-filers (ETFs, e.g. GLD) from the
+      growth_quarter check.
+    - include local docs commit 95a91a5; DATA_SCORECARD/V3 notes.
+    OUT OF SCOPE R1: INTU A+B (#23), FMP quota, gap math (#24),
+    embeddings/decay, separate DB roles (defer), any 15–17 Sep
+    fabrication.
+    R1 DESIGN BEFORE CODE: list every ALTER site moved into migrate();
+    proposed time ceilings; exact /health/platform checks; price-window
+    call sites.
+    THEN: Sitting 1 (#23) → FMP quota (#25 note) → Sitting 2 (#24).
+
 ## Standing gates (not fixes, reminders)
 
 - Chunk 4 + ALNY/LITE/SNDK additions stay gated behind the board-size

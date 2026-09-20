@@ -582,8 +582,8 @@ fixed.
     proposed time ceilings; exact /health/platform checks; price-window
     call sites.
     **R1 BUILT 2026-09-20 — LOCAL, NOT PUSHED. Awaiting Edmund at
-    Railway + "push". Ceilings are PROPOSED (Grok: "report before
-    locking"): daily 240 / after-close 300 / weekly 360 min — above
+    Railway + "push". Ceilings AGREED by Edmund 2026-09-20 ("don't
+    raise them"): daily 240 / after-close 300 / weekly 360 min — above
     every legitimate run observed (daily p95 175; after-close p95 166
     in Aug, 340–547 in the FMP-429 week; weekly 145 on 09-18) and inside
     the next slot's start; Grok's 180/150/180 would have killed four

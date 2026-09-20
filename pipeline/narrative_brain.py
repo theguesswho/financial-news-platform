@@ -50,8 +50,7 @@ def create_schema(engine):
                 weight       NUMERIC(4,2) DEFAULT 1.0,
                 created_at   TIMESTAMP DEFAULT NOW()
             );
-            CREATE INDEX IF NOT EXISTS ix_nev_narrative_date
-                ON narrative_evidence (narrative_id, evidence_date);
+            -- ix_nev_narrative_date: db/migrate.py
 
             CREATE TABLE IF NOT EXISTS narrative_events (
                 id           SERIAL PRIMARY KEY,

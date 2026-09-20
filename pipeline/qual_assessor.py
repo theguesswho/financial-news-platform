@@ -495,10 +495,7 @@ def assess_stock(client, engine, gem: dict) -> dict:
 
 def store_assessment(engine, gem: dict, result: dict):
     with engine.connect() as conn:
-        conn.execute(text(
-            "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS narrative_score NUMERIC(10,4)"))
-        conn.execute(text(
-            "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS continuity VARCHAR(12)"))
+        # narrative_score / continuity columns are owned by db/migrate.py.
         # Preserve the chain (user 2026-08-01): the upsert overwrites, so the
         # outgoing assessment is archived first — the full sequence of views
         # per stock lives in qual_history.

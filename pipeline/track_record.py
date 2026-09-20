@@ -68,17 +68,9 @@ def run_daily_lot_lifecycle(engine) -> dict:
     create_table(engine)
     opened = closed = 0
     with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS signal_date DATE"))
-        # Uniqueness must be per-era: the old (lot_date, symbol) constraint
-        # made v2d backfill rows silently collide with archived weekly lots
-        # on the same date (PTC 2026-08-10).
-        conn.execute(text("""
-            ALTER TABLE track_lots
-            DROP CONSTRAINT IF EXISTS track_lots_lot_date_symbol_key"""))
-        conn.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS track_lots_date_sym_era
-            ON track_lots (lot_date, symbol, era)"""))
+        # signal_date column, the per-era uniqueness (track_lots_date_sym_era,
+        # PTC 2026-08-10 lesson) and the drop of the old (lot_date, symbol)
+        # constraint are owned by db/migrate.py.
         C = conn.execute(text(
             "SELECT MAX(date) FROM eod_prices WHERE symbol = 'SPY'")).scalar()
         if C is None:
@@ -192,17 +184,8 @@ def open_weekly_lots(engine) -> dict:
     Idempotent — safe to call every day.
     """
     create_table(engine)
-    with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS benchmark VARCHAR(10) DEFAULT 'SPY'"))
-        conn.execute(text(
-            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS qual_promoted BOOLEAN DEFAULT FALSE"))
-        conn.execute(text(
-            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS era VARCHAR(4) DEFAULT 'v1'"))
-        # One-time: anything opened before the v2 cutover belongs to the v1 era
-        conn.execute(text(
-            "UPDATE track_lots SET era = 'v1' WHERE era IS NULL OR lot_date < :d"),
-            {"d": V2_START})
+    # benchmark / qual_promoted / era columns and the one-time v1-era fill
+    # are owned by db/migrate.py.
     _ensure_benchmark_prices(engine)
 
     with engine.connect() as conn:

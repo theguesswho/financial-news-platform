@@ -1,15 +1,44 @@
-"""Deploy gate: block pushes during/near scheduler runs (see .githooks)."""
+"""Deploy gate: block pushes during/near scheduler runs (see .githooks),
+and refuse table DDL outside db/migrate.py (V3 #26 R1, 2026-09-20)."""
+import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from dotenv import load_dotenv
+ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(ROOT))
 
-load_dotenv(Path(__file__).parent.parent / ".env", override=True)
-from sqlalchemy import text
+# 0. DDL lint — runs first and offline. Schema statements executed inside
+#    run steps took the site down twice (2026-09-09, 2026-09-14: an ALTER
+#    queued behind an idle transaction blocked every reader). They live in
+#    db/migrate.py only. Comment lines are skipped; SQL strings are not.
+DDL_RE = re.compile(r"\b(ALTER TABLE|ADD COLUMN|CREATE (?:UNIQUE )?INDEX)\b")
+DDL_ALLOWED = {"db/migrate.py"}
+tracked = subprocess.run(
+    ["git", "ls-files", "pipeline", "api", "scheduler_light.py"],
+    capture_output=True, text=True, cwd=ROOT).stdout.split()
+ddl_hits = []
+for rel in tracked:
+    if rel in DDL_ALLOWED or not rel.endswith(".py"):
+        continue
+    with open(ROOT / rel, encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            if line.strip().startswith("#"):
+                continue
+            if DDL_RE.search(line):
+                ddl_hits.append(f"  {rel}:{n}: {line.strip()[:90]}")
+if ddl_hits:
+    print("\nDEPLOY BLOCKED: table DDL outside db/migrate.py (run steps must "
+          "assume the schema — V3 #26):\n" + "\n".join(ddl_hits))
+    sys.exit(1)
 
-from pipeline.hidden_gem_scorer import get_engine
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env", override=True)
+from sqlalchemy import text  # noqa: E402
+
+from pipeline.hidden_gem_scorer import get_engine  # noqa: E402
 
 now = datetime.now(timezone.utc).replace(tzinfo=None)
 

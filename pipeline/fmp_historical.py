@@ -71,24 +71,10 @@ def fetch_historical_metrics(session: Session, symbols: list[str]) -> dict:
             CONSTRAINT _hm_symbol_date_uc UNIQUE (symbol, date)
         )
     """))
-    session.execute(text("CREATE INDEX IF NOT EXISTS ix_hm_symbol ON historical_metrics (symbol)"))
-    # Refresh heartbeat (V3 #21, 2026-09-06): `date` is the quarter-end and
-    # lags 30-50 days by construction, so it cannot carry a 10-day
-    # freshness bar. fetched_at is stamped on EVERY row the weekly run
-    # touches (upsert below updates on conflict), so MAX(fetched_at) is
-    # the last successful refresh — that is what the sentinel reads.
-    session.execute(text(
-        "ALTER TABLE historical_metrics ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMP DEFAULT NOW()"))
-    # The live table lost UNIQUE (symbol, date) in the Railway migration;
-    # every ON CONFLICT upsert failed silently from ~May to 2026-09-06.
-    # Re-assert it (no-op when present; the 2026-07-05 repair missed it).
-    session.execute(text("""
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '_hm_symbol_date_uc') THEN
-                ALTER TABLE historical_metrics ADD CONSTRAINT _hm_symbol_date_uc UNIQUE (symbol, date);
-            END IF;
-        END $$
-    """))
+    # Index, the fetched_at heartbeat column (V3 #21: `date` is the
+    # quarter-end and lags 30-50 days by construction, so MAX(fetched_at)
+    # is what the sentinel reads) and the UNIQUE (symbol, date) the Railway
+    # migration lost are all owned by db/migrate.py — no DDL here.
     session.commit()
 
     stored = 0

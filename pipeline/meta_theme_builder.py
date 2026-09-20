@@ -41,12 +41,11 @@ def get_engine():
 # ─────────────────────────────────────────────────────────────
 
 def ensure_persistence_schema(engine):
-    """Columns + history table for tracking themes over time."""
+    """History table for tracking themes over time. The meta_themes
+    first_seen/status columns and their one-time fill are owned by
+    db/migrate.py."""
     with engine.begin() as conn:
         conn.execute(text("""
-            ALTER TABLE meta_themes ADD COLUMN IF NOT EXISTS first_seen TIMESTAMP DEFAULT NOW();
-            ALTER TABLE meta_themes ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
-            UPDATE meta_themes SET first_seen = updated_at WHERE first_seen IS NULL;
             CREATE TABLE IF NOT EXISTS theme_history (
                 id             SERIAL PRIMARY KEY,
                 meta_theme_id  INTEGER NOT NULL,

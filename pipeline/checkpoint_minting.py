@@ -90,12 +90,7 @@ Return ONLY a valid JSON array (empty array if nothing qualifies):
 [{{"narrative_id": <int>, "source_claim_id": <int>, "claim": "...", "observable": "<metric/disclosure to watch>", "deadline": "YYYY-MM-DD", "why": "<one line: what this tests in the thesis>"}}]"""
 
 
-def ensure_schema(engine) -> None:
-    with engine.begin() as conn:
-        conn.execute(text("""
-            ALTER TABLE narrative_checkpoints
-            ADD COLUMN IF NOT EXISTS source_claim_id INT NULL
-        """))
+# Schema (narrative_checkpoints.source_claim_id) is owned by db/migrate.py.
 
 
 def _candidates(engine) -> dict:
@@ -162,7 +157,6 @@ def run_minting(engine, live: bool = False) -> dict:
     from anthropic import Anthropic
     from pipeline.llm_usage import record_usage
 
-    ensure_schema(engine)
     cands = _candidates(engine)
     client = Anthropic()
     proposals, errors = [], 0

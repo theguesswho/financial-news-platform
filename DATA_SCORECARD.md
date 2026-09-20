@@ -35,7 +35,7 @@ breach, ticket named; DUAL = two writers on one field (forbidden).
 | peg_ratio (+ peg_vendor, peg_source) | Yahoo vendor PEG, `_vendor_peg_writable` guard, `peg_normalizer` sustainable-growth replacement | Yahoo + our normalizer | daily; conflict class same run | assessor context ONLY — absent from scoring math (V3 #17) | OK |
 | price_vs_52w_high, analysts_count, analyst_target_price | Yahoo info | Yahoo | daily | priced-in / crowding inputs, assessor | OK |
 | sector, industry | Yahoo info | Yahoo | static | value bucket cascade | OK |
-| eod_prices | Yahoo (`yf.download`, pipeline/prices.py) | Yahoo | daily after close (22:00) + 06:00 | priced-in, track record fills, momentum context | OK (sentinel max 4d) |
+| eod_prices | Yahoo `yf.download(auto_adjust=True)` — pipeline/prices.py, **7-day window** (was 2) at 06:00 and 22:00; benchmarks via track_record._ensure_benchmark_prices (Yahoo, adjusted) | Yahoo — SOLE writer since 2026-09-20 | same evening (22:00 run) | priced-in, gap price-lag, track record fills, momentum context | OK (sentinel max 4d). Basis: Yahoo dividend/split-adjusted closes as of fetch time. FMP `historical-price-full` writer (ingestion.py, RAW closes, 60-day window, whole universe every after-close) RETIRED 2026-09-20 — it was a second silent owner on a different price basis and is what filled 15–17 Sep 2026; those three days' rows remain FMP-raw (left as is; three days of dividend drift is negligible; replacing them is Edmund's call). |
 
 ## B. Narrative / qual inputs
 
@@ -58,11 +58,53 @@ breach, ticket named; DUAL = two writers on one field (forbidden).
 | growth_quarter:SYMBOL (per symbol) | fundamentals.growth_quarter_end vs latest 10-Q/10-K filing_date in `filings` | breach when the filing is >3d old AND (quarter_end IS NULL OR quarter_end < filing_date − 95d) | Content check, one alarm row per symbol. Keys on the QUARTER END, not FMP's fillingDate (a vendor stamp: earnings-release date for NUE, period-end placeholder for MDLN/PNFP). Calibrated 2026-09-07: healthy gap 10..62d across 820 symbols; a quarter that predates the filed one sits ≥~100d behind (ACM stale March quarter vs 08-11 10-Q: 133d). Symbols with no 10-Q/10-K on record (10) are not checked. Open at build: GLD only (ETF, no statements, never had a quarter). |
 | eod_prices / leaderboard / daily_brief / 8-K / transcripts / qual / narrative_exposures / narrative_history / insider_trades | MAX(timestamp) | 2–9d | Fetch-recency checks; adequate for document feeds where arrival = content. |
 
+| growth_quarter (per symbol) | score quarter vs latest 10-Q/10-K | 3d after filing | Excludes non-filers of income statements: shape rule (no sector AND no vendor statements) + NON_FILER_SYMBOLS {GLD} (R1, 2026-09-20). |
+
+### C2. Out-of-process alarm — `GET /health/platform` (API, R1 2026-09-20)
+
+The sentinel runs inside the scheduler; when the scheduler wedged
+(2026-09-14 → 09-18) it died with it. This endpoint answers from the
+API, reads only, 200/503, and is the external monitor's target
+(Edmund sets up the UptimeRobot-class ping after the push; URL:
+`https://api-production-e885.up.railway.app/health/platform`, plus the
+site root). Checks, each named in `failing` when red:
+
+| Check | Rule |
+|---|---|
+| scheduler_recent_finish | some `scheduler_runs.finished_at` within 26 h |
+| blocked_readers | no backend in `pg_stat_activity` blocked on fundamentals / leaderboard_history / filings / eod_prices |
+| board_snapshot | `MAX(leaderboard_history.date)` ≥ last due NYSE session |
+| eod_prices | `MAX(eod_prices.date)` ≥ last due NYSE session |
+
+"Last due session" = latest NYSE weekday not in the static holiday
+table (api/trading_days.py, 2026–2027), due from 01:00 UTC the next
+day (the after-close run has finished by then). DB unreachable or the
+API's 15-s statement timeout → 503 with `error`.
+
+### C3. Run ledger — `scheduler_runs` (R1)
+
+Every job runs as a child process under a hard ceiling (daily 240 min,
+after-close 300, weekly 360 — scheduler_light.JOB_CEILINGS_MIN) and is
+stamped `status` ok | failed | timeout with `error`. A timeout frees
+the cron slot; nothing can hold the schedule again. Start-up runs
+db/migrate.py first, then any missed slot, then the liveness rule:
+newest finished daily older than 30 h → run one.
+
 Standing rule (CLAUDE.md, 2026-09-06): every status/board readout
-reads back the open rows in env_diagnostics source='freshness'. Silent
-green while a row is red is forbidden.
+reads back the open rows in env_diagnostics source='freshness' AND, from
+2026-09-20, the `/health/platform` status. Silent green while a row is
+red is forbidden.
 
 ## D. Change log
+
+- 2026-09-20 — Sitting R1 (V3 #26) built, local: eod_prices single
+  owner (FMP writer retired; window 7d); `/health/platform` (C2);
+  run ledger status + ceilings (C3); growth_quarter non-filer
+  exclusion; all table DDL moved to db/migrate.py (50 steps; prod dry
+  run: 2 new ledger columns + 4 indexes on filing_themes /
+  stock_theme_alignment were MISSING on prod and will be created at
+  the first start-up after the push). API engine now separate:
+  statement_timeout 15 s, pool_recycle 30 min.
 
 - 2026-09-10 — Grok rulings recorded (V3 #23/#24). Gap-score inputs
   (price_lag: eod_prices + live SPY; multiple_inertia:

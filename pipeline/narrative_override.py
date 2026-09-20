@@ -98,12 +98,8 @@ def create_table(engine):
                 assessed_at        TIMESTAMP
             )
         """))
-        conn.execute(text(
-            "ALTER TABLE leaderboard_history ADD COLUMN IF NOT EXISTS qual_promoted BOOLEAN DEFAULT FALSE"))
-        conn.execute(text(
-            "ALTER TABLE leaderboard_history ADD COLUMN IF NOT EXISTS gem_adjusted NUMERIC(10,4)"))
-        conn.execute(text(
-            "ALTER TABLE track_lots ADD COLUMN IF NOT EXISTS qual_promoted BOOLEAN DEFAULT FALSE"))
+        # leaderboard_history.qual_promoted / gem_adjusted and
+        # track_lots.qual_promoted are owned by db/migrate.py.
 
 
 def recompute_gem(g: dict, n_adj: float) -> float:

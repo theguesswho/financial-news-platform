@@ -55,12 +55,7 @@ DECAY_STEP = 0.25
 EXPOSURE_FLOOR = 0.10
 
 
-def ensure_columns(engine):
-    with engine.begin() as conn:
-        conn.execute(text("""
-            ALTER TABLE narrative_exposures
-            ADD COLUMN IF NOT EXISTS decays INTEGER NOT NULL DEFAULT 0
-        """))
+# Schema (narrative_exposures.decays) is owned by db/migrate.py.
 
 
 def _report_events(conn, since: date):
@@ -119,7 +114,6 @@ def _narrative_embeddings(nars):
 def run_decay_pass(engine, shadow: bool = True) -> dict:
     """Weekly deterministic pass. shadow=True (default until user sign-off):
     log trigger='shadow' history rows only, touch no exposure."""
-    ensure_columns(engine)
     since = date.today() - timedelta(days=LOOKBACK_DAYS)
     stats = {"events": 0, "pairs_checked": 0, "reconfirmed_judge": 0,
              "reconfirmed_themes": 0, "already_judged": 0, "decayed": 0,

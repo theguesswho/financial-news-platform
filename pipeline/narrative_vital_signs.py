@@ -82,10 +82,7 @@ def ensure_table(engine):
                 UNIQUE (narrative_id, week_start)
             )
         """))
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_nhh_week
-            ON narrative_health_history (week_start)
-        """))
+        # idx_nhh_week is owned by db/migrate.py.
 
 
 def _monday(d: date) -> date:

@@ -306,6 +306,19 @@ morning run (SANM machinery-downgraded SB→Buy same run).]
   News Wire pane should sit above Forces. It would be a one line
   snipped." Built local-only in Session B (Progress entry below);
   everything else in the do-not-touch list stands unchanged.
+- 2026-09-20 R1 RESILIENCE — product-side pieces (methodology sitting
+  V3 #26; no UI change): (a) api/deps.py now builds the API's OWN
+  engine — statement_timeout 15 s (env API_STATEMENT_TIMEOUT_MS),
+  pool_recycle 1800 — instead of sharing db.session's untimed pipeline
+  engine; a slow query 503s one request instead of holding a worker
+  (the 09-14 → 09-18 outage hung every /board for 3.5 days). (b) New
+  GET /health/platform (api/routers/health.py + api/trading_days.py):
+  200/503 with named checks — scheduler finish within 26 h, no
+  blocked readers on core tables, board snapshot and eod_prices cover
+  the last due NYSE session. It is the external monitor's target;
+  Edmund sets the ping up after the push. Reads only; boundary
+  respected (no pipeline or table writes). Local verify: /board 200,
+  /health/platform 200, SHOW statement_timeout = 15s.
 
 ## How to build (session discipline)
 

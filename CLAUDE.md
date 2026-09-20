@@ -18,6 +18,26 @@ Pushes restart Railway services and KILL live scheduler runs. Rules:
    pipeline/scheduler/requirements changes; UI-only pushes touch only the
    web service. Until confirmed set, treat EVERY push as a scheduler restart.
 
+## Schema and run discipline (2026-09-20 — after the 09-09 / 09-14 lock outages)
+1. NO TABLE DDL IN RUN STEPS. Every ALTER TABLE / ADD COLUMN / CREATE
+   INDEX lives in db/migrate.py and runs once at scheduler start-up
+   (or `python scheduler_light.py --migrate`). Run steps assume the
+   schema. The deploy gate refuses a push that puts DDL back under
+   pipeline/, api/ or scheduler_light.py. (CREATE TABLE IF NOT EXISTS
+   is allowed — it takes no lock on an existing table.)
+2. JOBS ARE CHILD PROCESSES UNDER CEILINGS (scheduler_light
+   JOB_CEILINGS_MIN). A hang ends at the ceiling, is stamped
+   status='timeout' in scheduler_runs, and frees the slot. Ceilings
+   stop hangs; they do not pace work — size them above every
+   legitimate run, never at the p95.
+3. SESSIONS CLOSE IN finally. Every ORM session opened in the
+   scheduler closes before the next engine touches the same table; no
+   attribute reads after commit.
+4. THE ALARM LIVES OUTSIDE THE PROCESS. GET /health/platform (API)
+   is what tells us the scheduler is dead; readouts quote its status
+   alongside the freshness rows. Role timeouts (idle-in-transaction
+   10min, lock 30s) are the backstop, not the plan.
+
 ## Standing alignment brief (user directive 2026-08-16 — EVERY session)
 The full brief lives in FRONTEND_SPEC.md ("STANDING BRIEF") — it
 replaces all one-off session notes and is read at session start; do

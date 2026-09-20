@@ -94,9 +94,7 @@ def _qual_sweep(gems=None):
     from pipeline.leaderboard_archiver import apply_qual_tiers, create_table
     from pipeline.hidden_gem_scorer import get_engine
     eng = get_engine()
-    with eng.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE qual_assessments ADD COLUMN IF NOT EXISTS narrative_score NUMERIC(10,4)"))
+    # Schema (qual_assessments.narrative_score) is owned by db/migrate.py.
     with eng.connect() as conn:
         rows = conn.execute(text("""
             WITH latest AS (
@@ -400,8 +398,12 @@ def daily_data_update():
         from db.session import get_session
         from pipeline.prices import fetch_prices
         s = get_session()
-        r = fetch_prices(s, symbols, days=2)
-        s.close()
+        try:
+            # 7-day window (was 2): a short outage must not leave permanent
+            # holes — 15-17 Sep 2026 were only filled by a second writer.
+            r = fetch_prices(s, symbols, days=7)
+        finally:
+            s.close()
         _ok(f"{r.get('added', 0)} price records added")
         # SPY benchmark freshness (moved out of get_scorecard 2026-08-16
         # — read endpoints must never write; see after-close step 1).
@@ -418,8 +420,10 @@ def daily_data_update():
         from pipeline.fundamentals import fetch_fundamentals
         from db.session import get_session
         s = get_session()
-        r = fetch_fundamentals(s, symbols)
-        s.close()
+        try:
+            r = fetch_fundamentals(s, symbols)
+        finally:
+            s.close()   # closed BEFORE step 2a touches `fundamentals` (V3 #25)
         _ok(f"{r.get('updated', 0)} updated")
     except Exception as e:
         _err("Fundamentals failed", e)
@@ -451,8 +455,10 @@ def daily_data_update():
         from db.session import get_session
         from pipeline.insider import run_insiders
         s = get_session()
-        r = run_insiders(s, symbols)
-        s.close()
+        try:
+            r = run_insiders(s, symbols)
+        finally:
+            s.close()
         _ok(f"{r.get('added', 0)} insider records added")
     except Exception as e:
         _err("Insiders failed", e)
@@ -705,8 +711,12 @@ def midday_refresh():
         from db.session import get_session
         from pipeline.prices import fetch_prices
         s = get_session()
-        r = fetch_prices(s, symbols, days=2)
-        s.close()
+        try:
+            # 7-day window (was 2): a short outage must not leave permanent
+            # holes — 15-17 Sep 2026 were only filled by a second writer.
+            r = fetch_prices(s, symbols, days=7)
+        finally:
+            s.close()
         _ok(f"{r.get('added', 0)} price records added")
     except Exception as e:
         _err("Prices failed", e)
@@ -757,8 +767,12 @@ def after_close_refresh():
         from db.session import get_session
         from pipeline.prices import fetch_prices
         s = get_session()
-        r = fetch_prices(s, symbols, days=2)
-        s.close()
+        try:
+            # 7-day window (was 2): a short outage must not leave permanent
+            # holes — 15-17 Sep 2026 were only filled by a second writer.
+            r = fetch_prices(s, symbols, days=7)
+        finally:
+            s.close()
         _ok(f"{r.get('added', 0)} price records added")
         # SPY benchmark freshness lives HERE now, not in get_scorecard —
         # a read endpoint must never write (scorecard-on-read 500'd the
@@ -821,8 +835,10 @@ def after_close_refresh():
         from db.session import get_session
         from pipeline.events import run_events
         s = get_session()
-        r = run_events(s, symbols)
-        s.close()
+        try:
+            r = run_events(s, symbols)
+        finally:
+            s.close()
         _ok(f"{r.get('added', 0)} events stored")
     except Exception as e:
         _err("Events failed", e)
@@ -832,8 +848,10 @@ def after_close_refresh():
         from db.session import get_session
         from pipeline.ingestion import run_ingestion
         s = get_session()
-        r = run_ingestion(s, symbols)
-        s.close()
+        try:
+            r = run_ingestion(s, symbols)
+        finally:
+            s.close()
         _ok(f"10-K/Q ingestion: {r}")
     except Exception as e:
         _err("10-K/Q ingestion failed", e)
@@ -1025,8 +1043,10 @@ def weekly_deep_refresh():
         from pipeline.fundamentals import fetch_fundamentals
         from db.session import get_session
         s = get_session()
-        r = fetch_fundamentals(s, symbols)
-        s.close()
+        try:
+            r = fetch_fundamentals(s, symbols)
+        finally:
+            s.close()   # closed BEFORE step 2a touches `fundamentals` (V3 #25)
         _ok(f"{r.get('updated', 0)} updated")
     except Exception as e:
         _err("Fundamentals failed", e)
@@ -1230,8 +1250,10 @@ def weekly_deep_refresh():
         from pipeline.fmp_historical import fetch_historical_metrics
         from db.session import get_session
         s = get_session()
-        r = fetch_historical_metrics(s, symbols)
-        s.close()
+        try:
+            r = fetch_historical_metrics(s, symbols)
+        finally:
+            s.close()
         _ok(f"Historical metrics: {r}")
     except Exception as e:
         _err("Historical metrics failed", e)
@@ -1298,7 +1320,13 @@ CATCHUP_LOOKBACK_MIN = 45
 # died this way and nothing rescued it.
 DEADRUN_LOOKBACK_MIN = 1200
 
-def _record_run(job_id: str, slot_ts, phase: str):
+def _record_run(job_id: str, slot_ts, phase: str, status: str | None = None,
+                error: str | None = None):
+    """Run ledger. 'start' stamps started_at and clears status/error;
+    'finish' stamps finished_at + status ('ok' | 'failed' | 'timeout') +
+    error. The status/error columns are owned by db/migrate.py; should a
+    start-up ever race that migration, the legacy two-column write still
+    lands so the ledger never goes dark."""
     from pipeline.hidden_gem_scorer import get_engine
     eng = get_engine()
     try:
@@ -1312,17 +1340,28 @@ def _record_run(job_id: str, slot_ts, phase: str):
                     finished_at TIMESTAMP,
                     UNIQUE (job_id, slot_ts)
                 )"""))
-            if phase == "start":
-                conn.execute(text("""
-                    INSERT INTO scheduler_runs (job_id, slot_ts, started_at)
-                    VALUES (:j, :s, NOW())
-                    ON CONFLICT (job_id, slot_ts) DO UPDATE SET started_at = NOW()
-                """), {"j": job_id, "s": slot_ts})
-            else:
-                conn.execute(text("""
-                    UPDATE scheduler_runs SET finished_at = NOW()
-                    WHERE job_id = :j AND slot_ts = :s
-                """), {"j": job_id, "s": slot_ts})
+        if phase == "start":
+            new = ("INSERT INTO scheduler_runs (job_id, slot_ts, started_at, status, error) "
+                   "VALUES (:j, :s, NOW(), NULL, NULL) "
+                   "ON CONFLICT (job_id, slot_ts) DO UPDATE "
+                   "SET started_at = NOW(), status = NULL, error = NULL")
+            old = ("INSERT INTO scheduler_runs (job_id, slot_ts, started_at) "
+                   "VALUES (:j, :s, NOW()) "
+                   "ON CONFLICT (job_id, slot_ts) DO UPDATE SET started_at = NOW()")
+            params = {"j": job_id, "s": slot_ts}
+        else:
+            new = ("UPDATE scheduler_runs SET finished_at = NOW(), status = :st, error = :er "
+                   "WHERE job_id = :j AND slot_ts = :s")
+            old = "UPDATE scheduler_runs SET finished_at = NOW() WHERE job_id = :j AND slot_ts = :s"
+            params = {"j": job_id, "s": slot_ts, "st": status or "ok",
+                      "er": (error or None) and str(error)[:500]}
+        try:
+            with eng.begin() as conn:
+                conn.execute(text(new), params)
+        except Exception as exc:
+            logger.warning(f"run-ledger: status columns unavailable ({str(exc)[:80]}) — legacy write")
+            with eng.begin() as conn:
+                conn.execute(text(old), {"j": job_id, "s": slot_ts})
     finally:
         eng.dispose()
 
@@ -1345,21 +1384,75 @@ def _last_slot(job_id: str, now):
     return None
 
 
-def _wrap_job(job_id: str, fn):
-    """Job wrapper: stamps the run ledger around the real job."""
+# ── Hard ceilings (V3 #26 R1, 2026-09-20) ────────────────────────────────────
+# Every job runs in a CHILD PROCESS and is killed at its ceiling. Python
+# cannot kill a hung thread; it can kill a child. On 2026-09-14 one wedged
+# after-close job counted as "still running" for 3.5 days, so APScheduler
+# (max_instances=1) skipped every later slot and nothing said so. Now a
+# hang ends at the ceiling, is stamped status='timeout' in scheduler_runs,
+# and the slot is free for the next cron fire.
+# Sized above every legitimate run observed Aug-Sep 2026 (daily p95 175
+# min, after-close p95 166 min in August / 340-547 min in the FMP-429 week,
+# weekly 145 min on 09-18) and inside the next slot's start. Ceilings stop
+# hangs; they do not pace normal work.
+JOB_CEILINGS_MIN = {"daily": 240, "after_close": 300, "weekly": 360, "midday": 60}
+JOB_FUNCS = {"daily": daily_data_update, "after_close": after_close_refresh,
+             "weekly": weekly_deep_refresh, "midday": midday_refresh}
+STALE_DAILY_HOURS = 30   # start-up rule: newest finished daily older than this → run one
+
+
+def _run_job_recorded(job_id: str, slot) -> str:
+    """Run ONE job in a child process under its ceiling; this (parent)
+    process owns the ledger. Returns 'ok' | 'failed' | 'timeout'."""
+    import subprocess
+    import time as _time
+    ceiling_s = JOB_CEILINGS_MIN.get(job_id, 240) * 60
+    try:
+        _record_run(job_id, slot, "start")
+    except Exception as e:
+        logger.warning(f"run-ledger start failed for {job_id}: {e}")
+    cmd = [sys.executable, str(root / "scheduler_light.py"),
+           "--job", job_id, "--child", "--slot", slot.isoformat()]
+    status, err = "ok", None
+    t0 = _time.monotonic()
+    try:
+        # stdout/stderr inherited → the child's step log streams to Railway as before
+        proc = subprocess.Popen(cmd, cwd=str(root))
+        try:
+            rc = proc.wait(timeout=ceiling_s)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=60)
+            except Exception:
+                pass
+            status, err = "timeout", f"killed at the {ceiling_s // 60}-min ceiling"
+            logger.error(f"    ✗  {job_id}: {err} — slot freed, ledger stamped 'timeout'")
+        else:
+            if rc != 0:
+                status, err = "failed", f"child exit code {rc}"
+                logger.error(f"    ✗  {job_id}: {err}")
+    except Exception as exc:
+        status, err = "failed", str(exc)[:300]
+        logger.error(f"    ✗  {job_id}: could not run child — {err}")
+    try:
+        _record_run(job_id, slot, "finish", status=status, error=err)
+    except Exception as e:
+        logger.warning(f"run-ledger finish failed for {job_id}: {e}")
+    logger.info(f"  {job_id} [{slot:%Y-%m-%d %H:%M}]: {status} after "
+                f"{(_time.monotonic() - t0) / 60:.0f} min")
+    return status
+
+
+def _wrap_job(job_id: str, fn=None):
+    """Cron entry point: resolve the slot, run the job as a recorded child.
+    `fn` is kept for signature compatibility; the child looks the job up
+    in JOB_FUNCS."""
     from datetime import datetime
     def runner():
         slot = _last_slot(job_id, datetime.utcnow()) or datetime.utcnow().replace(
             minute=0, second=0, microsecond=0)
-        try:
-            _record_run(job_id, slot, "start")
-        except Exception as e:
-            logger.warning(f"run-ledger start failed for {job_id}: {e}")
-        fn()
-        try:
-            _record_run(job_id, slot, "finish")
-        except Exception as e:
-            logger.warning(f"run-ledger finish failed for {job_id}: {e}")
+        _run_job_recorded(job_id, slot)
     runner.__name__ = f"{job_id}_recorded"
     return runner
 
@@ -1412,7 +1505,21 @@ def _catchup_missed_slots(jobs: dict):
                 continue
             logger.info(f"⚠ CATCH-UP: slot {slot} UTC for '{job_id}' has no recorded "
                         f"run (deploy ate it?) — running now")
-            _wrap_job(job_id, fn)()
+            _run_job_recorded(job_id, slot)
+        # Liveness rule (V3 #26 R1): newest FINISHED daily older than 30h →
+        # run one now, whatever the slot arithmetic says. Covers the case
+        # both rules above miss — a slot that never recorded a start at
+        # all, because APScheduler skipped it while a wedged job counted as
+        # running (every daily from 2026-09-15 to 09-18).
+        with eng.connect() as conn:
+            last_ok = conn.execute(text(
+                "SELECT MAX(finished_at) FROM scheduler_runs WHERE job_id = 'daily'")).scalar()
+        if last_ok is None or (datetime.utcnow() - last_ok) > timedelta(hours=STALE_DAILY_HOURS):
+            slot = _last_slot("daily", datetime.utcnow()) or datetime.utcnow().replace(
+                minute=0, second=0, microsecond=0)
+            logger.warning(f"⚠ CATCH-UP: newest finished daily is {last_ok} "
+                           f"(> {STALE_DAILY_HOURS}h) — running one now for slot {slot}")
+            _run_job_recorded("daily", slot)
     except Exception as e:
         logger.error(f"catch-up check failed: {e}")
     finally:
@@ -1464,6 +1571,43 @@ def start_scheduler():
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description="Cloud scheduler / one-off job runner")
+    ap.add_argument("--job", choices=sorted(JOB_FUNCS),
+                    help="run ONE job now (recorded in scheduler_runs, under its ceiling) and exit")
+    ap.add_argument("--child", action="store_true", help=argparse.SUPPRESS)  # internal: in-process worker
+    ap.add_argument("--slot", help=argparse.SUPPRESS)                       # internal: slot label
+    ap.add_argument("--migrate", action="store_true", help="apply db/migrate.py and exit")
+    args = ap.parse_args()
+
+    if args.child:
+        # Worker process spawned by _run_job_recorded: no ledger, no
+        # migrate, no scheduler — run the job and report by exit code.
+        try:
+            JOB_FUNCS[args.job]()
+        except Exception:
+            logger.exception(f"{args.job} child failed")
+            sys.exit(1)
+        sys.exit(0)
+
+    # Schema first, always, before any job or thread touches a table
+    # (V3 #26): run steps assume the schema; this is the one DDL moment.
+    from db.migrate import run_migrations
+    from pipeline.hidden_gem_scorer import get_engine as _get_migrate_engine
+    _meng = _get_migrate_engine()
+    try:
+        _migration = run_migrations(_meng)
+    finally:
+        _meng.dispose()
+    if args.migrate:
+        print(_migration)
+        sys.exit(1 if _migration["failed"] else 0)
+
+    if args.job:
+        _slot = _last_slot(args.job, datetime.utcnow()) or datetime.utcnow().replace(
+            minute=0, second=0, microsecond=0)
+        sys.exit(0 if _run_job_recorded(args.job, _slot) == "ok" else 1)
+
     scheduler = start_scheduler()
 
     # Drain the onboarding queue at startup too — a deploy shouldn't make a

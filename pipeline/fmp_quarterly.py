@@ -47,13 +47,9 @@ THROTTLE_S = 0.25
 QUARTERS = 8
 WORKERS = 4
 
-PROVENANCE_COLUMNS_SQL = """
-    ALTER TABLE fundamentals
-        ADD COLUMN IF NOT EXISTS growth_source      VARCHAR(10),
-        ADD COLUMN IF NOT EXISTS growth_quarter_end DATE,
-        ADD COLUMN IF NOT EXISTS growth_filing_date DATE,
-        ADD COLUMN IF NOT EXISTS growth_fetched_at  TIMESTAMP
-"""
+# Provenance columns (growth_source, growth_quarter_end, growth_filing_date,
+# growth_fetched_at) are owned by db/migrate.py — no DDL in this module
+# since the 2026-09-09/09-14 lock outages (V3 #25/#26).
 
 
 def _get(path: str, **params):
@@ -75,42 +71,6 @@ def _num(v):
         return None
 
 
-PROVENANCE_COLUMNS = ("growth_source", "growth_quarter_end",
-                      "growth_filing_date", "growth_fetched_at")
-DDL_LOCK_TIMEOUT = "5s"
-
-
-def ensure_columns(engine) -> bool:
-    """Add the provenance columns if — and only if — they are missing.
-
-    Returns True when the table already had them (no DDL issued).
-
-    Postgres takes ACCESS EXCLUSIVE for ALTER TABLE even when every
-    ADD COLUMN IF NOT EXISTS is a no-op, and a waiting exclusive lock
-    blocks every new reader of the table. On 2026-09-09 that ALTER sat
-    behind an idle-in-transaction session for 14 hours and took the
-    site down with it. So: look first, and when DDL is truly needed
-    give it a short lock_timeout so a blocked migration fails loudly
-    instead of freezing /board.
-    """
-    with engine.connect() as conn:
-        present = {r[0] for r in conn.execute(text("""
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'fundamentals' AND column_name = ANY(:cols)
-        """), {"cols": list(PROVENANCE_COLUMNS)})}
-    if present >= set(PROVENANCE_COLUMNS):
-        return True
-    try:
-        with engine.begin() as conn:
-            conn.execute(text(f"SET LOCAL lock_timeout = '{DDL_LOCK_TIMEOUT}'"))
-            conn.execute(text(PROVENANCE_COLUMNS_SQL))
-        print(f"  [growth] added provenance columns "
-              f"{sorted(set(PROVENANCE_COLUMNS) - present)}", flush=True)
-    except Exception as exc:
-        # Do not hang, do not hide: the refresh continues (writes use
-        # only columns that exist) and the operator sees why.
-        print(f"  [growth] provenance DDL skipped — {str(exc)[:160]}", flush=True)
-    return False
 
 
 def yoy_growth(series: list) -> float | None:
@@ -230,7 +190,6 @@ def refresh_growth_block(engine, symbols=None) -> dict:
     fundamentals row). A symbol FMP returns nothing for is left untouched
     — its growth_source stays whatever it was, so the Yahoo fetch keeps
     filling it (fallback ONLY when FMP returns nothing)."""
-    ensure_columns(engine)
     with engine.connect() as conn:
         if symbols is None:
             symbols = [r[0] for r in conn.execute(

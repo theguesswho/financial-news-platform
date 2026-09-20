@@ -74,6 +74,12 @@ def check_freshness(engine) -> list[dict]:
 # March quarter vs the 08-11 10-Q: 133 days). 95 days splits the two.
 GROWTH_MAX_DAYS = 3         # days after the latest 10-Q/10-K before a stale quarter is a breach
 GROWTH_QUARTER_GAP_DAYS = 95  # quarter_end older than this vs the filing date = not the filed quarter
+# Non-filers of income statements (grantor trusts / ETFs such as GLD): they
+# file 10-Qs but publish no revenue or earnings, so no vendor can supply a
+# "quarter in the score" and the check would alarm forever. Excluded by
+# shape (no sector AND no vendor statements) plus an explicit list
+# (V3 #26 R1, 2026-09-20).
+NON_FILER_SYMBOLS = {"GLD"}
 
 
 def check_growth_quarters(engine) -> list[dict]:
@@ -95,13 +101,16 @@ def check_growth_quarters(engine) -> list[dict]:
           AND lf.filing_date < NOW() - (:max_days || ' days')::interval
           AND (f.growth_quarter_end IS NULL
                OR f.growth_quarter_end < lf.filing_date::date - :gap)
+          AND NOT (f.sector IS NULL AND f.growth_source IS NULL)   -- trusts/ETFs: no statements exist
+          AND NOT (f.symbol = ANY(:non_filers))
         ORDER BY lf.filing_date DESC, f.symbol
     """)
     out = []
     try:
         with engine.connect() as conn:
             rows = conn.execute(sql, {"max_days": GROWTH_MAX_DAYS,
-                                      "gap": GROWTH_QUARTER_GAP_DAYS}).fetchall()
+                                      "gap": GROWTH_QUARTER_GAP_DAYS,
+                                      "non_filers": sorted(NON_FILER_SYMBOLS)}).fetchall()
     except Exception as exc:
         return [{"source": "growth_quarter", "latest": None, "age_days": None,
                  "max_days": GROWTH_MAX_DAYS, "error": str(exc)[:120]}]

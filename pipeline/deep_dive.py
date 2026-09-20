@@ -37,11 +37,7 @@ def create_table(engine):
                 last_filing_date    DATE
             )
         """))
-        # Add column if upgrading from old schema without it
-        conn.execute(text("""
-            ALTER TABLE deep_dives
-            ADD COLUMN IF NOT EXISTS last_filing_date DATE
-        """))
+        # last_filing_date on older tables is owned by db/migrate.py.
         conn.commit()
 
 

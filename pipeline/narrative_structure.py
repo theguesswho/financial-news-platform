@@ -46,9 +46,9 @@ def _jaccard(a: set, b: set) -> float:
 
 
 def ensure_schema(engine):
+    # narratives.scope is owned by db/migrate.py; only the decisions table
+    # (CREATE TABLE IF NOT EXISTS — no lock on an existing table) stays here.
     with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE narratives ADD COLUMN IF NOT EXISTS scope VARCHAR(12)"))
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS narrative_merge_decisions (
                 id SERIAL PRIMARY KEY,

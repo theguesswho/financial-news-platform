@@ -151,10 +151,7 @@ def run_exposure_scoring(engine, symbols: list[str] | None = None) -> dict:
                          "ev": str(e.get("evidence", ""))[:600]})
 
     with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS direction VARCHAR(12)"))
-        conn.execute(text(
-            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS linkage VARCHAR(12)"))
+        # direction/linkage columns are owned by db/migrate.py.
         if symbols:
             conn.execute(text("DELETE FROM narrative_exposures WHERE symbol = ANY(:s)"),
                          {"s": symbols})
@@ -200,14 +197,7 @@ def sign_exposures(engine, symbols: list[str] | None = None, only_unsigned: bool
     this pass is authoritative. only_unsigned=True signs new rows cheaply each
     week; False re-signs everything.
     """
-    with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS direction VARCHAR(12)"))
-        conn.execute(text(
-            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS linkage VARCHAR(12)"))
-        conn.execute(text(
-            "ALTER TABLE narrative_exposures ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP"))
-
+    # direction/linkage/signed_at columns are owned by db/migrate.py.
     where = ["1=1"]
     if only_unsigned:
         where.append("ne.signed_at IS NULL")

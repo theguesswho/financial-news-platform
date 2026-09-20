@@ -30,7 +30,8 @@ def pipeline_ingest():
     session = get_session()
     try:
         result = run_ingestion(session, tickers)
-        print(f"\nIngestion complete: {result['filings_added']} filings, {result['prices_added']} price records added.")
+        print(f"\nIngestion complete: {result['filings_added']} filings "
+              f"(prices are fetched by pipeline/prices.py only — 2026-09-20).")
     finally:
         session.close()
 

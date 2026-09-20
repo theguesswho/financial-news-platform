@@ -69,23 +69,9 @@ def create_table(engine):
                 UNIQUE (date, symbol)
             )
         """))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_lh_date "
-            "ON leaderboard_history (date DESC)"
-        ))
-        # Migrations for existing tables
-        for col, defn in [
-            ("assessed_tier",   "VARCHAR(20)"),
-            ("narrative_score", "NUMERIC(10,4)"),
-            ("value_score",     "NUMERIC(10,4)"),
-            ("quality_score",   "NUMERIC(10,4)"),
-            ("gap_score",       "NUMERIC(10,4)"),
-            ("priced_in",       "NUMERIC(10,4)"),
-            ("ng_score",        "NUMERIC(10,4)"),
-        ]:
-            conn.execute(text(
-                f"ALTER TABLE leaderboard_history ADD COLUMN IF NOT EXISTS {col} {defn}"
-            ))
+        # idx_lh_date and the v2 component / qual / final_rank columns are
+        # owned by db/migrate.py (the 2026-09-10 lock queue formed on the
+        # CREATE INDEX that used to run here every archive).
         conn.commit()
 
 
@@ -224,8 +210,7 @@ def apply_qual_tiers(engine) -> int:
         # FINAL RANK (user 2026-08-03): the position after qual adjustment —
         # what the investor actually experiences. Quant rank stays in `rank`;
         # the two together make the qual layer's influence measurable.
-        conn.execute(text(
-            "ALTER TABLE leaderboard_history ADD COLUMN IF NOT EXISTS final_rank INTEGER"))
+        # (final_rank column: db/migrate.py)
         conn.execute(text("""
             WITH ranked AS (
                 SELECT id, ROW_NUMBER() OVER (

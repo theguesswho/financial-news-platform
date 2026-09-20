@@ -70,11 +70,8 @@ def create_tables():
             );
         """))
 
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_filing_themes_symbol ON filing_themes(symbol);"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_filing_themes_date ON filing_themes(filing_date);"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stock_theme_symbol ON stock_theme_alignment(symbol);"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_stock_theme_score ON stock_theme_alignment(alignment_score DESC);"))
-
+        # The four indexes on filing_themes / stock_theme_alignment are
+        # owned by db/migrate.py.
         conn.commit()
     print("✅ Narrative tables ready")
 

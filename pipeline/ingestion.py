@@ -14,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from db.models import EodPrice, Filing
+from db.models import Filing
 
 EDGAR_HEADERS = {"User-Agent": "Financial Research Platform admin@example.com"}
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
@@ -159,46 +159,14 @@ def _scrape_filing_content(url: str) -> str:
 # EOD prices
 # ---------------------------------------------------------------------------
 
-def _fetch_eod_prices(session: Session, symbols: list[str]) -> int:
-    added = 0
-    for symbol in symbols:
-        try:
-            url = (
-                f"https://financialmodelingprep.com/api/v3/historical-price-full"
-                f"/{symbol}?timeseries=60&apikey={FMP_API_KEY}"
-            )
-            resp = requests.get(url, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-
-            for day in data.get("historical", []):
-                date = datetime.strptime(day["date"], "%Y-%m-%d").date()
-                exists = (
-                    session.query(EodPrice)
-                    .filter_by(symbol=symbol, date=date)
-                    .first()
-                )
-                if not exists:
-                    session.add(
-                        EodPrice(
-                            symbol=symbol,
-                            date=date,
-                            open=day.get("open"),
-                            high=day.get("high"),
-                            low=day.get("low"),
-                            close=day.get("close"),
-                            volume=day.get("volume"),
-                        )
-                    )
-                    added += 1
-
-            session.commit()
-            time.sleep(0.3)  # FMP free tier rate limit
-        except Exception as exc:
-            print(f"  [prices] {symbol}: {exc}")
-            session.rollback()
-
-    return added
+# RETIRED 2026-09-20 (V3 #26 R1, data-coherence rule 1): this module used
+# to write eod_prices from FMP's historical-price-full (RAW closes, 60-day
+# window) for the whole universe inside the after-close filings step —
+# a second, silent owner of a Yahoo-owned fact, on a different price
+# basis (pipeline/prices.py stores Yahoo's dividend/split-ADJUSTED
+# closes). It is what filled 15-17 Sep 2026 after the outage. Prices now
+# have ONE writer for the universe: pipeline/prices.py (7-day window).
+# Benchmarks: track_record._ensure_benchmark_prices (also Yahoo).
 
 
 # ---------------------------------------------------------------------------
@@ -246,10 +214,8 @@ def run_ingestion(session: Session, tickers: list[str]) -> dict:
             print(f"  [ingest] {ticker} error: {exc}")
             session.rollback()
 
-    print(f"\nFetching EOD prices for {len(tickers)} tickers...")
-    prices_added = _fetch_eod_prices(session, tickers)
-
-    return {"filings_added": filings_added, "prices_added": prices_added}
+    # Prices are NOT fetched here any more (see the retired note above).
+    return {"filings_added": filings_added}
 
 
 def backfill_historical_filings(session: Session, tickers: list[str], n: int = 20):

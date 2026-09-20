@@ -60,16 +60,8 @@ def recompute_pegs(engine, max_age_days: int = 3) -> dict:
     Symbols with a vendor PEG get peg_ratio directly from the fundamentals
     fetch and are skipped here.
     """
-    with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_vendor NUMERIC(12,2)"))
-        conn.execute(text(
-            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_analysts INTEGER"))
-        conn.execute(text(
-            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_updated TIMESTAMP"))
-        conn.execute(text(
-            "ALTER TABLE fundamentals ADD COLUMN IF NOT EXISTS peg_source VARCHAR(10)"))
-
+    # peg_vendor / peg_analysts / peg_updated / peg_source columns are owned
+    # by db/migrate.py (no DDL on `fundamentals` inside a run step — V3 #25).
     with engine.connect() as conn:
         # Two trigger classes (amended 2026-08-23, the CRUS lesson;
         # re-amended same day per external review — vendor stays primary

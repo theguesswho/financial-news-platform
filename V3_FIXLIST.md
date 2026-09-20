@@ -581,6 +581,55 @@ fixed.
     R1 DESIGN BEFORE CODE: list every ALTER site moved into migrate();
     proposed time ceilings; exact /health/platform checks; price-window
     call sites.
+    **R1 BUILT 2026-09-20 — LOCAL, NOT PUSHED. Awaiting Edmund at
+    Railway + "push". Ceilings are PROPOSED (Grok: "report before
+    locking"): daily 240 / after-close 300 / weekly 360 min — above
+    every legitimate run observed (daily p95 175; after-close p95 166
+    in Aug, 340–547 in the FMP-429 week; weekly 145 on 09-18) and inside
+    the next slot's start; Grok's 180/150/180 would have killed four
+    legitimate runs in 45 days. One line to change.**
+    What shipped (commit pending):
+    - db/migrate.py — 50 steps: the 32 ALTER lines / 17 functions from
+      the inventory PLUS 10 `CREATE INDEX IF NOT EXISTS` sites (the
+      09-10 lock queue formed on idx_lh_date inside the archive step;
+      non-concurrent CREATE INDEX takes SHARE even when the index
+      exists), the track_lots constraint drop, historical_metrics
+      UNIQUE, the two one-time UPDATE backfills, and the new
+      scheduler_runs.status/error. Catalog-checked first → a migrated
+      DB gets NO DDL. Prod DRY RUN: 6 would apply — the 2 new ledger
+      columns and 4 indexes on filing_themes / stock_theme_alignment
+      that were NEVER created on prod. Runs at scheduler start-up
+      and via `python scheduler_light.py --migrate`. CREATE TABLE IF
+      NOT EXISTS (32 sites) stays in steps — no lock on an existing
+      table.
+    - scripts/deploy_gate.py — DDL lint first, offline: any
+      `ALTER TABLE` / `ADD COLUMN` / `CREATE [UNIQUE] INDEX` on a
+      non-comment line under pipeline/, api/, scheduler_light.py
+      blocks the push (db/migrate.py allow-listed). Clean now.
+    - scheduler_light.py — every job runs as a CHILD PROCESS
+      (`--job X --child --slot …`) under JOB_CEILINGS_MIN; parent owns
+      the ledger; timeout → kill, status='timeout', slot freed. Harness
+      (fake worker, fake ledger, no prod writes): ok / failed / timeout
+      all PASS. Start-up: migrate → missed-slot catch-up → liveness
+      rule (newest finished daily > 30 h → run one). `--job daily` CLI
+      = recorded, ceilinged one-off. All 11 get_session() sites in
+      try/finally; no post-commit ORM reads found in the modules they
+      call. fetch_prices days 2 → 7 at the three sites.
+    - pipeline/ — 17 functions no longer issue DDL (each carries a
+      one-line pointer to db/migrate.py). ingestion.py FMP price writer
+      RETIRED (eod_prices single owner: Yahoo, adjusted). GLD-class
+      exclusion in the sentinel's growth_quarter check.
+    - api/ — own engine (statement_timeout 15 s, pool_recycle 1800),
+      GET /health/platform (200/503, checks named), api/trading_days.py
+      (NYSE holidays 2026–27, due-from-01:00-UTC rule). Local verify:
+      /health/platform 200 with correct payload, /board 200,
+      SHOW statement_timeout = 15s on the API engine.
+    OUT OF SCOPE — untouched: #23 A+B, FMP quota, #24 C+D,
+      embeddings/decay, separate DB roles, 15–17 Sep data.
+    POST-PUSH CHECKLIST: scheduler + api SUCCESS; start-up log shows
+      "migrate: … 6 applied"; /board 200; /health/platform 200; 30-s
+      lock watch clean; role timeouts 10min/30s on new sessions;
+      external monitor set up by Edmund on the two URLs.
     THEN: Sitting 1 (#23) → FMP quota (#25 note) → Sitting 2 (#24).
 
 ## Standing gates (not fixes, reminders)

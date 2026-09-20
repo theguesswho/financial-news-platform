@@ -50,10 +50,7 @@ def create_table(engine):
                 UNIQUE (symbol, period_end, period_type)
             )
         """))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_fh_symbol_date "
-            "ON fundamentals_history (symbol, period_end DESC)"
-        ))
+        # idx_fh_symbol_date is owned by db/migrate.py.
         conn.commit()
     print("✅ fundamentals_history table ready")
 

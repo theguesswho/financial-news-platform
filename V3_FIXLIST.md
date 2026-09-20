@@ -9,6 +9,9 @@ fixed.
 ## High priority
 
 1. **Claim extractor orphaned (HIGH — user 2026-08-11).**
+   STATUS 2026-09-20 — CLOSE (stale HIGH). Wired 2026-08-11 (`6963384`;
+   daily 4a2 + after-close 2c). NARRATIVE_SPEC 2026-08-13: 38,659 claims,
+   813 symbols, backlog zero through 2026-08-10. See TRIAGE_2026-09-20.md.
    pipeline/claim_extractor.py has no caller; earnings_claims stopped
    2026-06-12. 674 transcripts unextracted incl. 42 tiered names and all
    7 held positions. Not redundant with narrative_checkpoints (user):
@@ -300,6 +303,10 @@ fixed.
        2026-08-10 shown live 09-06 — re-show it in the sitting).
     OUT OF SCOPE FOR THIS ARC: redesigning the one-off vs structural
     growth penalty; embeddings/decay/Phase 2; replay; backfill.
+    STATUS 2026-09-20 — "NOT PUSHED" is a ghost: `ef825ee` is on main and
+    an ancestor of R1 SHA `a7aafee` (deployed). Close only after a
+    post-deploy daily keeps growth_source='fmp' (NEEDS PROD CHECK;
+    DATA_SCORECARD still says PROD STILL YAHOO). See TRIAGE_2026-09-20.md.
     STATUS 2026-09-07 — BUILT, GATE PRESENTED, NOT PUSHED (freeze
     sitting 2026-09-06 evening + 2026-09-07). (a) pipeline/fmp_quarterly.py
     re-homes the block (income + cash-flow by position; Q vs Q-4
@@ -364,6 +371,9 @@ fixed.
     from 115 days to 10 (weekly table); prove ACM and a board sample
     have current TTM revenue; before/after board diff (P/S leg moves
     for all 831).
+    STATUS 2026-09-20 — "NOT PUSHED" is a ghost: code on main since
+    `ef825ee`, ancestor of deployed R1 SHA `a7aafee`. See #20 and
+    TRIAGE_2026-09-20.md.
     STATUS 2026-09-07 — APPLIED ON THE LIVE DB 2026-09-06 13:43 UTC,
     code local, GATE presented, NOT PUSHED. UNIQUE (symbol,date)
     `_hm_symbol_date_uc` re-asserted (0 duplicate pairs), fetched_at
@@ -507,6 +517,9 @@ fixed.
     every readout until shipped; and the sentinel needs an
     out-of-process heartbeat (scheduler_runs finished_at age) checked
     by the API or an external ping.**
+    STATUS 2026-09-20 — lock-fix code (`1da4983`) is on main ⊂ `a7aafee`
+    (R1 shipped). Outage-class bug CLOSED as a build. FMP quota note
+    below stays PARKED (needs Edmund's plan tier). See TRIAGE_2026-09-20.md.
     FMP QUOTA — DESIGN NOTE ONLY (not built): on 09-08 and 09-09 the
     evening transcript step got HTTP 429 "Limit Reach" for every symbol
     (204 / 210 lines) — the new 06:00 growth sweep (2 calls × 831) plus
@@ -581,14 +594,16 @@ fixed.
     R1 DESIGN BEFORE CODE: list every ALTER site moved into migrate();
     proposed time ceilings; exact /health/platform checks; price-window
     call sites.
-    **R1 BUILT 2026-09-20 — LOCAL, NOT PUSHED. Awaiting Edmund at
-    Railway + "push". Ceilings AGREED by Edmund 2026-09-20 ("don't
+    **R1 SHIPPED 2026-09-20 on main `a7aafee` (code `a32ab72`).**
+    "LOCAL, NOT PUSHED" is a ghost. Post-push checklist still NEEDS
+    PROD CHECK (migrate line, /health/platform, today's daily) — see
+    TRIAGE_2026-09-20.md / DESK.md. Ceilings AGREED by Edmund 2026-09-20 ("don't
     raise them"): daily 240 / after-close 300 / weekly 360 min — above
     every legitimate run observed (daily p95 175; after-close p95 166
     in Aug, 340–547 in the FMP-429 week; weekly 145 on 09-18) and inside
     the next slot's start; Grok's 180/150/180 would have killed four
-    legitimate runs in 45 days. One line to change.**
-    What shipped (commit pending):
+    legitimate runs in 45 days. One line to change.
+    What shipped (`a32ab72` + ceilings `a7aafee`):
     - db/migrate.py — 50 steps: the 32 ALTER lines / 17 functions from
       the inventory PLUS 10 `CREATE INDEX IF NOT EXISTS` sites (the
       09-10 lock queue formed on idx_lh_date inside the archive step;
@@ -630,7 +645,9 @@ fixed.
       "migrate: … 6 applied"; /board 200; /health/platform 200; 30-s
       lock watch clean; role timeouts 10min/30s on new sessions;
       external monitor set up by Edmund on the two URLs.
-    THEN: Sitting 1 (#23) → FMP quota (#25 note) → Sitting 2 (#24).
+    THEN (superseded 2026-09-20, DESK.md / TRIAGE_2026-09-20.md): next
+    sitting is ETF exclusion + FMP-empty KPI, then #23 A+B; #24 and
+    FMP quota stay parked. Original: Sitting 1 (#23) → FMP quota → #24.
 
 ## Standing gates (not fixes, reminders)
 
@@ -682,6 +699,8 @@ fixed.
     grace seats the methodology grants. Likely the same mechanism as
     the 35-vs-38 wrinkle (which stays visible, undiagnosed, per the
     standing brief). Still Edmund's precedence call — nothing changed.
+    STATUS 2026-09-20 — "not pushed" is a ghost: `0bf2daf` is on main ⊂
+    `a7aafee`. 35-vs-38 still Edmund's, visible, undiagnosed.
     DONE 2026-08-20 (local, not pushed): Edmund ruled — seat wins above
     the exit line, guard kills below it (V3_13_PRECEDENCE_SPEC.md;
     freeze entry in V2_CONSIDERATIONS.md). board_membership.py resolver
@@ -705,6 +724,8 @@ fixed.
     resolver, never its own query. Do alongside the daily_report
     bookkeeping-vs-real-move fix assigned in FRONTEND_SPEC (2026-08-18
     decision).
+    STATUS 2026-09-20 — "not pushed" is a ghost: extract is on main ⊂
+    `a7aafee`.
     DONE 2026-08-19 (local, not pushed): resolver EXTRACTED to
     pipeline/board_membership.py with an as_of date (per Edmund's A2
     correction — pipeline never imports api; api re-exports from the

@@ -37,6 +37,7 @@ Cost: 2 FMP calls per symbol, zero LLM.
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -52,15 +53,39 @@ WORKERS = 4
 # since the 2026-09-09/09-14 lock outages (V3 #25/#26).
 
 
-def _get(path: str, **params):
+def _get_meta(path: str, **params):
+    """(data, kind) — kind is ok | empty | 429 | transport.
+
+    Light classification for the FMP-empty KPI. Not a quota redesign:
+    callers still retry once on transport/429, then record the bucket.
+    """
     params["apikey"] = os.environ.get("FMP_API_KEY", "")
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     try:
         with urllib.request.urlopen(f"{BASE}/{path}?{qs}", timeout=30) as r:
             data = json.loads(r.read())
-        return data if isinstance(data, list) else None
+        if not isinstance(data, list):
+            return None, "transport"
+        if not data:
+            return [], "empty"
+        return data, "ok"
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            return None, "429"
+        return None, "transport"
     except Exception:
-        return None
+        return None, "transport"
+
+
+def _get(path: str, **params):
+    data, _kind = _get_meta(path, **params)
+    return data
+
+
+def _worse_kind(a: str, b: str) -> str:
+    """Prefer 429 > transport > empty when combining two FMP calls."""
+    rank = {"429": 3, "transport": 2, "empty": 1, "ok": 0}
+    return a if rank.get(a, 0) >= rank.get(b, 0) else b
 
 
 def _num(v):
@@ -132,22 +157,36 @@ def build_block(income: list, cashflow: list) -> dict | None:
 
 
 def fetch_block(sym: str) -> dict | None:
-    """_get returns None on a transport failure and [] when FMP has no
+    """Compatibility wrapper — see fetch_block_with_kind."""
+    block, _kind = fetch_block_with_kind(sym)
+    return block
+
+
+def fetch_block_with_kind(sym: str) -> tuple[dict | None, str]:
+    """_get_meta returns None on a transport/429 and [] when FMP has no
     data; a failure gets one retry so a dropped request is not mistaken
-    for "FMP has nothing" (LW/MAS, 2026-09-07)."""
-    inc = _get(f"income-statement/{sym}", period="quarter", limit=QUARTERS)
+    for "FMP has nothing" (LW/MAS, 2026-09-07). kind is empty | 429 |
+    transport when the block cannot be built."""
+    inc, inc_kind = _get_meta(f"income-statement/{sym}", period="quarter",
+                              limit=QUARTERS)
     time.sleep(THROTTLE_S)
     if inc is None:
         time.sleep(1.0)
-        inc = _get(f"income-statement/{sym}", period="quarter", limit=QUARTERS)
+        inc, inc_kind = _get_meta(f"income-statement/{sym}", period="quarter",
+                                  limit=QUARTERS)
         time.sleep(THROTTLE_S)
-    cf = _get(f"cash-flow-statement/{sym}", period="quarter", limit=QUARTERS)
+    cf, cf_kind = _get_meta(f"cash-flow-statement/{sym}", period="quarter",
+                            limit=QUARTERS)
     time.sleep(THROTTLE_S)
     if cf is None:
         time.sleep(1.0)
-        cf = _get(f"cash-flow-statement/{sym}", period="quarter", limit=QUARTERS)
+        cf, cf_kind = _get_meta(f"cash-flow-statement/{sym}", period="quarter",
+                                limit=QUARTERS)
         time.sleep(THROTTLE_S)
-    return build_block(inc, cf)
+    block = build_block(inc, cf)
+    if block is not None:
+        return block, "ok"
+    return None, _worse_kind(inc_kind, cf_kind)
 
 
 def write_block(conn, sym: str, block: dict) -> None:
@@ -187,23 +226,40 @@ def write_block(conn, sym: str, block: dict) -> None:
 
 def refresh_growth_block(engine, symbols=None) -> dict:
     """Re-home the quarterly block onto FMP for `symbols` (default: every
-    fundamentals row). A symbol FMP returns nothing for is left untouched
-    — its growth_source stays whatever it was, so the Yahoo fetch keeps
-    filling it (fallback ONLY when FMP returns nothing)."""
+    live-universe fundamentals row). ETFs are dropped (pipeline.universe).
+    A symbol FMP returns nothing for is left untouched — its
+    growth_source stays whatever it was, so the Yahoo fetch keeps
+    filling it (fallback ONLY when FMP returns nothing).
+
+    Empty list is kept in full and classified (etf / quota_429 /
+    transport / true_hole). Do not truncate — a 429 day and a 3-name
+    day must not look the same in the log.
+    """
+    from pipeline.universe import (empty_kpi, excluded_from, filter_universe,
+                                   format_empty_kpi)
+
     with engine.connect() as conn:
         if symbols is None:
             symbols = [r[0] for r in conn.execute(
                 text("SELECT symbol FROM fundamentals ORDER BY symbol")).fetchall()]
-    stats = {"symbols": len(symbols), "written": 0, "empty": []}
+    skipped = excluded_from(symbols)
+    symbols = filter_universe(symbols)
+    if skipped:
+        print(f"  growth block: skipped {len(skipped)} ETF(s): {skipped}",
+              flush=True)
+    stats = {"symbols": len(symbols), "written": 0, "empty": [],
+             "empty_kinds": {}, "skipped_etf": skipped}
     # Fetch in a small pool (FMP round-trips are ~2s each from the
     # scheduler host; serial = ~70 min for the universe, too slow for the
     # 06:00 slot). 4 workers x 2 calls x 0.25s throttle stays well under
     # FMP's per-minute limit. DB writes stay sequential on this thread.
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        for i, (sym, block) in enumerate(zip(symbols, pool.map(fetch_block, symbols))):
+        for i, (sym, (block, kind)) in enumerate(
+                zip(symbols, pool.map(fetch_block_with_kind, symbols))):
             if block is None:
                 stats["empty"].append(sym)
+                stats["empty_kinds"][sym] = kind
                 continue
             # Railway's proxy drops connections mid-run (seen 2026-09-06 at
             # symbol ~530): one retry on a fresh pool, then record and go on.
@@ -219,10 +275,14 @@ def refresh_growth_block(engine, symbols=None) -> dict:
                         stats.setdefault("errors", []).append(f"{sym}: {str(exc)[:80]}")
             if (i + 1) % 100 == 0:
                 print(f"  growth block {i+1}/{len(symbols)}", flush=True)
-    stats["empty_count"] = len(stats["empty"])
-    stats["empty"] = stats["empty"][:20]
+    kpi = empty_kpi(stats["empty"], stats["empty_kinds"], stats["symbols"])
+    stats.update(kpi)
     stats["error_count"] = len(stats.get("errors", []))
-    print(f"growth block done: {stats}")
+    # Full list stays on stats["empty"]. Log the structured KPI so a
+    # 429 evening and a 3-name hole do not collapse into "some empties".
+    print(f"growth block done: written={stats['written']} "
+          f"errors={stats['error_count']} {format_empty_kpi(kpi)}",
+          flush=True)
     return stats
 
 

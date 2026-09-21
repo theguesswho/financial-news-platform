@@ -208,8 +208,10 @@ def fetch_calendar(engine, days: int = 7, dates: list | None = None) -> list[dic
     if not _api_key():
         return []
     with engine.connect() as conn:
+        from pipeline.universe import is_universe_symbol
         universe = {r[0] for r in conn.execute(
-            _text("SELECT symbol FROM fundamentals")).fetchall()}
+            _text("SELECT symbol FROM fundamentals")).fetchall()
+                    if is_universe_symbol(r[0])}
     out = []
     span = dates or [date.today() + timedelta(days=i) for i in range(days)]
     for d in span:

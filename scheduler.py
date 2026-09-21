@@ -46,9 +46,10 @@ logger = logging.getLogger(__name__)
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _load_tickers() -> list[str]:
+    from pipeline.universe import filter_universe
     path = root / "config" / "tickers.txt"
     with open(path) as f:
-        return [line.strip().upper() for line in f if line.strip()]
+        return filter_universe(line.strip().upper() for line in f if line.strip())
 
 
 def _banner(title: str):

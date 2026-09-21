@@ -40,8 +40,9 @@ logger = logging.getLogger(__name__)
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _load_tickers():
+    from pipeline.universe import filter_universe
     with open(root / "config" / "tickers.txt") as f:
-        return [l.strip().upper() for l in f if l.strip()]
+        return filter_universe(l.strip().upper() for l in f if l.strip())
 
 def _banner(t): logger.info("=" * 72 + f"\n  {t}\n" + "=" * 72)
 def _step(n, l): logger.info(f"  Step {n}: {l}…")
@@ -435,7 +436,9 @@ def daily_data_update():
         _e2a = _ge2a()
         r = refresh_growth_block(_e2a, symbols)
         _e2a.dispose()
-        _ok(f"Growth block: {r['written']} written, {r['empty_count']} FMP-empty (Yahoo fallback)")
+        from pipeline.universe import format_empty_kpi
+        _ok(f"Growth block: {r['written']} written, {format_empty_kpi(r)} "
+            "(Yahoo fallback on true_hole)")
     except Exception as e:
         _err("Growth block failed", e)
 
@@ -873,7 +876,8 @@ def after_close_refresh():
         from pipeline.hidden_gem_scorer import get_engine as _ge
         eng = _ge()
         with eng.connect() as _c:
-            dirty = [r[0] for r in _c.execute(text("""
+            from pipeline.universe import filter_universe
+            dirty = filter_universe(r[0] for r in _c.execute(text("""
                 SELECT DISTINCT fu.symbol FROM fundamentals fu
                 JOIN filings f ON f.symbol = fu.symbol
                 WHERE (f.filing_type = 'EARN_CALL'
@@ -881,7 +885,7 @@ def after_close_refresh():
                   AND f.created_at > fu.fetched_at
                   AND f.created_at > NOW() - INTERVAL '3 days'
                 LIMIT 25
-            """)).fetchall()]
+            """)).fetchall())
         eng.dispose()
         if dirty:
             from db.session import get_session
@@ -918,7 +922,9 @@ def after_close_refresh():
                 _eg = _geg()
                 rg = refresh_growth_block(_eg, dirty)
                 _eg.dispose()
-                _ok(f"Growth block (dirty): {rg['written']} written, {rg['empty_count']} FMP-empty")
+                from pipeline.universe import format_empty_kpi
+                _ok(f"Growth block (dirty): {rg['written']} written, "
+                    f"{format_empty_kpi(rg)}")
             except Exception as _e:
                 _err("Growth block (dirty) failed", _e)
             _ok(f"Dirty re-fetch: {len(dirty)} just-reported symbols: {', '.join(dirty[:10])}")
@@ -1058,7 +1064,9 @@ def weekly_deep_refresh():
         _e2a = _ge2a()
         r = refresh_growth_block(_e2a, symbols)
         _e2a.dispose()
-        _ok(f"Growth block: {r['written']} written, {r['empty_count']} FMP-empty (Yahoo fallback)")
+        from pipeline.universe import format_empty_kpi
+        _ok(f"Growth block: {r['written']} written, {format_empty_kpi(r)} "
+            "(Yahoo fallback on true_hole)")
     except Exception as e:
         _err("Growth block failed", e)
 

@@ -13,9 +13,10 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 
 
 def _load_tickers() -> list[str]:
+    from pipeline.universe import filter_universe
     path = CONFIG_DIR / "tickers.txt"
     with open(path) as f:
-        return [line.strip().upper() for line in f if line.strip()]
+        return filter_universe(line.strip().upper() for line in f if line.strip())
 
 
 def _load_company_names() -> dict[str, str]:

@@ -64,7 +64,8 @@ PE_CEILING = 75.0
 PEG_CEILING = 6.0
 
 # Stocks excluded from scoring — pending M&A, delisted, or otherwise
-# not valid for fundamental ranking
+# not valid for fundamental ranking. ETFs live in pipeline.universe
+# (Edmund 2026-09-20: not in the universe at all), not here.
 EXCLUDED_SYMBOLS = {
     "EA",   # Subject to acquisition bid — market price reflects takeover premium
 }
@@ -938,7 +939,11 @@ def score_all_stocks(engine=None) -> list:
         stock_themes.setdefault(sym, []).append({"theme": theme, "score": round(score, 3)})
 
     fund_map = {r[0]: r for r in fund_rows}
+    from pipeline.universe import ETF_SYMBOLS, is_universe_symbol
+
     all_symbols = set(narrative) | set(value) | set(quality)
+    # Edmund 2026-09-20: ETFs are not scored. History row may stay.
+    all_symbols -= ETF_SYMBOLS
 
     # Zombie guard (2026-08-07): a symbol with no trade for 15+ days is
     # delisted/renamed (the JNPR/ANSS/HES M&A-wave lesson — ghosts were
@@ -964,7 +969,7 @@ def score_all_stocks(engine=None) -> list:
 
     results = []
     for sym in all_symbols:
-        if sym in EXCLUDED_SYMBOLS:
+        if sym in EXCLUDED_SYMBOLS or not is_universe_symbol(sym):
             continue
         n = narrative.get(sym, 0.0)   # E: signed narrative exposure
         v = value.get(sym, 0.0)       # V_s: standalone ex-growth value

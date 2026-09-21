@@ -183,7 +183,9 @@ def get_unprocessed_filings(engine, limit=None):
 
     with engine.connect() as conn:
         result = conn.execute(text(query))
-        return result.fetchall()
+        rows = result.fetchall()
+    from pipeline.universe import is_universe_symbol
+    return [r for r in rows if is_universe_symbol(r[1])]
 
 
 def store_themes(engine, filing_id, symbol, filing_type, filing_date, themes):
@@ -583,6 +585,8 @@ def run_extraction_v2(limit=None, table="filing_themes",
         query += f" LIMIT {limit}"
     with engine.connect() as conn:
         filings = conn.execute(text(query)).fetchall()
+    from pipeline.universe import is_universe_symbol
+    filings = [r for r in filings if is_universe_symbol(r[1])]
 
     total = len(filings)
     print(f"RUBRIC v2 extraction: {total} filings | {max_workers} workers "

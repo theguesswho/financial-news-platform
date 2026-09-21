@@ -118,6 +118,8 @@ def backfill_universe(engine, symbols=None, skip_existing: bool = True) -> dict:
     """One-time 15y backfill. Resumable: symbols already holding 10+ annual
     rows are skipped unless skip_existing=False."""
     create_tables(engine)
+    from pipeline.universe import empty_kpi, filter_universe, format_empty_kpi
+
     with engine.connect() as conn:
         if symbols is None:
             symbols = [r[0] for r in conn.execute(
@@ -125,6 +127,7 @@ def backfill_universe(engine, symbols=None, skip_existing: bool = True) -> dict:
         done = {r[0] for r in conn.execute(text("""
             SELECT symbol FROM fundamentals_annual
             GROUP BY symbol HAVING COUNT(*) >= 10""")).fetchall()} if skip_existing else set()
+    symbols = filter_universe(symbols)
     todo = [s for s in symbols if s not in done]
     stats = {"symbols": len(todo), "skipped_done": len(symbols) - len(todo),
              "rows": 0, "empty": []}
@@ -135,9 +138,9 @@ def backfill_universe(engine, symbols=None, skip_existing: bool = True) -> dict:
             stats["empty"].append(sym)
         if (i + 1) % 50 == 0:
             print(f"  backfill {i+1}/{len(todo)} ({stats['rows']} rows)", flush=True)
-    stats["empty_count"] = len(stats["empty"])
-    stats["empty"] = stats["empty"][:20]
-    print(f"backfill done: {stats}")
+    stats.update(empty_kpi(stats["empty"], n_symbols=stats["symbols"]))
+    print(f"backfill done: rows={stats['rows']} skipped_done={stats['skipped_done']} "
+          f"{format_empty_kpi(stats)}", flush=True)
     return stats
 
 
@@ -165,11 +168,14 @@ def sync_to_fundamentals(engine, symbols=None) -> int:
 def ttm_sweep(engine, symbols=None) -> dict:
     """TTM snapshot for the universe: key-metrics-ttm + ratios-ttm."""
     create_tables(engine)
+    from pipeline.universe import empty_kpi, filter_universe, format_empty_kpi
+
     with engine.connect() as conn:
         if symbols is None:
             symbols = [r[0] for r in conn.execute(
                 text("SELECT symbol FROM fundamentals ORDER BY symbol")).fetchall()]
-    stats = {"symbols": len(symbols), "written": 0, "empty": 0}
+    symbols = filter_universe(symbols)
+    stats = {"symbols": len(symbols), "written": 0, "empty": []}
     for i, sym in enumerate(symbols):
         km = _get(f"key-metrics-ttm/{sym}")
         time.sleep(THROTTLE_S)
@@ -178,7 +184,7 @@ def ttm_sweep(engine, symbols=None) -> dict:
         k = km[0] if isinstance(km, list) and km else {}
         r = ra[0] if isinstance(ra, list) and ra else {}
         if not k and not r:
-            stats["empty"] += 1
+            stats["empty"].append(sym)
             continue
         with engine.begin() as conn:
             conn.execute(text("""
@@ -203,7 +209,9 @@ def ttm_sweep(engine, symbols=None) -> dict:
         if (i + 1) % 100 == 0:
             print(f"  ttm {i+1}/{len(symbols)}", flush=True)
     stats["synced"] = sync_to_fundamentals(engine, symbols if symbols else None)
-    print(f"ttm sweep done: {stats}")
+    stats.update(empty_kpi(stats["empty"], n_symbols=stats["symbols"]))
+    print(f"ttm sweep done: written={stats['written']} synced={stats['synced']} "
+          f"{format_empty_kpi(stats)}", flush=True)
     return stats
 
 

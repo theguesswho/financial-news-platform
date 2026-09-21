@@ -39,23 +39,86 @@ def _load_chunk(path: str) -> list[str]:
     return [l.strip().upper() for l in open(p) if l.strip()]
 
 
+def _fmp_profile(symbol: str) -> dict | None:
+    """Read-only FMP /profile for the isEtf/isFund gate. Fail-open."""
+    import json
+    import os
+    import urllib.request
+    key = os.environ.get("FMP_API_KEY", "")
+    if not key:
+        return None
+    url = (f"https://financialmodelingprep.com/api/v3/profile/{symbol}"
+           f"?apikey={key}")
+    try:
+        with urllib.request.urlopen(url, timeout=20) as r:
+            data = json.loads(r.read())
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return data[0]
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return None
+    return None
+
+
 def phase_validate(symbols: list[str]) -> tuple[list[str], list[str]]:
-    """Ticker must resolve on EDGAR (CIK) and have a recent Yahoo price."""
+    """Ticker must be an operating company, resolve on EDGAR (CIK),
+    and have a recent Yahoo price.
+
+    Edmund 2026-09-20: ETFs / grantor trusts are not in the universe.
+    Known-list hits reject before any vendor call. Then Yahoo
+    quoteType and (when the key is present) FMP isEtf/isFund.
+    """
+    from pipeline.universe import onboard_reject_reason
+
+    valid, rejected = [], []
+    candidates = []
+    for s in symbols:
+        s = (s or "").strip().upper()
+        reason = onboard_reject_reason(s)
+        if reason:
+            rejected.append(f"{s}: {reason}")
+            continue
+        candidates.append(s)
+
+    if not candidates:
+        return valid, rejected
+
     import yfinance as yf
     from pipeline.ingestion import _build_cik_map
-    cik_map = _build_cik_map(symbols)
-    valid, rejected = [], []
-    for s in symbols:
+    cik_map = _build_cik_map(candidates)
+    for s in candidates:
         if s not in cik_map:
             rejected.append(f"{s}: no EDGAR CIK")
             continue
         try:
-            px = yf.Ticker(s).fast_info.get("lastPrice")
+            t = yf.Ticker(s)
+            px = None
+            quote_type = None
+            try:
+                px = t.fast_info.get("lastPrice")
+            except Exception:
+                px = None
+            try:
+                info = t.info or {}
+            except Exception:
+                info = {}
+            quote_type = info.get("quoteType")
+            if not px:
+                px = info.get("regularMarketPrice") or info.get("currentPrice")
             if not px:
                 rejected.append(f"{s}: no Yahoo price")
                 continue
+            reason = onboard_reject_reason(s, quote_type=quote_type)
+            if reason:
+                rejected.append(f"{s}: {reason}")
+                continue
         except Exception as exc:
             rejected.append(f"{s}: yahoo error {exc}")
+            continue
+        reason = onboard_reject_reason(s, fmp_profile=_fmp_profile(s))
+        if reason:
+            rejected.append(f"{s}: {reason}")
             continue
         valid.append(s)
     return valid, rejected

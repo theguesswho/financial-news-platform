@@ -12,6 +12,8 @@ warnings the user actually sees.
 """
 from sqlalchemy import text
 
+from pipeline.universe import ETF_SYMBOLS
+
 # (name, SQL returning the latest timestamp/date, max acceptable age in days)
 EXPECTATIONS = [
     ("eod_prices",          "SELECT MAX(date) FROM eod_prices",                                          4),
@@ -74,12 +76,13 @@ def check_freshness(engine) -> list[dict]:
 # March quarter vs the 08-11 10-Q: 133 days). 95 days splits the two.
 GROWTH_MAX_DAYS = 3         # days after the latest 10-Q/10-K before a stale quarter is a breach
 GROWTH_QUARTER_GAP_DAYS = 95  # quarter_end older than this vs the filing date = not the filed quarter
-# Non-filers of income statements (grantor trusts / ETFs such as GLD): they
-# file 10-Qs but publish no revenue or earnings, so no vendor can supply a
-# "quarter in the score" and the check would alarm forever. Excluded by
-# shape (no sector AND no vendor statements) plus an explicit list
-# (V3 #26 R1, 2026-09-20).
-NON_FILER_SYMBOLS = {"GLD"}
+# Non-filers of income statements (grantor trusts / ETFs): they file
+# 10-Qs but publish no revenue or earnings, so no vendor can supply a
+# "quarter in the score" and the check would alarm forever. Edmund
+# 2026-09-20: ETFs are not in the universe — the named list lives in
+# pipeline.universe (not a one-name mute). Shape rule stays as a
+# backstop for an ETF that is not yet named.
+NON_FILER_SYMBOLS = ETF_SYMBOLS  # alias: sentinel SQL keeps this name
 
 
 def check_growth_quarters(engine) -> list[dict]:
@@ -110,7 +113,7 @@ def check_growth_quarters(engine) -> list[dict]:
         with engine.connect() as conn:
             rows = conn.execute(sql, {"max_days": GROWTH_MAX_DAYS,
                                       "gap": GROWTH_QUARTER_GAP_DAYS,
-                                      "non_filers": sorted(NON_FILER_SYMBOLS)}).fetchall()
+                                      "non_filers": sorted(ETF_SYMBOLS)}).fetchall()
     except Exception as exc:
         return [{"source": "growth_quarter", "latest": None, "age_days": None,
                  "max_days": GROWTH_MAX_DAYS, "error": str(exc)[:120]}]

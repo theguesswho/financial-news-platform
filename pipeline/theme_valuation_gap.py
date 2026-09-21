@@ -81,7 +81,8 @@ def compute_theme_gaps(engine) -> dict:
     for tid, sym, pe, ev in peers_rows:
         theme_peers.setdefault(tid, []).append((sym, pe, ev))
 
-    funds = {r[0]: (r[1], r[2]) for r in fund_rows}
+    from pipeline.universe import is_universe_symbol
+    funds = {r[0]: (r[1], r[2]) for r in fund_rows if is_universe_symbol(r[0])}
 
     # Keep top N themes per stock
     per_stock: dict[str, list] = {}

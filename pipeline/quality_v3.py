@@ -102,8 +102,12 @@ def compute_p3_universe(engine) -> dict:
         v = float(v)
         return None if abs(v) > lim else v
 
+    from pipeline.universe import is_universe_symbol
+
     out = {}
     for sym, f in fund.items():
+        if not is_universe_symbol(sym):
+            continue
         # Row hygiene (fiscal-calendar audit 2026-08-10, V2_CONSIDERATIONS):
         # 1) drop no-revenue stub rows (LHX's 2019 L3/Harris transition);
         # 2) key each fiscal year to the calendar year it mostly covers —

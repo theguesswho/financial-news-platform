@@ -22,14 +22,14 @@ breach, ticket named; DUAL = two writers on one field (forbidden).
 
 | Field (fundamentals.*) | Source today | Owner should be | Expected latency | Consumer | Status |
 |---|---|---|---|---|---|
-| revenue_growth_yoy | FMP quarterly income stmt, `revenue` Q vs Q-4 by position (pipeline/fmp_quarterly.py `refresh_growth_block`: daily step 2a full universe, 22:00 step 3d just-reported, weekly 2a). Yahoo `_quarterly_trends` writes ONLY while growth_source != 'fmp' (never returned a block) | FMP | filing evening (3d) or next 06:00 daily; sentinel bar 3 days after the latest 10-Q/10-K | growth penalty (0.5x/0.75x), trajectory, assessor line, stock page | OK in code 2026-09-07; provenance on row (growth_source, growth_quarter_end, growth_filing_date = FMP vendor stamp, growth_fetched_at). PROD STILL YAHOO until the #20 push |
-| earnings_growth_yoy | FMP quarterly income stmt, `netIncome` Q vs Q-4 by position, denominator abs(prior) | FMP | same | growth penalty, PEG conflict class, assessor line | OK in code 2026-09-07 — same row provenance. PROD STILL YAHOO until push |
-| fcf_growth_yoy | FMP quarterly cash-flow stmt, `freeCashFlow`, aligned to the income rows BY POSITION (52/53-week filers carry different period stamps: ACM income 06-30 / cash-flow 07-03) | FMP | same | trajectory (score.py `_traj_score_live`) | OK in code 2026-09-07. PROD STILL YAHOO until push |
-| quarterly_trends (JSON: dates, revenue, gross/op margin, net income, fcf; 8 quarters; `_provenance` block inside) | FMP quarterly income + cash-flow (same module); '_'-prefixed stash keys preserved | FMP | same | margin trend (score.py), fcf trajectory, themes stash, weekly fundamentals_history | OK in code 2026-09-07. PROD STILL YAHOO until push |
+| revenue_growth_yoy | FMP quarterly income stmt, `revenue` Q vs Q-4 by position (pipeline/fmp_quarterly.py `refresh_growth_block`: daily step 2a live universe, 22:00 step 3d just-reported, weekly 2a). Yahoo `_quarterly_trends` writes ONLY while growth_source != 'fmp' (never returned a block) | FMP | filing evening (3d) or next 06:00 daily; sentinel bar 3 days after the latest 10-Q/10-K | growth penalty (0.5x/0.75x), trajectory, assessor line, stock page | OK. Prod 2026-09-20: growth_source 830 fmp / 1 null (GLD — ETF, now excluded). The "PROD STILL YAHOO until the #20 push" line was a ghost after `ef825ee` ⊂ `a7aafee`. |
+| earnings_growth_yoy | FMP quarterly income stmt, `netIncome` Q vs Q-4 by position, denominator abs(prior) | FMP | same | growth penalty, PEG conflict class, assessor line | OK — same row provenance. 830 fmp / 1 null (GLD). |
+| fcf_growth_yoy | FMP quarterly cash-flow stmt, `freeCashFlow`, aligned to the income rows BY POSITION (52/53-week filers carry different period stamps: ACM income 06-30 / cash-flow 07-03) | FMP | same | trajectory (score.py `_traj_score_live`) | OK. 830 fmp / 1 null (GLD). |
+| quarterly_trends (JSON: dates, revenue, gross/op margin, net income, fcf; 8 quarters; `_provenance` block inside) | FMP quarterly income + cash-flow (same module); '_'-prefixed stash keys preserved | FMP | same | margin trend (score.py), fcf trajectory, themes stash, weekly fundamentals_history | OK. 830 fmp / 1 null (GLD). |
 | gross_margin, operating_margin, net_margin | FMP TTM sync (`fmp_canonical.sync_to_fundamentals`) | FMP | weekly full sweep + same evening for just-reported (step 3d) | value bucket (gm), P/S eligibility (om), quality | OK |
 | roic | FMP TTM sync | FMP | weekly + step 3d | quality | OK |
-| roe | FMP TTM sync only — the Yahoo daily writer was removed 2026-09-07 (fundamentals.py) | FMP | weekly + step 3d | selected by the quality query (hidden_gem_scorer:465) but never used in the math (verified 09-06); assessor/stock page | OK in code (DUAL resolved). PROD Yahoo writer still live until push |
-| debt_to_equity | FMP TTM sync only — Yahoo daily writer removed 2026-09-07 | FMP | weekly + step 3d | score.py debt_safety only — its callers (daily_score_archiver, retired 2026-08-04; screener; backtest) are OFF the live scheduler path; not a live scoring input | OK in code (DUAL resolved). PROD Yahoo writer still live until push |
+| roe | FMP TTM sync only — the Yahoo daily writer was removed 2026-09-07 (fundamentals.py) | FMP | weekly + step 3d | selected by the quality query (hidden_gem_scorer:465) but never used in the math (verified 09-06); assessor/stock page | OK (DUAL resolved; Yahoo writer gone on the deployed SHA). |
+| debt_to_equity | FMP TTM sync only — Yahoo daily writer removed 2026-09-07 | FMP | weekly + step 3d | score.py debt_safety only — its callers (daily_score_archiver, retired 2026-08-04; screener; backtest) are OFF the live scheduler path; not a live scoring input | OK (DUAL resolved; Yahoo writer gone on the deployed SHA). |
 | historical_metrics (per-quarter pe_ratio, roic, op_margin, revenue, …) | table written weekly (step 6, pipeline/fmp_historical.py) from FMP key-metrics + income stmt; upsert ON CONFLICT (symbol,date) DO UPDATE, fetched_at stamped every run | FMP | weekly (≤10 days on fetched_at); newest quarter ≤60 days | LIVE: `compute_gap_score` multiple_inertia (30% of gap → priced-in multiplier ×(0.70+0.50×gap)): pe_ratio now vs 12 months ago, roic & op_margin now vs prior row. NOT LIVE (corrected 2026-09-07): the P/S rank in `compute_value_score` (TTM revenue lateral SUM) has NO caller — score_all_stocks takes value from quality_v3.value_v3 | OK ON LIVE DB since 2026-09-06 13:43 UTC: UNIQUE (symbol,date) restored, 827/831 symbols (missing OZK ASND CHKP GTLS GLD — all zombie/stale-price names), MAX(date) 2026-08-02; upsert re-proven 2026-09-07 (10 symbols, 200 rows, 0 errors, 0 duplicate pairs) |
 | ev_to_ebitda, pe_forward, pe_trailing, price_to_fcf, ev_to_fcf, price_to_book, market_cap, enterprise_value | Yahoo info | Yahoo (market says) | daily 06:00 fetch (≤24h) | value ranks (EV/EBITDA, P/E, P/FCF, P/S numerator) | OK |
 | peg_ratio (+ peg_vendor, peg_source) | Yahoo vendor PEG, `_vendor_peg_writable` guard, `peg_normalizer` sustainable-growth replacement | Yahoo + our normalizer | daily; conflict class same run | assessor context ONLY — absent from scoring math (V3 #17) | OK |
@@ -55,10 +55,10 @@ breach, ticket named; DUAL = two writers on one field (forbidden).
 | fundamentals | MAX(fetched_at) | 8d | Checks the FETCH, not the CONTENT — passed throughout the ACM lag. The content check is the growth_quarter row below. |
 | historical_metrics | MAX(fetched_at) | 10d | Refresh heartbeat (stamped on every row the weekly upsert touches). 115d on MAX(date) hid a dead table for four months (V3 #21). |
 | historical_metrics newest quarter | MAX(date) | 60d | Newest quarter-end; lags 30-50 days by construction (10-Q lag). |
-| growth_quarter:SYMBOL (per symbol) | fundamentals.growth_quarter_end vs latest 10-Q/10-K filing_date in `filings` | breach when the filing is >3d old AND (quarter_end IS NULL OR quarter_end < filing_date − 95d) | Content check, one alarm row per symbol. Keys on the QUARTER END, not FMP's fillingDate (a vendor stamp: earnings-release date for NUE, period-end placeholder for MDLN/PNFP). Calibrated 2026-09-07: healthy gap 10..62d across 820 symbols; a quarter that predates the filed one sits ≥~100d behind (ACM stale March quarter vs 08-11 10-Q: 133d). Symbols with no 10-Q/10-K on record (10) are not checked. Open at build: GLD only (ETF, no statements, never had a quarter). |
+| growth_quarter:SYMBOL (per symbol) | fundamentals.growth_quarter_end vs latest 10-Q/10-K filing_date in `filings` | breach when the filing is >3d old AND (quarter_end IS NULL OR quarter_end < filing_date − 95d) | Content check, one alarm row per symbol. Keys on the QUARTER END, not FMP's fillingDate. Calibrated 2026-09-07: healthy gap 10..62d across 820 symbols. Symbols with no 10-Q/10-K on record are not checked. ETFs are out of the universe (`pipeline.universe.ETF_SYMBOLS`, currently GLD) plus the shape rule (no sector AND no vendor statements) — not a one-name mute. |
 | eod_prices / leaderboard / daily_brief / 8-K / transcripts / qual / narrative_exposures / narrative_history / insider_trades | MAX(timestamp) | 2–9d | Fetch-recency checks; adequate for document feeds where arrival = content. |
 
-| growth_quarter (per symbol) | score quarter vs latest 10-Q/10-K | 3d after filing | Excludes non-filers of income statements: shape rule (no sector AND no vendor statements) + NON_FILER_SYMBOLS {GLD} (R1, 2026-09-20). |
+| growth_quarter (per symbol) | score quarter vs latest 10-Q/10-K | 3d after filing | Excludes non-filers via `pipeline.universe.ETF_SYMBOLS` (GLD confirmed 2026-09-20) + shape rule (no sector AND no vendor statements). R1's `{GLD}` mute is retired as the strategy. |
 
 ### C2. Out-of-process alarm — `GET /health/platform` (API, R1 2026-09-20)
 
@@ -95,7 +95,33 @@ reads back the open rows in env_diagnostics source='freshness' AND, from
 2026-09-20, the `/health/platform` status. Silent green while a row is
 red is forbidden.
 
+## C4. FMP-empty rate (KPI — sitting 1, 2026-09-21)
+
+Per growth (and canonical backfill/TTM) run, `pipeline.universe.empty_kpi`
+records `empty_count / symbols`, the **full** empty symbol list (no
+`:20` truncation), and a bucket per name. Three stories, not one alarm:
+
+| Bucket | Example | Action |
+|---|---|---|
+| `etf` | GLD (09-07 freeze; now out of universe) | excluded — not a vendor hole |
+| `quota_429` | 09-08/09-09 transcript/growth sweep | count 429s per run; do not write Yahoo over a known FMP quarter |
+| `transport` | dropped request after retry | retry already happened; name them |
+| `true_hole` | LW, MAS on 09-07 (operating companies; FMP returned nothing that run) | Yahoo fallback is the documented gate (`growth_source != 'fmp'`); name them |
+
+This is a measurement. FMP quota *redesign* stays parked (V3 #25 note).
+Logged as `growth block done: written=… empty_count=… empty_rate=…
+buckets[etf=…, quota_429=…, transport=…, true_hole=…] empty=[…]`.
+
 ## D. Change log
+
+- 2026-09-21 — Sitting 1 (no ETFs in the universe): `pipeline.universe`
+  is the live-universe gate (ETF_SYMBOLS = {GLD} confirmed 2026-09-20;
+  ASND/CHKP/GTLS/OZK left in place — operating companies). Wired into
+  score / quality / `_load_tickers` / fetch / growth default / onboard
+  `phase_validate` (Yahoo quoteType + FMP isEtf) / assessor / theming.
+  Sentinel reads the same list. FMP-empty KPI (C4): full list + buckets.
+  Ghost line "PROD STILL YAHOO until the #20 push" removed — prod
+  2026-09-20 was 830 fmp / 1 null (GLD).
 
 - 2026-09-20 — Sitting R1 (V3 #26) built, local: eod_prices single
   owner (FMP writer retired; window 7d); `/health/platform` (C2);

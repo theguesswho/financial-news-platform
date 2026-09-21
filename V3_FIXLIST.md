@@ -303,10 +303,13 @@ fixed.
        2026-08-10 shown live 09-06 — re-show it in the sitting).
     OUT OF SCOPE FOR THIS ARC: redesigning the one-off vs structural
     growth penalty; embeddings/decay/Phase 2; replay; backfill.
+    STATUS 2026-09-21 — prod inventory (Grok 2026-09-20): growth_source
+    830 fmp / 1 null (GLD). DATA_SCORECARD "PROD STILL YAHOO" line
+    removed in sitting 1. The remaining null is the ETF now excluded
+    from the universe, not a Yahoo writer. Close #20 after the first
+    post-sitting-1 daily still reads 830 fmp (GLD may stay null).
     STATUS 2026-09-20 — "NOT PUSHED" is a ghost: `ef825ee` is on main and
-    an ancestor of R1 SHA `a7aafee` (deployed). Close only after a
-    post-deploy daily keeps growth_source='fmp' (NEEDS PROD CHECK;
-    DATA_SCORECARD still says PROD STILL YAHOO). See TRIAGE_2026-09-20.md.
+    an ancestor of R1 SHA `a7aafee` (deployed). See TRIAGE_2026-09-20.md.
     STATUS 2026-09-07 — BUILT, GATE PRESENTED, NOT PUSHED (freeze
     sitting 2026-09-06 evening + 2026-09-07). (a) pipeline/fmp_quarterly.py
     re-homes the block (income + cash-flow by position; Q vs Q-4
@@ -645,9 +648,15 @@ fixed.
       "migrate: … 6 applied"; /board 200; /health/platform 200; 30-s
       lock watch clean; role timeouts 10min/30s on new sessions;
       external monitor set up by Edmund on the two URLs.
-    THEN (superseded 2026-09-20, DESK.md / TRIAGE_2026-09-20.md): next
-    sitting is ETF exclusion + FMP-empty KPI, then #23 A+B; #24 and
-    FMP quota stay parked. Original: Sitting 1 (#23) → FMP quota → #24.
+    THEN (superseded 2026-09-21, DESK.md): sitting 1 (ETF exclusion +
+    FMP-empty KPI) is THIS PR — branch only, not on prod. Next after
+    merge is #23 A+B; #24 and FMP quota stay parked. Original:
+    Sitting 1 (#23) → FMP quota → #24.
+    STATUS 2026-09-21 — sitting 1 built (away-lane). `pipeline.universe`
+    is the exclusion list (GLD confirmed ETF; ASND/CHKP/GTLS/OZK left
+    in place). R1 `{GLD}` mute is no longer the strategy; sentinel
+    imports the shared list. FMP-empty logs keep the full list +
+    buckets. See DESK.md.
 
 ## Standing gates (not fixes, reminders)
 

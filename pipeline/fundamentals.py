@@ -176,8 +176,16 @@ def fetch_fundamentals(session: Session, symbols: list[str]) -> dict:
     (a stale docstring claimed a 7-day window; behavior has always been
     fetch-all, giving <=24h staleness via the daily 06:00 full refresh).
     Callers control cost by choosing the symbol list.
+    ETFs are dropped here too (pipeline.universe) so a dirty-symbol
+    or onboard leak cannot write a new gold-trust row.
     """
     from sqlalchemy import text
+    from pipeline.universe import excluded_from, filter_universe
+    skipped = excluded_from(symbols)
+    symbols = filter_universe(symbols)
+    if skipped:
+        print(f"  universe: skipped {len(skipped)} ETF(s): {skipped}",
+              flush=True)
     # Create table if needed
     session.execute(text("""
         CREATE TABLE IF NOT EXISTS fundamentals (

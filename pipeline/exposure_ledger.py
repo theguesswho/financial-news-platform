@@ -98,7 +98,8 @@ def find_stocks_with_new_evidence(engine, symbols=None) -> dict:
         if traj: bits.append(f"trajectory: {traj}")
         if tone: bits.append(f"tone: {tone}")
         lines.append(" ".join(bits))
-    return out
+    from pipeline.universe import is_universe_symbol
+    return {s: lines for s, lines in out.items() if is_universe_symbol(s)}
 
 
 def _load_ledger(engine, symbols) -> dict:
@@ -356,6 +357,8 @@ def verify_universe(engine, symbols=None, max_workers=4) -> dict:
                           for n in nars)
     valid_ids = {n["id"] for n in nars}
     ctx = _load_stock_context(engine, symbols)
+    from pipeline.universe import is_universe_symbol
+    ctx = {s: v for s, v in ctx.items() if is_universe_symbol(s)}
     if not ctx:
         return {"verified": 0}
     ledger = _load_ledger(engine, list(ctx))

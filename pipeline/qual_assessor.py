@@ -569,6 +569,9 @@ def run_qual_assessment(top_n: int = TOP_N, symbol: str = None,
     if gems is None:
         gems = score_all_stocks(engine)
 
+    from pipeline.universe import is_universe_symbol
+    gems = [g for g in gems if is_universe_symbol(g.get("symbol"))]
+
     if symbol:
         # Single-symbol mode (CLI / manual)
         gems = [g for g in gems if g["symbol"] == symbol.upper()]

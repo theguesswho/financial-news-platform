@@ -658,6 +658,18 @@ fixed.
     imports the shared list. FMP-empty logs keep the full list +
     buckets. See DESK.md.
 
+27. **E WOBBLE 25–28 Sep 2026 — universe-wide narrative-score shift
+    and exact revert; unexplained; PARKED (Edmund 2026-09-28).** Full
+    evidence and the three-step fix live in `CLAUDE_TASKS.md` T1
+    (owner: a sitting Edmund opens later, not before October earnings
+    unless it recurs). Summary: 800/822 names moved on 09-25 (mean
+    +0.026), 797 back to the exact 09-24 value on 09-28; fingerprint
+    is the call-vs-filing gap's universe-max normaliser reading a
+    mixed era-1/era-2 row set for three runs although
+    `FILING_THEMES_RUBRIC_ERA=2`; five assessor "shifting" verdicts on
+    09-27 (ES, DUK, FE, XYL, OMC) are noise. Neither Edmund nor Grok
+    touched `filing_themes`. Nothing changed in this record's session.
+
 ## Standing gates (not fixes, reminders)
 
 - Chunk 4 + ALNY/LITE/SNDK additions stay gated behind the board-size

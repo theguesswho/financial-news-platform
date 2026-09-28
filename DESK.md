@@ -6,8 +6,10 @@ in the same PR. Chat-only status essays do not count.
 
 ## Status
 
-- **Prod SHA:** `a7aafee` on `main` (R1). Sitting 0 docs landed as
-  `d1c1736`. This sitting is **branch + PR only** — not on prod.
+- **Prod SHA:** `ea3d730` on `main` (Sitting 1 merged; Railway
+  scheduler `a53b08b4` + api `2cc5c225` SUCCESS 2026-09-21 12:14 UTC
+  — verified from the deployment list 2026-09-28). R1 = `a7aafee`,
+  sitting 0 docs = `d1c1736`, both included.
 - **R1 (V3 #26):** SHIPPED on main. Ceilings 240 / 300 / 360 min
   (Edmund 2026-09-20: do not raise).
 - **Sitting 1 (this PR):** ETF exclusion wired. GLD soft-excluded
@@ -39,6 +41,14 @@ Away-lane 1 — **Universe: no ETFs** (this PR):
 
 ## Open incidents / parked
 
+- **T1 (CLAUDE_TASKS.md, 2026-09-28): narrative score moved for
+  800/822 names on 25 Sep and snapped back on 28 Sep** — call-vs-
+  filing gap term read a mixed-era row set for three runs with
+  `FILING_THEMES_RUBRIC_ERA=2`; unexplained (neither Edmund nor Grok
+  touched `filing_themes`). Five "shifting" assessor verdicts on
+  27 Sep (ES, DUK, FE, XYL, OMC) are noise. PARKED until October
+  earnings unless it recurs. Details and the three-step fix in
+  `CLAUDE_TASKS.md` T1.
 - **15–17 Sep** snapshots / editions / lots: real gap. `platform_notes`
   id 7 already labels it (active 09-15 → 09-22). **Never backfill.**
 - **FMP 429 evenings** (#25 design note): parked pending Edmund's plan

@@ -6,10 +6,12 @@ in the same PR. Chat-only status essays do not count.
 
 ## Status
 
-- **Prod SHA:** `ea3d730` on `main` (Sitting 1 merged; Railway
-  scheduler `a53b08b4` + api `2cc5c225` SUCCESS 2026-09-21 12:14 UTC
-  — verified from the deployment list 2026-09-28). R1 = `a7aafee`,
-  sitting 0 docs = `d1c1736`, both included.
+- **Prod SHA:** `4eca961` on `main` (CLAUDE_TASKS T1 E_DIAG, pushed
+  2026-10-09 12:11 UTC by Edmund's `push`). Railway: scheduler
+  `48a07afb`, api `6b382ad6`, impartial-heart `7242207a` — all
+  SUCCESS; web not rebuilt. Prod check 12:22 UTC: /health/platform
+  200 `ok` (no failing checks), /board 200 (2026-10-09). Includes
+  `e6c59d8` and `014f665`.
 - **R1 (V3 #26):** SHIPPED on main. Ceilings 240 / 300 / 360 min
   (Edmund 2026-09-20: do not raise).
 - **Sitting 1 (this PR):** ETF exclusion wired. GLD soft-excluded
@@ -27,10 +29,15 @@ in the same PR. Chat-only status essays do not count.
 
 ## Active sitting
 
-**CLAUDE_TASKS T1 (opened 2026-10-09)** — watch-path isolation + flap
-diagnostic logging, one push. Local only; NOT pushed. Commits:
-`014f665` (new CLAUDE_TASKS) on top of `e6c59d8`, plus the T1 code
-commit. Logging only — no score math.
+**CLAUDE_TASKS T1 (opened 2026-10-09)** — E_DIAG logging SHIPPED in
+`4eca961`. Left: set watch paths (dashboard) + markdown-only proof
+push, both deferred by Edmund to another day.
+
+**Next session, first thing (Edmund 2026-10-09):** pull the `E_DIAG`
+lines from the 2026-10-09 after-close (22:00 UTC) and weekly (23:30
+UTC) runs (`railway logs --service financial-news-platform`) and
+report any line where `era_env` is null/empty or `clause` is `""`.
+Report only — no T2 fix.
 
 ### Deploy triggers (read from `railway status --json`, 2026-10-09)
 
@@ -68,6 +75,14 @@ only), `common/`, `scheduler.py` (legacy), every `*.md`.
 None of these match `*.md`, `docs/**`, `TRIAGE_*`, `CLAUDE_TASKS.md`.
 Proof still owed: a markdown-only push after T1 shows scheduler,
 api and impartial-heart SKIPPED (record date + deployment ids here).
+Edmund 2026-10-09: watch paths and proof push deferred to another
+day; until set, every non-`web/` push restarts scheduler + Streamlit.
+
+Evidence already on record (`railway deployment list --service api`,
+read 2026-10-09): api deployment `a2c787fb-3da5-4bb8-99f1-07c4c9a66fbf`
+is **SKIPPED** on 2026-09-20 13:49 UTC — api's narrow watch paths
+skipped a push at least once. Not yet a proof for the scheduler or
+impartial-heart (both still `**`, `!web/**`).
 
 ### E code paths (T1 item 5)
 

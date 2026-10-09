@@ -11,22 +11,16 @@
 
 ## OPEN
 
-### T1 — Watch-path isolation + flap diagnostic logging (one push)
-Opened 9 Oct 2026. Size S. Scoring impact: none (logging only).
+### T1 — Watch-path isolation (two steps left)
+Opened 9 Oct 2026. Size S. Scoring impact: none.
 
-Why: Every push to main, including markdown, rebuilds and restarts the scheduler. We also need a diagnostic push to catch the flap (T2) in the act. Doing both in one push means one restart, not two.
+Shipped 9 Oct 2026, commit `4eca961` (scheduler `48a07afb`, api `6b382ad6`, impartial-heart `7242207a`, all SUCCESS; /health/platform and /board 200): deploy triggers recorded in DESK.md, E_DIAG flap logging live. Edmund deferred the rest to another day.
 
-Part A: watch paths
-1. Find how Railway decides to rebuild each service (financial-news-platform scheduler, api, web): dashboard watch paths, railway.toml/railway.json, root directory, Dockerfile context. Write the current state into DESK.md under a "Deploy triggers" heading.
-2. Set watch paths so: scheduler rebuilds only on runtime paths (pipeline/**, scheduler*.py, db/**, config/**, runtime scripts/**, requirements*.txt, Dockerfile*, railway.*); api only on api/** plus shared runtime paths it actually imports; web only on web/**; nothing rebuilds on *.md, docs/**, TRIAGE_*, V3_FIXLIST.md, DESK.md, CLAUDE_TASKS.md.
-3. If the config lives in a repo file, this push itself restarts once (expected). Either way, plan a separate markdown-only proof push afterwards, because the T1 push carries runtime files (Part B).
+Left:
+1. Set watch paths in the Railway dashboard on financial-news-platform (scheduler), api and impartial-heart, using the lists under "Deploy triggers" in DESK.md. Claude walks Edmund through it click by click (service, screen, exact text per box), then reads them back with `railway status --json`.
+2. Markdown-only proof push: Railway must show scheduler, api and impartial-heart SKIPPED. Record date and deployment ids in DESK.md.
 
-Part B: flap diagnostic (logging only)
-4. Inside the scoring child process, at every re-score, log one structured line: run id, job type, PID, the rubric-era clause actually applied in SQL, the value of FILING_THEMES_RUBRIC_ERA as that process sees it (unset vs "2"), count of names qualifying for the call-vs-filing gap term, and the max gap used as normaliser.
-5. Add the same line to any other code path that computes E (after-close re-score, assessor mover prep, backfills). If a path computes E without going through the era filter, list it in DESK.md. That is likely the bug.
-6. Note in DESK.md: the Streamlit lab bench has no era variable and computes E under the mixed read. Not the prod cause, but bench and prod must agree; fix belongs in T2.
-
-Done when: watch paths set and recorded; T1 pushed (with e6c59d8 and the new CLAUDE_TASKS.md); a later markdown-only push shows scheduler and api SKIPPED in Railway, recorded in DESK.md with date and deployment ids; diagnostic lines visible in logs across at least one flip day. Then delete T1.
+Done when: both steps done and recorded. Then delete T1.
 
 ### T2 — Kill the universe-wide E flap, plus two scoring guards
 Opened 9 Oct 2026 (absorbs the 28 Sep parked item). Size M. Scoring impact: yes, freeze ritual.

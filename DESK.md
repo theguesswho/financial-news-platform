@@ -1,6 +1,6 @@
 # DESK — shared board (Grok / Claude / Edmund)
 
-Updated 2026-09-21 (away-lane sitting 1: no ETFs in the universe).
+Updated 2026-10-09 (CLAUDE_TASKS T1: deploy triggers + E_DIAG).
 **Rule:** any sitting that changes plans or status updates this file
 in the same PR. Chat-only status essays do not count.
 
@@ -27,9 +27,81 @@ in the same PR. Chat-only status essays do not count.
 
 ## Active sitting
 
-Away-lane 1 — **Universe: no ETFs** (this PR):
-`pipeline/universe.py` + consumers + FMP-empty KPI + DESK / scorecard
-/ FIXLIST stamps. No score-math. No Railway. No prod DB writes.
+**CLAUDE_TASKS T1 (opened 2026-10-09)** — watch-path isolation + flap
+diagnostic logging, one push. Local only; NOT pushed. Commits:
+`014f665` (new CLAUDE_TASKS) on top of `e6c59d8`, plus the T1 code
+commit. Logging only — no score math.
+
+### Deploy triggers (read from `railway status --json`, 2026-10-09)
+
+No `railway.json` / `railway.toml` / `nixpacks.toml` in the repo.
+Watch paths, root dir and start command all live in the Railway
+dashboard (service settings), not in a repo file.
+
+| Service | Root | Build | Start | Watch paths NOW |
+|---|---|---|---|---|
+| `financial-news-platform` (scheduler) | `/` | `/Dockerfile` | `python scheduler_light.py` | `**`, `!web/**` |
+| `api` | `/` | `/Dockerfile` | `uvicorn api.main:app` | `api/**`, `pipeline/**`, `db/**`, `requirements.txt` |
+| `impartial-heart` (Streamlit lab bench) | `/` | `/Dockerfile` | `streamlit run ui/Home.py` | `**`, `!web/**` |
+| `web` | `web` | Railpack | (default) | `web/**` |
+
+So today: ANY push outside `web/` — markdown included — rebuilds
+and restarts the scheduler AND Streamlit. `api` already skips
+docs-only pushes (not yet observed). Dockerfile is `COPY . .`; only
+the paths below change runtime behaviour.
+
+What each process actually loads (static import trace + file reads,
+2026-10-09): scheduler → `scheduler_light.py`, `pipeline/`, `db/`,
+`config/` (tickers.txt, company_map.json), `requirements.txt`.
+api → `api/`, `pipeline/`. Streamlit → `ui/`, `pipeline/`, `db/`.
+Not loaded by any service: `scripts/` (deploy gate + one-off tests
+only), `common/`, `scheduler.py` (legacy), every `*.md`.
+
+**Proposed watch paths (to set in the dashboard — not yet set):**
+- scheduler: `pipeline/**`, `db/**`, `config/**`, `scheduler*.py`,
+  `requirements.txt`, `Dockerfile`
+- api: `api/**`, `pipeline/**`, `db/**`, `config/**`,
+  `requirements.txt`, `Dockerfile`
+- impartial-heart: `ui/**`, `pipeline/**`, `db/**`, `config/**`,
+  `requirements.txt`, `Dockerfile`
+- web: `web/**` (unchanged)
+None of these match `*.md`, `docs/**`, `TRIAGE_*`, `CLAUDE_TASKS.md`.
+Proof still owed: a markdown-only push after T1 shows scheduler,
+api and impartial-heart SKIPPED (record date + deployment ids here).
+
+### E code paths (T1 item 5)
+
+Every E computation goes through ONE function,
+`hidden_gem_scorer.compute_call_vs_filing_gap`, which reads the era
+from the environment at call time. The `E_DIAG` line is logged there,
+so it covers every caller (two lines per full re-score: once via
+`compute_narrative_score`, once for display). Callers:
+- scheduler child jobs daily / after_close / weekly →
+  `_score_and_archive` (tagged `run=<job>@<slot>`)
+- scheduler PARENT thread `_process_job_queue` (onboarding re-score)
+  → `score_all_stocks` (shows `run=adhoc`, `via=…_process_job_queue`)
+- fallbacks: `leaderboard_archiver.archive_leaderboard`,
+  `qual_assessor` (when no gems passed), `deep_dive_batch`,
+  `shadow_lane`
+- Streamlit `ui/app.py` (`load_gem_scores`, `get_gem_for`)
+- legacy `scheduler.py` (launchd jobs disabled 2026-08-16)
+No path computes E with its own SQL or bypasses the era clause. So
+the flap is not a bypass: the clause itself must be coming out empty
+in some runs (env unset/empty in that process), or the row set
+differs. `E_DIAG` logs `era_env`, `clause`, `qualifiers`, `max_gap`,
+`rows_by_era_in_window`, pid/ppid and the call chain to tell which.
+Local check 2026-10-09 against the prod DB: era=2 → 329 qualifiers,
+max gap 0.4643; unset → 806, max gap 0.55 (rows in window: era-1
+4066, era-2 5092). The scorer writes nothing, so a mixed read in
+Streamlit cannot reach the board.
+
+### Lab bench (T1 item 6)
+
+`FILING_THEMES_RUBRIC_ERA` is set ONLY on the scheduler service
+(=2). It is unset on `api` and `impartial-heart`. The Streamlit
+bench therefore computes E under the mixed read. Not the prod cause
+(read-only), but bench and prod must agree — fix belongs in T2
+(era rule enforced in the query helper, default 2).
 
 ## Next sittings (ordered)
 
@@ -41,14 +113,10 @@ Away-lane 1 — **Universe: no ETFs** (this PR):
 
 ## Open incidents / parked
 
-- **T1 (CLAUDE_TASKS.md, 2026-09-28): narrative score moved for
-  800/822 names on 25 Sep and snapped back on 28 Sep** — call-vs-
-  filing gap term read a mixed-era row set for three runs with
-  `FILING_THEMES_RUBRIC_ERA=2`; unexplained (neither Edmund nor Grok
-  touched `filing_themes`). Five "shifting" assessor verdicts on
-  27 Sep (ES, DUK, FE, XYL, OMC) are noise. PARKED until October
-  earnings unless it recurs. Details and the three-step fix in
-  `CLAUDE_TASKS.md` T1.
+- **Universe-wide E flap** (was the parked 28 Sep T1; now
+  CLAUDE_TASKS T2, un-parked 2026-10-09): E for ~800/822 names
+  toggles between era-2 and mixed reads, on and off since 25 Sep.
+  T1's `E_DIAG` line is the instrument; T2 is the fix.
 - **15–17 Sep** snapshots / editions / lots: real gap. `platform_notes`
   id 7 already labels it (active 09-15 → 09-22). **Never backfill.**
 - **FMP 429 evenings** (#25 design note): parked pending Edmund's plan
@@ -58,7 +126,8 @@ Away-lane 1 — **Universe: no ETFs** (this PR):
 - **Replay:** design only (`NARRATIVE_REPLAY_DESIGN.md`). Parked.
 - **#24 Gap math C+D:** freeze; Edmund GATE; not next.
 - **Watch-path isolation:** still unproven (CLAUDE.md / FRONTEND_SPEC).
-  Docs or pipeline push = scheduler redeploy.
+  Docs or pipeline push = scheduler redeploy. Now CLAUDE_TASKS T1;
+  current state under "Deploy triggers" above.
 - **Operating-company extras** ASND, CHKP, GTLS, OZK (in fundamentals,
   not in tickers.txt): NOT ETFs. Left in place. Separate hygiene.
 

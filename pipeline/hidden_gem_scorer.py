@@ -59,6 +59,45 @@ def _rubric_era_clause() -> str:
     return f"AND ft.rubric_version = {int(era)}"
 
 
+def _log_e_diag(engine, clause: str, qualifiers: int, max_gap) -> None:
+    """T1 flap diagnostic (CLAUDE_TASKS T1/T2, 2026-10-09) — LOGGING ONLY.
+    One line per E computation, so the run that reads the mixed era-1+2
+    set can be caught in the act: who ran it (SCHED_RUN is set by the
+    scheduler child; else 'adhoc'), the era variable as THIS process sees
+    it, the clause actually put into the SQL, the qualifier count and the
+    normaliser, plus the rubric_version mix of the rows in the window
+    (era clause NOT applied) and the call chain. Never raises."""
+    import json as _json, sys as _sys
+    try:
+        frames, f = [], _sys._getframe(2)
+        while f is not None and len(frames) < 6:
+            frames.append(f"{os.path.basename(f.f_code.co_filename)}:{f.f_code.co_name}")
+            f = f.f_back
+        try:
+            with engine.connect() as conn:
+                mix = {str(v): int(n) for v, n in conn.execute(text(f"""
+                    SELECT ft.rubric_version, COUNT(*)
+                    FROM {_filing_themes_table()} ft
+                    WHERE ft.filing_type IN ('10-K','10-Q','EARN_CALL')
+                      AND ft.filing_date >= NOW() - INTERVAL '18 months'
+                    GROUP BY 1 ORDER BY 1""")).fetchall()}
+        except Exception as e:
+            mix = {"error": str(e)[:120]}
+        print("E_DIAG " + _json.dumps({
+            "run": os.environ.get("SCHED_RUN", "adhoc"),
+            "pid": os.getpid(), "ppid": os.getppid(),
+            "era_env": os.environ.get("FILING_THEMES_RUBRIC_ERA"),
+            "table": _filing_themes_table(),
+            "clause": clause,
+            "qualifiers": qualifiers,
+            "max_gap": None if max_gap is None else round(float(max_gap), 4),
+            "rows_by_era_in_window": mix,
+            "via": " < ".join(frames),
+        }), flush=True)
+    except Exception as e:
+        print(f"E_DIAG failed: {e}", flush=True)
+
+
 # Hard ceiling — above this forward PE, value score is zeroed out
 PE_CEILING = 75.0
 PEG_CEILING = 6.0
@@ -176,6 +215,7 @@ def compute_call_vs_filing_gap(engine) -> dict:
     Returns a score in [-1, +1], normalised so 0 = no gap, positive = calls
     are more bullish than filings. Stored in results as 'call_filing_gap'.
     """
+    era_clause = _rubric_era_clause()
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
             SELECT
@@ -193,7 +233,7 @@ def compute_call_vs_filing_gap(engine) -> dict:
                 FROM {_filing_themes_table()} ft
                 WHERE ft.filing_type IN ('10-K','10-Q','EARN_CALL')
                   AND ft.filing_date >= NOW() - INTERVAL '18 months'
-                  {_rubric_era_clause()}
+                  {era_clause}
             ) sub
             GROUP BY symbol
             HAVING COUNT(CASE WHEN filing_type = 'EARN_CALL' THEN 1 END) >= 2
@@ -207,8 +247,10 @@ def compute_call_vs_filing_gap(engine) -> dict:
 
     # Normalise to [0, 1]: gap of 0 → 0.50 (neutral), large positive → near 1.0
     if not gaps:
+        _log_e_diag(engine, era_clause, 0, None)
         return {}
     max_gap  = max(abs(v) for v in gaps.values()) or 1.0
+    _log_e_diag(engine, era_clause, len(gaps), max_gap)
     return {s: max(0.0, min(1.0, 0.50 + (v / max_gap) * 0.50))
             for s, v in gaps.items()}
 

@@ -1591,6 +1591,8 @@ if __name__ == "__main__":
     if args.child:
         # Worker process spawned by _run_job_recorded: no ledger, no
         # migrate, no scheduler — run the job and report by exit code.
+        # SCHED_RUN tags this child's E_DIAG lines (T1 flap diagnostic).
+        os.environ["SCHED_RUN"] = f"{args.job}@{args.slot}"
         try:
             JOB_FUNCS[args.job]()
         except Exception:

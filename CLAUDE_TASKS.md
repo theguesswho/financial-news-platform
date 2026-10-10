@@ -96,3 +96,19 @@ Why: 39,695 claims extracted, every one pending; narrative_believability has 0 r
 8. Scoring use is Edmund's later decision, after about two quarters of data.
 
 Done when: resolver runs on ingest; due claims graded with evidence; narrative_believability populated; spot-check reported; stock-page display live. Then delete T4.
+
+### T5 — "Why did it move": a cause record for every definitive band crossing, shown on the chart
+Opened 10 Oct 2026 (Edmund, from the PTC retrace). Size M. Scoring impact: none — reads scores, never writes them. Two halves: methodology writes the record; product displays it. Absorbs the report-honesty flags of V3 #23 A (same classifier, two consumers: report writer and chart).
+
+Why (PTC as the worked example, 21 Jun → 6 Oct 2026): four band crossings, four different causes, and the record of them is spread across editions, assessor rationales and component columns with no single honest line per crossing. 3 Aug SB→off (growth penalty on divestiture-distorted comps; a data artefact, reversed 6 Aug); 9 Aug SB→Buy (our 10-year quality methodology — edition said so correctly); 30 Sep Buy→Watch (assessor verdict citing "narrative exposure down 0.055" = the T2 E flap, and "priced-in up 0.036" = an internal gap move on a flat price; edition narrated it as "the market catching up"); 6 Oct exit (Schneider $205 cash bid — the only one that was the market). A reader of the chart cannot tell these apart today.
+
+1. Definition of "definitive": the effective tier (assessed or quant) changes AND holds for ≥3 consecutive snapshots, or the crossing clears the band line by ≥0.02 gem on the day. Micro-flaps that revert inside 3 snapshots are not annotated (they are T2's problem).
+2. Cause classifier, run at archive time for each definitive crossing, writing one row to a new `band_events` table (date, symbol, from_tier, to_tier, cause_code, descriptor ≤ 90 chars, evidence_ref): codes, in precedence order —
+   `corporate_action` (takeover / spin / split 8-K in prior 5 trading days) → `company_event` (10-Q/10-K/8-K/call in prior 5 trading days; name it) → `assessor_verdict` (assessed_tier changed while quant tier did not; descriptor = first clause of the rationale, machine-written, never edited) → `measuring_stick` (active platform_notes row OR a component moved by a data repair / methodology change with no price or filing input change) → `price` (priced-in or value moved with a real close change; state the move vs SPY) → `data_noise` (T2 noise flag set, or the universe-wide E-change alarm fired that day) → `mixed` with the two largest drivers named.
+3. Input-change flags feeding the classifier (from #23 A): new close y/n; growth_quarter_end / growth_source changed; historical_metrics latest date changed; narrative rows changed; platform_notes active; assessor ran.
+4. Backfill `band_events` from leaderboard_history for the board's life (classifier over history; where inputs can't be reconstructed, code `unknown` and say so — never guess).
+5. Report writer (daily_report.py) must consume the same cause record for its move lines — one source of truth; "the market caught up" is only ever written under cause `price`.
+6. Product (FRONTEND_SPEC dated update): API `GET /stocks/{symbol}/band_events`; the stock-page score chart shows a marker at each definitive crossing with the descriptor on hover and a one-line legend. Plain lexicon. Read-only.
+7. Verify on PTC: the four crossings above must come out with the four codes above before anything is shown publicly; then a 10-name spot check across sectors.
+
+Sequencing: after T2 (the noise flag and the E alarm are inputs here). Done when: band_events written on archive and backfilled; report writer reads it; endpoint + chart markers live; PTC and the spot check verified. Then delete T5.

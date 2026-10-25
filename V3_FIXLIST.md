@@ -670,6 +670,42 @@ fixed.
     09-27 (ES, DUK, FE, XYL, OMC) are noise. Neither Edmund nor Grok
     touched `filing_themes`. Nothing changed in this record's session.
 
+28. **SILENT LLM OUTAGE since 2026-10-22 22:15 UTC — Anthropic credit
+    balance exhausted (API returns 400 "credit balance is too low").
+    Found 2026-10-25 14:30 UTC by the desk during a fortnight review;
+    OPEN until Edmund tops up credits.** Every judgment step has been
+    failing inside its try/except while scheduler_runs reports `ok`:
+    assessor (last verdict 10-22 07:00), theme extraction / wire grades
+    and claims (last 10-22 22:15), ledger update (last 10-21 23:09),
+    checkpoint grading, company narratives, editions (last daily_report
+    10-21 23:17; no editions 22, 23, 24 Oct), daily brief (last 10-22).
+    Backlog at 10-25 14:30: 135 filings since 10-22 noon with no
+    analysis text (20 10-Q, 3 10-K, 11 calls, 68 8-K); 13 board movers
+    unassessed (ADBE BAH CDW EPAM ES FE OMC PAYX R SPXC TKR TTMI XYL)
+    — in the peak reporting week. Detection failed in two layers:
+    (1) the run ledger marks a run `ok` when steps fail (R1 ceilings
+    catch hangs, not failures); (2) /health/platform is green because
+    the scheduler finishes and snapshots exist — it does not check
+    that the judgment layer ran. The freshness sentinel alarmed only on
+    daily_brief (2-day bar) at 10-25 06:56; qual (8d) and narrative
+    (9d) bars would have fired ~10-30. LLM spend was $11–16/week.
+    RECOVERY once credits are back: the catch-up steps (theme
+    extraction 4b, claims 4a2, synopses, assessor sweep for unassessed
+    Buy/SB, ledger) are idempotent and drain on the next runs; the
+    22–24 Oct editions do NOT regenerate (edition dates anchor to the
+    latest snapshot) — label the gap with a platform_notes row, never
+    backfill. FIX (CLAUDE_TASKS T6): run status `degraded` + failed-step
+    list when any step raises; /health/platform amber when llm_usage
+    shows zero calls in 26h on a day with scheduled runs, or the latest
+    run is degraded; a pre-flight 5-token call at run start that turns
+    a billing 400 into a named alarm; low-balance email alert in the
+    Anthropic console (Edmund).
+    ALSO FOUND 2026-10-25, needs Railway logs (CLI logged out on this
+    machine — `railway login` required): track_lots has opened NO v2d
+    lot since 2026-09-18 despite five Strong Buy entries in October
+    (CMC, SANM 10-15; FN, SARO 10-16; FLEX 10-20) — step 4t failing or
+    gated; the track record has been silent for five weeks.
+
 ## Standing gates (not fixes, reminders)
 
 - Chunk 4 + ALNY/LITE/SNDK additions stay gated behind the board-size

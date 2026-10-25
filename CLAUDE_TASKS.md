@@ -112,3 +112,17 @@ Why (PTC as the worked example, 21 Jun → 6 Oct 2026): four band crossings, fou
 7. Verify on PTC: the four crossings above must come out with the four codes above before anything is shown publicly; then a 10-name spot check across sectors.
 
 Sequencing: after T2 (the noise flag and the E alarm are inputs here). Done when: band_events written on archive and backfilled; report writer reads it; endpoint + chart markers live; PTC and the spot check verified. Then delete T5.
+
+### T6 — Failures are not `ok`: step-failure status, judgment-layer health, billing pre-flight
+Opened 25 Oct 2026 (Edmund's fortnight review; V3 #28). Size S–M. Scoring impact: none.
+
+Why: Anthropic credits ran out at 22:15 UTC on 22 Oct. For three days every LLM step (assessor, extraction, claims, ledger, grading, editions) failed inside its try/except; scheduler_runs said `ok`, /health/platform said ok, and only the 2-day daily_brief bar alarmed on the morning of the 25th. 135 filings in the peak week have no analysis text; 13 board movers are unassessed; three editions are missing. Also: no v2d track lot has opened since 18 Sep despite five Strong Buy entries — unexplained until the Railway log is read.
+
+1. Run ledger: a run whose steps raised is `degraded`, with the failed-step list in `error`; `ok` means every step completed. _err() records the failure instead of only logging it.
+2. /health/platform: amber (503 with the check named) when the latest run is `degraded`, or llm_usage has zero calls in the last 26 h on a day with scheduled runs, or the newest qual_assessment / filing_themes row is older than 48 h on a weekday.
+3. Pre-flight at run start: one 5-token call; a billing 400 or auth 401 is logged as a named alarm and written to env_diagnostics (source `llm_preflight`) so the brief and readouts carry it.
+4. Edmund: set a low-balance email alert in the Anthropic console; record the threshold in DATA_SCORECARD.
+5. Track record: read the 4t step log for 19 Sep → today; name why no lots opened; fix; back-open only what the rules allow (next-close fills from the day the signal qualified, never retro-priced).
+6. Label the 22–24 Oct edition gap with a platform_notes row. No backfill of editions or assessments; the catch-up steps repopulate analysis text and verdicts on their own schedule.
+
+Done when: a forced step failure shows `degraded` in the ledger and amber on /health/platform; pre-flight alarm proven against a bad key locally; lots opening again with the cause recorded; platform_notes row in place. Then delete T6.

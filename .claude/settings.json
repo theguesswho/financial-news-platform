@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(railway logs *)",
+      "Bash(railway deployment list *)",
+      "Bash(railway status *)",
+      "Bash(railway variables *)",
+      "Bash(railway whoami)",
+      "Bash(curl -s *)",
+      "Bash(curl -sI *)",
+      "Bash(venv/bin/python -m py_compile *)",
+      "Bash(ps aux *)",
+      "Bash(lsof -i *)"
+    ]
+  }
+}

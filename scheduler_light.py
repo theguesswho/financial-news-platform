@@ -45,9 +45,49 @@ def _load_tickers():
         return filter_universe(l.strip().upper() for l in f if l.strip())
 
 def _banner(t): logger.info("=" * 72 + f"\n  {t}\n" + "=" * 72)
-def _step(n, l): logger.info(f"  Step {n}: {l}…")
-def _ok(m):      logger.info(f"    ✓  {m}")
-def _err(m, e):  logger.error(f"    ✗  {m}: {e}", exc_info=True)
+# Failures are not `ok` (V3 #28, T6): every step writes its result to
+# scheduler_steps via pipeline.run_ledger; the parent stamps the run
+# `degraded` when any step failed or was deferred. Fail-open.
+from pipeline import run_ledger as _rl
+
+def _step(n, l):
+    logger.info(f"  Step {n}: {l}…")
+    _rl.step_start(n, l)
+def _ok(m):
+    logger.info(f"    ✓  {m}")
+    _rl.step_end("ok", note=str(m))
+def _err(m, e):
+    if isinstance(e, _Deferred):
+        return   # already recorded as deferred by _budget_gate
+    logger.error(f"    ✗  {m}: {e}", exc_info=True)
+    _rl.step_end("failed", error=f"{m}: {e}")
+def _deferred(m):
+    """A step skipped on purpose (budget exhausted, hold switch): visible,
+    recorded, and the run is degraded — never silent."""
+    logger.warning(f"    ⏸  {m}")
+    _rl.step_end("deferred", note=str(m))
+
+class _Deferred(Exception):
+    """Raised inside a step body after _deferred() recorded the skip; the
+    step's except clause must let it pass (see _err)."""
+
+
+def _budget_gate(kind: str) -> bool:
+    """Ask the spend guard before an LLM-heavy step; sets the budget tag
+    every recorded call will carry. kind: 'daily' | 'drain'."""
+    from pipeline import llm_usage as _lu
+    from pipeline.hidden_gem_scorer import get_engine as _geb
+    _lu.CURRENT_BUDGET = kind
+    try:
+        eng = _geb()
+        ok, why = _rl.budget_ok(eng, kind)
+        eng.dispose()
+    except Exception as e:
+        logger.warning(f"budget check failed open: {e}")
+        return True
+    if not ok:
+        _deferred(f"deferred — {why}")
+    return ok
 
 def _wait_for_network(timeout=60):
     import socket, time
@@ -121,6 +161,10 @@ def _qual_sweep(gems=None):
                           || 'verdict — assess the substance on its merits; a '
                           || 'deferred reaction check re-runs after the next close '
                           || 'if the market moves materially.' ELSE '' END
+                     WHEN cf.fdate IS NOT NULL THEN
+                       'CATCH-UP REVIEW: the ' || cf.ftype || ' filed ' || cf.fdate ||
+                       ' was ingested during the October 2026 outage recovery, after your last assessment on ' ||
+                       qa.assessed_at::date || '. Review it on its merits as a catch-up — it is NOT news breaking today and the market reaction is not a verdict on it.'
                      WHEN dr.rdate IS NOT NULL THEN
                        'DEFERRED REACTION CHECK (after-hours release, SMCI/ENS '
                        || 'lesson 2026-08-13): you assessed the ' || dr.rdate ||
@@ -163,8 +207,24 @@ def _qual_sweep(gems=None):
                   -- the 8-K must re-fire assessment same as transcripts do
                   AND f.created_at > qa.assessed_at
                   AND f.filing_date > NOW() - INTERVAL '14 days'
+                  -- T6: a document recovered late is NOT an event
+                  AND NOT COALESCE(f.backfilled, FALSE)
                 ORDER BY f.created_at DESC LIMIT 1
             ) ef ON qa.symbol IS NOT NULL
+            LEFT JOIN LATERAL (
+                -- T6 catch-up review (Edmund 2026-10-31, desk's flagged rule):
+                -- a BOARD name whose latest 10-Q/10-K/call was ingested after
+                -- its verdict but carries the backfilled mark still gets ONE
+                -- review — stamped catch-up, never narrated as news.
+                SELECT f.filing_type AS ftype, f.filing_date::date AS fdate
+                FROM filings f
+                WHERE f.symbol = l.symbol
+                  AND f.filing_type IN ('10-K', '10-Q', 'EARN_CALL')
+                  AND COALESCE(f.backfilled, FALSE)
+                  AND f.created_at > qa.assessed_at
+                  AND (l.tier IS NOT NULL OR COALESCE(l.qual_promoted, FALSE))
+                ORDER BY f.created_at DESC LIMIT 1
+            ) cf ON qa.symbol IS NOT NULL AND ef.fdate IS NULL
             LEFT JOIN LATERAL (
                 SELECT ROUND(100 * (a.close / NULLIF(b.close, 0) - 1), 1) AS chg_pct
                 FROM (SELECT close FROM eod_prices WHERE symbol = l.symbol
@@ -191,6 +251,7 @@ def _qual_sweep(gems=None):
                               ORDER BY date DESC LIMIT 1) pb ON TRUE
                 WHERE f.symbol = l.symbol
                   AND f.filing_type = '8-K' AND f.event_type = 'EARNINGS'
+                  AND NOT COALESCE(f.backfilled, FALSE)
                   AND f.created_at > NOW() - INTERVAL '7 days'
                   AND qa.assessed_at > f.created_at
                   AND qa.assessed_at < pa.date::timestamp + INTERVAL '21 hours'
@@ -202,10 +263,17 @@ def _qual_sweep(gems=None):
                     (qa.symbol IS NULL AND (l.tier IS NOT NULL OR COALESCE(l.qual_promoted, FALSE)))
                  OR ov.promoted_since IS NOT NULL
                  OR ef.fdate IS NOT NULL
+                 OR cf.fdate IS NOT NULL
                  OR dr.rdate IS NOT NULL
                  OR ABS(l.gem_score - COALESCE(qa.gem_score, l.gem_score)) >= 0.05
+                 -- T6 (Edmund 2026-10-31): an E-only move wakes nobody unless a
+                 -- new filing or an exposure op happened since the last verdict
+                 -- (the T2 flap moved E for 800 names with no new evidence).
                  OR (qa.narrative_score IS NOT NULL
-                     AND ABS(l.narrative_score - qa.narrative_score) >= 0.10)
+                     AND ABS(l.narrative_score - qa.narrative_score) >= 0.10
+                     AND (ef.fdate IS NOT NULL OR EXISTS (
+                            SELECT 1 FROM exposure_history eh
+                            WHERE eh.symbol = l.symbol AND eh.judged_at > qa.assessed_at)))
               )
             ORDER BY l.gem_score DESC
             LIMIT 80
@@ -231,6 +299,13 @@ def _qual_sweep(gems=None):
         # gems=None makes the assessor re-score itself; never pass [] (matches nothing)
         run_qual_assessment(symbols=to_assess, gems=gems if gems else None,
                             triggers=trig)
+        catchup = [s_ for s_, why in trig.items() if str(why).startswith("CATCH-UP REVIEW")]
+        if catchup:
+            with eng.begin() as conn:
+                conn.execute(text("""UPDATE qual_assessments SET continuity = 'catch-up'
+                                     WHERE symbol = ANY(:s) AND assessed_at > NOW() - INTERVAL '1 hour'"""),
+                             {"s": catchup})
+            _ok(f"catch-up reviews stamped: {len(catchup)}")
         create_table(eng)
         updated = apply_qual_tiers(eng)
         _ok(f"Qual tiers stamped: {updated} rows")
@@ -488,15 +563,18 @@ def daily_data_update():
     _step("4a2", "Earnings-call claim extraction (catch-up, idempotent)")
     try:
         from pipeline.claim_extractor import run_claim_extraction
-        run_claim_extraction()
-        _ok("Claim extraction done")
+        if _budget_gate("drain"):
+            run_claim_extraction()
+            _ok("Claim extraction done")
     except Exception as e:
         _err("Claim extraction failed", e)
 
     _step("4b", "Narrative theme extraction (catch-up)")
     try:
         from pipeline.narrative_extractor import run_extraction
-        run_extraction(limit=30)
+        # 30 -> 100 per run for the drain (T6); charged to the drain budget
+        if _budget_gate("drain"):
+            run_extraction(limit=100)
         _ok("Narrative extraction done")
     except Exception as e:
         _err("Narrative extraction failed", e)
@@ -506,7 +584,7 @@ def daily_data_update():
         from pipeline.exposure_ledger import run_update_pass
         from pipeline.hidden_gem_scorer import get_engine as _ge4c
         eng = _ge4c()
-        r = run_update_pass(eng)
+        r = run_update_pass(eng) if _budget_gate("drain") else {"deferred": True}
         eng.dispose()
         _ok(f"Ledger update: {r}")
     except Exception as e:
@@ -517,7 +595,7 @@ def daily_data_update():
         from pipeline.company_narrative import process_birth_queue
         from pipeline.hidden_gem_scorer import get_engine as _ge4d
         eng = _ge4d()
-        r = process_birth_queue(eng)
+        r = process_birth_queue(eng) if _budget_gate("daily") else {"deferred": True}
         eng.dispose()
         _ok(f"Birth queue: {r}")
     except Exception as e:
@@ -588,15 +666,20 @@ def daily_data_update():
         import json, time as _time
         from pipeline.events import _classify_8k
         from pipeline.hidden_gem_scorer import get_engine as _ge
+        if not _budget_gate("drain"):
+            raise _Deferred()
         eng = _ge()
         with eng.connect() as conn:
+            # 50 -> 200 per run (T6): 8-Ks are now stored first and classified
+            # here when the inline call fails; ~500 recovered filings must not
+            # take ten days.
             unclassified = conn.execute(text("""
                 SELECT id, symbol, content FROM filings
                 WHERE filing_type IN ('8-K','8-K/A')
                 AND (llm_analysis IS NULL
                      OR llm_analysis::jsonb->>'impact' IS NULL
                      OR llm_analysis::jsonb->>'headline' IS NULL)
-                ORDER BY filing_date DESC LIMIT 50
+                ORDER BY filing_date DESC LIMIT 200
             """)).fetchall()
         fixed = 0
         for fid, sym, content in unclassified:
@@ -624,7 +707,8 @@ def daily_data_update():
 
     _step(8, "Qual assessment sweep (movers + unassessed Buy/Strong Buy)")
     try:
-        _qual_sweep(gems=gems)
+        if _budget_gate("daily"):
+            _qual_sweep(gems=gems)
     except Exception as e:
         _err("Qual sweep failed", e)
 
@@ -661,6 +745,8 @@ def daily_data_update():
 
     _step(10, "Filing synopses")
     try:
+        if not _budget_gate("drain"):
+            raise _Deferred()
         from pipeline.synopsis import get_or_generate_synopsis
         from pipeline.hidden_gem_scorer import get_engine as _ge
         import json
@@ -812,8 +898,9 @@ def after_close_refresh():
         # Orphaned 2026-06-12 -> re-wired 2026-08-11 (V3 #1). Idempotent:
         # only transcripts with no stored claims are processed.
         from pipeline.claim_extractor import run_claim_extraction
-        run_claim_extraction()
-        _ok("Claim extraction done")
+        if _budget_gate("drain"):
+            run_claim_extraction()
+            _ok("Claim extraction done")
     except Exception as e:
         _err("Claim extraction failed", e)
 
@@ -862,7 +949,8 @@ def after_close_refresh():
     _step("3c", "Narrative theme extraction (new filings)")
     try:
         from pipeline.narrative_extractor import run_extraction
-        run_extraction(limit=30)
+        if _budget_gate("daily"):
+            run_extraction(limit=100)
         _ok("Narrative extraction done")
     except Exception as e:
         _err("Narrative extraction failed", e)
@@ -939,7 +1027,7 @@ def after_close_refresh():
     try:
         from pipeline.exposure_ledger import run_update_pass
         eng = _ge()
-        r = run_update_pass(eng)
+        r = run_update_pass(eng) if _budget_gate("drain") else {"deferred": True}
         eng.dispose()
         _ok(f"Ledger update: {r}")
     except Exception as e:
@@ -967,6 +1055,11 @@ def after_close_refresh():
         # close that generated the signal (no look-ahead by construction).
         from pipeline.track_record import run_daily_lot_lifecycle
         from pipeline.hidden_gem_scorer import get_engine as _ge4t
+        if os.getenv("TRACK_LOTS_HOLD", "1") == "1":
+            # Edmund 2026-10-31: no new lot until the post-drain verification
+            # passes (RECOVERY_PLAN §2). Set TRACK_LOTS_HOLD=0 to release.
+            _deferred("v2d lifecycle HELD (TRACK_LOTS_HOLD=1) — no lots until the drain is verified")
+            raise _Deferred()
         _e4t = _ge4t()
         r = run_daily_lot_lifecycle(_e4t)
         _e4t.dispose()
@@ -976,6 +1069,8 @@ def after_close_refresh():
 
     _step(5, "Filing synopses")
     try:
+        if not _budget_gate("drain"):
+            raise _Deferred()
         from pipeline.synopsis import get_or_generate_synopsis
         from pipeline.hidden_gem_scorer import get_engine as _ge
         import json
@@ -1009,7 +1104,8 @@ def after_close_refresh():
 
     _step(6, "Qual assessment (tier movers + unassessed Buy/Strong Buy)")
     try:
-        _qual_sweep(gems=gems)
+        if _budget_gate("daily"):
+            _qual_sweep(gems=gems)
     except Exception as e:
         _err("Qual assessment failed", e)
 
@@ -1419,6 +1515,22 @@ def _run_job_recorded(job_id: str, slot) -> str:
         _record_run(job_id, slot, "start")
     except Exception as e:
         logger.warning(f"run-ledger start failed for {job_id}: {e}")
+    # Pre-flight (T6): one 5-token call; a billing/auth failure is named NOW,
+    # in the log, in env_diagnostics and in the run row — never nine silent days.
+    try:
+        from pipeline.run_ledger import preflight
+        from pipeline.hidden_gem_scorer import get_engine as _gep
+        _ep = _gep()
+        pf = preflight(_ep)
+        _ep.dispose()
+        if pf["ok"]:
+            logger.info("    ✓  LLM pre-flight ok")
+        else:
+            logger.error(f"    ✗  LLM PRE-FLIGHT FAILED ({pf['kind']}): {pf['detail']} — "
+                         f"every judgment step this run will fail; non-LLM steps continue")
+    except Exception as e:
+        pf = {"ok": True, "kind": "unchecked", "detail": str(e)[:120]}
+        logger.warning(f"pre-flight could not run: {e}")
     cmd = [sys.executable, str(root / "scheduler_light.py"),
            "--job", job_id, "--child", "--slot", slot.isoformat()]
     status, err = "ok", None
@@ -1443,6 +1555,21 @@ def _run_job_recorded(job_id: str, slot) -> str:
     except Exception as exc:
         status, err = "failed", str(exc)[:300]
         logger.error(f"    ✗  {job_id}: could not run child — {err}")
+    # Failures are not `ok` (T6): any failed/deferred step degrades the run.
+    if status == "ok":
+        try:
+            from pipeline.run_ledger import failed_steps
+            from pipeline.hidden_gem_scorer import get_engine as _ged
+            _ed = _ged()
+            bad = failed_steps(_ed, job_id, slot)
+            _ed.dispose()
+        except Exception:
+            bad = []
+        if not pf.get("ok", True):
+            bad = [f"preflight:{pf['kind']}"] + bad
+        if bad:
+            status, err = "degraded", "steps: " + ", ".join(bad)[:480]
+            logger.error(f"    ✗  {job_id}: DEGRADED — {err}")
     try:
         _record_run(job_id, slot, "finish", status=status, error=err)
     except Exception as e:
@@ -1593,6 +1720,11 @@ if __name__ == "__main__":
         # migrate, no scheduler — run the job and report by exit code.
         # SCHED_RUN tags this child's E_DIAG lines (T1 flap diagnostic).
         os.environ["SCHED_RUN"] = f"{args.job}@{args.slot}"
+        try:
+            _rl.CTX["job"] = args.job
+            _rl.CTX["slot"] = datetime.fromisoformat(args.slot) if args.slot else None
+        except Exception:
+            pass
         try:
             JOB_FUNCS[args.job]()
         except Exception:

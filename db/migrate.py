@@ -153,6 +153,17 @@ MIGRATIONS: list[Step] = [
     raw("meta_themes first_seen backfill",
         "UPDATE meta_themes SET first_seen = updated_at WHERE first_seen IS NULL",
         "SELECT 1 FROM meta_themes WHERE first_seen IS NULL LIMIT 1"),
+
+    # T6 (2026-10-31): per-step run ledger, backfilled mark, budget tag
+    raw("scheduler_steps table",
+        """CREATE TABLE IF NOT EXISTS scheduler_steps (
+               id SERIAL PRIMARY KEY, job_id VARCHAR(20) NOT NULL, slot_ts TIMESTAMP NOT NULL,
+               step VARCHAR(16) NOT NULL, label VARCHAR(200), started_at TIMESTAMP, finished_at TIMESTAMP,
+               status VARCHAR(12), note VARCHAR(500), error VARCHAR(500))""",
+        "SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'scheduler_steps')"),
+    idx("idx_sched_steps_run", "scheduler_steps", "job_id, slot_ts"),
+    col("filings", "backfilled", "BOOLEAN DEFAULT FALSE"),
+    col("llm_usage", "budget", "VARCHAR(10)"),
 ]
 
 

@@ -11,6 +11,11 @@ cache writes at 125%. Fail-open: a logging failure never breaks the caller.
 """
 from sqlalchemy import text
 
+# Which budget the current step runs under: 'daily' (same-day work) or
+# 'drain' (backlog catch-up). The scheduler sets it per step (T6 2026-10-31);
+# every recorded call carries it so spend guards can read spend by budget.
+CURRENT_BUDGET = "daily"
+
 RATES = {  # (input, output) USD per MTok
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5-20251001": (1.00, 5.00),
@@ -39,12 +44,21 @@ def record_usage(engine, module: str, model: str, usage) -> None:
                     est_cost_usd NUMERIC(10,6),
                     called_at TIMESTAMP DEFAULT NOW()
                 )"""))
-            conn.execute(text("""
-                INSERT INTO llm_usage (module, model, input_tokens, output_tokens,
-                                       cache_write_tokens, cache_read_tokens, est_cost_usd)
-                VALUES (:mo, :md, :i, :o, :cw, :cr, :c)
-            """), {"mo": module, "md": model, "i": inp, "o": out,
-                   "cw": cw, "cr": cr, "c": round(cost, 6)})
+            params = {"mo": module, "md": model, "i": inp, "o": out,
+                      "cw": cw, "cr": cr, "c": round(cost, 6), "b": CURRENT_BUDGET}
+            try:
+                conn.execute(text("""
+                    INSERT INTO llm_usage (module, model, input_tokens, output_tokens,
+                                           cache_write_tokens, cache_read_tokens, est_cost_usd, budget)
+                    VALUES (:mo, :md, :i, :o, :cw, :cr, :c, :b)
+                """), params)
+            except Exception:
+                # budget column not migrated yet — legacy row, never lose the record
+                conn.execute(text("""
+                    INSERT INTO llm_usage (module, model, input_tokens, output_tokens,
+                                           cache_write_tokens, cache_read_tokens, est_cost_usd)
+                    VALUES (:mo, :md, :i, :o, :cw, :cr, :c)
+                """), params)
     except Exception:
         pass   # never break the caller over bookkeeping
 

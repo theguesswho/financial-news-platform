@@ -123,6 +123,11 @@ def extract_claims(client, symbol, call_date, content):
                 max_tokens=1200,
                 messages=[{"role": "user", "content": prompt}],
             )
+            try:
+                from pipeline.llm_usage import record_usage
+                record_usage(None, module="claim_extraction", model=MODEL, usage=response.usage)
+            except Exception:
+                pass
             raw = response.content[0].text.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]

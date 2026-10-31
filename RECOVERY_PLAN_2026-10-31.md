@@ -37,7 +37,8 @@ opens (`CLAUDE_TASKS.md`). Detail per incident lives in `V3_FIXLIST.md`.
    depends on log retention again.
 4. The console's 20–22 Oct spend figure, to calibrate the ledger.
 5. Confirm the economy-rule wording for CLAUDE.md (T6 item 12).
-6. `push` in a clear window for the T6 minimum set (section 3).
+6. `push` in a clear window for the T6 minimum set — **built and verified
+   locally 31 Oct (commit on local main); prod still has none of it.**
 
 ## 0b. Where we stand this minute
 

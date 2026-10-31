@@ -81,7 +81,27 @@ table (api/trading_days.py, 2026–2027), due from 01:00 UTC the next
 day (the after-close run has finished by then). DB unreachable or the
 API's 15-s statement timeout → 503 with `error`.
 
-### C3. Run ledger — `scheduler_runs` (R1)
+### C3. Run ledger — `scheduler_runs` + `scheduler_steps` (R1, T6)
+
+T6 (2026-10-31, built, awaiting push): every step writes a `scheduler_steps`
+row (job, slot, step, label, started/finished, status ok | failed |
+deferred | held, note, error) from the child process; the parent stamps
+the run `degraded` with the failed-step list when any step failed or was
+deferred — `ok` now means every step completed. A 5-token pre-flight runs
+before each job; a billing 400 / auth 401 is written to env_diagnostics
+(source `llm_preflight`) and degrades the run by name. Spend guards:
+DAILY_LLM_BUDGET_USD (8) for same-day work, DRAIN_BUDGET_USD_DAILY (12,
+while DRAIN_MODE=1) for catch-up steps (4a2/2c claims, 4b extraction, 4c/3e
+ledger, 6 8-K classification, 5/10 synopses); every recorded call carries
+`llm_usage.budget`. Modules newly recording usage: events_8k,
+claim_extraction, synopsis (12 → 9 unrecorded callers remain: analyzer,
+brief, deep_dive, lifecycle, override, meta_theme_builder, themes,
+screener, earnings_ingestion — T6 item 8). `filings.backfilled` marks a
+document fetched >2 days after its filing date: kept on the wire with its
+real date, never an assessor event; TRACK_LOTS_HOLD=1 (default) holds new
+lots until the drain is verified.
+
+### C3-old. Run ledger — `scheduler_runs` (R1)
 
 Every job runs as a child process under a hard ceiling (daily 240 min,
 after-close 300, weekly 360 — scheduler_light.JOB_CEILINGS_MIN) and is
@@ -113,6 +133,13 @@ Logged as `growth block done: written=… empty_count=… empty_rate=…
 buckets[etf=…, quota_429=…, transport=…, true_hole=…] empty=[…]`.
 
 ## D. Change log
+
+- 2026-10-31 — T6 minimum set BUILT locally (not pushed): see C3. 8-K
+  ingestion stores first, classifies after (events.py); recovered filings
+  carry `backfilled`; extraction 30 → 100 per run, 8-K classification
+  50 → 200; assessor wakes: no E-only wake without a new filing or
+  exposure op, backfilled filings are not events, board names get one
+  catch-up review stamped `continuity = 'catch-up'`; GET /ops/backlog.
 
 - 2026-09-21 — Sitting 1 (no ETFs in the universe): `pipeline.universe`
   is the live-universe gate (ETF_SYMBOLS = {GLD} confirmed 2026-09-20;

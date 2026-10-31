@@ -721,6 +721,10 @@ fixed.
     filings (8.3d) and qual_assessments (8.0d). Draining the backlog in
     one run will itself be a spend spike (~$15–25 est.) — drain in
     bounded batches (T6 item 7).
+    FIX WRITTEN 2026-10-31 (T6 minimum set, local, NOT PUSHED — an
+    unpushed outage-class fix is an OPEN INCIDENT: prod still reports
+    failed runs as ok and still loses 8-Ks when the LLM fails; push needed
+    before the next exposure, i.e. the next run). See DESK.md.
     SPEND REVIEW 20–22 Oct (Edmund 10-31, "did we follow our own
     rules?"): ledger est $3.83 / $7.00 / $3.91 = $14.74 vs ~$1.5/day
     baseline; by module theme_extraction_v2 $5.35 (256 Haiku calls,

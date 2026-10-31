@@ -29,6 +29,23 @@ in the same PR. Chat-only status essays do not count.
 
 ## Active sitting
 
+**T6 minimum set — BUILT 2026-10-31, local, NOT PUSHED (prod still has
+the silent-failure scheduler, LLM-gated 8-K ingestion, 30/run extraction,
+no budgets).** Push needed in the first quiet window Edmund is at Railway;
+next exposure: every run until then reports `ok` whatever fails. Files:
+pipeline/run_ledger.py (new), api/routers/ops.py (new),
+scripts/export_railway_logs.sh (new), scheduler_light.py, pipeline/events.py,
+pipeline/llm_usage.py, pipeline/claim_extractor.py, pipeline/synopsis.py,
+db/migrate.py (+3 steps: scheduler_steps, filings.backfilled,
+llm_usage.budget), db/models.py, api/main.py. Verified locally: compile;
+harness (degraded on failed step, degraded on billing pre-flight, helpers
+no-op without a run); trigger SQL EXPLAIN on prod; /ops/backlog,
+/health/platform, /board 200 on a local API; migrate dry-run = 3 new steps.
+Post-push checks: scheduler + api SUCCESS; start-up log `migrate: 54
+checked, 3 applied`; first run shows a pre-flight line and scheduler_steps
+rows; /ops/backlog on prod with no `error` keys; /board 200.
+
+
 **CLAUDE_TASKS T1 (opened 2026-10-09)** — E_DIAG logging SHIPPED in
 `4eca961`. Left: set watch paths (dashboard) + markdown-only proof
 push, both deferred by Edmund to another day.

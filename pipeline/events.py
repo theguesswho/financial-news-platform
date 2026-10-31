@@ -16,6 +16,7 @@ import anthropic
 import requests
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db.models import Filing
@@ -161,6 +162,11 @@ Return ONLY valid JSON — no markdown:
         max_tokens=450,   # 200 truncated figure-rich summaries mid-JSON (FITB 2026-07-17)
         messages=[{"role": "user", "content": prompt}],
     )
+    try:
+        from pipeline.llm_usage import record_usage
+        record_usage(None, module="events_8k", model=HAIKU, usage=response.usage)
+    except Exception:
+        pass
     raw = response.content[0].text.strip().strip("`").lstrip("json").strip()
     try:
         return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
@@ -234,39 +240,55 @@ def run_events(session: Session, tickers: list[str]) -> dict:
                     content = ""
                     print(f"scrape failed ({exc}), ", end="")
 
-                classification = _classify_8k(symbol, content, f.get("items", ""))
-
-                # Semantic exhibit trigger: an earnings 8-K whose summary has
-                # no figures means we summarised a cover page (IBM 2026-07-14:
-                # cover was 5,455 chars — over the size threshold — and the
-                # real numbers sat in EX-99). Character count is a bad proxy
-                # for "contains the news"; absence of digits is the tell.
-                if (_is_earnings(classification, f.get("items", ""))
-                        and not _has_figures(classification.get("summary", ""))):
-                    exhibit = _fetch_exhibit_content(f["url"])
-                    if exhibit and len(exhibit) > len(content):
-                        content = exhibit
-                        classification = _classify_8k(symbol, content, f.get("items", ""))
-
+                # STORE FIRST, classify after (T6, 2026-10-31): a failed LLM
+                # call must never lose a filing — zero 8-Ks were stored for
+                # nine days when credits ran out because classification ran
+                # before the INSERT. Unclassified rows are picked up by the
+                # daily "Backfill missing 8-K classifications" step.
+                fdate = datetime.fromisoformat(f["date"])
+                backfilled = (datetime.utcnow() - fdate).days > 2
                 stored = _store_filing(
                     session,
                     symbol=symbol,
                     cik=cik,
                     filing_type=f["type"],
-                    event_type=classification["event_type"],
-                    title=classification["headline"],
+                    event_type=None,
+                    title=f.get("title") or f"8-K — {symbol} ({f['date']})",
                     url=f["url"],
-                    filing_date=datetime.fromisoformat(f["date"]),
+                    filing_date=fdate,
                     content=content,
-                    llm_analysis=json.dumps(classification),
-                    sentiment_score=classification["score"],
+                    llm_analysis=None,
+                    sentiment_score=None,
+                    backfilled=backfilled,
                 )
-                if stored:
-                    added += 1
-                    print(f"{classification['event_type']} / {classification['impact']}")
-                else:
+                if not stored:
                     skipped += 1
                     print("already stored")
+                    continue
+                added += 1
+                try:
+                    classification = _classify_8k(symbol, content, f.get("items", ""))
+                    # Semantic exhibit trigger: an earnings 8-K whose summary has
+                    # no figures means we summarised a cover page (IBM 2026-07-14).
+                    if (_is_earnings(classification, f.get("items", ""))
+                            and not _has_figures(classification.get("summary", ""))):
+                        exhibit = _fetch_exhibit_content(f["url"])
+                        if exhibit and len(exhibit) > len(content):
+                            content = exhibit
+                            classification = _classify_8k(symbol, content, f.get("items", ""))
+                    session.execute(text("""
+                        UPDATE filings SET event_type = :et, title = :hl, content = :ct,
+                               llm_analysis = :la, sentiment_score = :sc
+                        WHERE url = :u"""), {"et": classification["event_type"],
+                                             "hl": classification["headline"], "ct": content,
+                                             "la": json.dumps(classification),
+                                             "sc": classification["score"], "u": f["url"]})
+                    session.commit()
+                    print(f"{classification['event_type']} / {classification['impact']}"
+                          + (" [backfilled]" if backfilled else ""))
+                except Exception as exc:
+                    session.rollback()
+                    print(f"stored, classification deferred ({str(exc)[:80]})")
                 time.sleep(0.1)
 
         except Exception as exc:

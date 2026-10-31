@@ -24,6 +24,7 @@ class Filing(Base):
     llm_analysis = Column(Text)              # JSON: summary, risks, opportunities, etc.
     master_analysis = Column(Text)           # prose synthesis with market context
     sentiment_score = Column(Integer)        # -10 (bearish) to +10 (bullish)
+    backfilled = Column(Boolean, default=False)  # fetched >2 days after filing_date (T6): kept on the wire with its real date, never an "event"
     # processed_at retired 2026-08-11 (audit): written inconsistently by
     # legacy paths only, read by nothing, and it misled two audits into
     # "unprocessed content" false alarms. Coverage truth lives in

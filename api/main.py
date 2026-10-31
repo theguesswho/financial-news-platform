@@ -31,9 +31,10 @@ def health():
     return {"status": "ok", "service": "api", "version": "2.0.0"}
 
 
-from api.routers import board, health, narratives, reports, stocks, wire  # noqa: E402
+from api.routers import board, health, narratives, ops, reports, stocks, wire  # noqa: E402
 
 app.include_router(health.router)   # GET /health/platform — the out-of-process alarm (V3 #26 R1)
+app.include_router(ops.router)      # GET /ops/backlog — drain verification readout (T6)
 app.include_router(board.router)
 app.include_router(stocks.router)
 app.include_router(narratives.router)

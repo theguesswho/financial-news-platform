@@ -37,6 +37,11 @@ def generate_synopsis(symbol: str, filing_type: str, title: str,
                 symbol, filing_type, title, trajectory, tone, catalysts, risks
             )}],
         )
+        try:
+            from pipeline.llm_usage import record_usage
+            record_usage(None, module="synopsis", model=MODEL, usage=msg.usage)
+        except Exception:
+            pass
         return msg.content[0].text.strip()
     except Exception:
         # Fallback: rule-based from trajectory

@@ -706,6 +706,43 @@ fixed.
     (CMC, SANM 10-15; FN, SARO 10-16; FLEX 10-20) — step 4t failing or
     gated; the track record has been silent for five weeks.
 
+    ADDENDUM 2026-10-31 01:20 UTC (credits restored by Edmund today;
+    nothing has drained yet — llm_usage still ends 10-22 22:15). Worse
+    than recorded on 10-25: 8-K ingestion is GATED on the Haiku
+    classification call (pipeline/events.py `_classify_8k` runs before
+    the row is stored), so ZERO 8-Ks have been stored since 10-23 (57/
+    58/68 per day before) — the wire has been dark for 8-Ks for nine
+    days; the after-close 14-day cutoff should re-fetch them once the
+    LLM answers, IF that happens before ~11-06 for the 10-23 filings.
+    Transcripts: 11 calls stored since 10-23 against 285 10-Qs — also
+    likely gated or quota-blocked; needs the Railway log. Backlog at
+    10-31: 370 filings without analysis, 9 days of assessments,
+    editions and briefs. Freshness now red on daily_brief (8.3d), 8-K
+    filings (8.3d) and qual_assessments (8.0d). Draining the backlog in
+    one run will itself be a spend spike (~$15–25 est.) — drain in
+    bounded batches (T6 item 7).
+    SPEND REVIEW 20–22 Oct (Edmund 10-31, "did we follow our own
+    rules?"): ledger est $3.83 / $7.00 / $3.91 = $14.74 vs ~$1.5/day
+    baseline; by module theme_extraction_v2 $5.35 (256 Haiku calls,
+    2.96M input, NO prompt caching), ledger_update $4.24 (300 Sonnet
+    calls → 201 ops for 41 symbols), qual_assessor $3.02 (208 calls),
+    company_narrative $1.02, checkpoints $0.93, report $0.18. PLUS
+    unrecorded: claim_extractor (106 transcripts, Haiku, ~$2), events
+    8-K classification (183 8-Ks, Haiku, ~$1–1.5), synopsis, brief —
+    12 of 22 Anthropic callers never call record_usage (breach of the
+    2026-08-02 directive "every pipeline call records"). True 3-day
+    spend ≈ $18–20 by our estimate; Edmund's console is the truth.
+    ~70% was the reporting wave (58 10-Qs, 106 calls, 183 8-Ks in
+    three days — legitimate); ~30% waste: assessor woke 114 symbol-
+    days of which 107 (94%) had NO tier change, 76 symbols assessed
+    twice and 6 four times in a day (06:00 and 22:00 sweeps both
+    fire; the materiality corridor bypasses the 18-hour guard), 77
+    verdicts open with a "rounding noise / immaterial" ruling,
+    199/208 "reinforcing"; extraction, claims, minting and 8-K
+    classification send their full rubric uncached on every call. No
+    daily ceiling, no pre-flight, no low-balance alert, and no economy
+    rule in CLAUDE.md — the principle lived in a docstring and in chat.
+
 ## Standing gates (not fixes, reminders)
 
 - Chunk 4 + ALNY/LITE/SNDK additions stay gated behind the board-size

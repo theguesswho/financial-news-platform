@@ -29,10 +29,8 @@ in the same PR. Chat-only status essays do not count.
 
 ## Active sitting
 
-**T6 minimum set — BUILT 2026-10-31, local, NOT PUSHED (prod still has
-the silent-failure scheduler, LLM-gated 8-K ingestion, 30/run extraction,
-no budgets).** Push needed in the first quiet window Edmund is at Railway;
-next exposure: every run until then reports `ok` whatever fails. Files:
+**T6 minimum set — LIVE on prod since 2026-10-31 08:31 UTC (`28bcbbd`).**
+Remaining T6 items: 2, 4, 5, 8, 9, 10, 12, 14, 19 (see CLAUDE_TASKS). Files:
 pipeline/run_ledger.py (new), api/routers/ops.py (new),
 scripts/export_railway_logs.sh (new), scheduler_light.py, pipeline/events.py,
 pipeline/llm_usage.py, pipeline/claim_extractor.py, pipeline/synopsis.py,

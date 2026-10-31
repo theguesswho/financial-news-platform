@@ -116,7 +116,7 @@ Sequencing: after T2 (the noise flag and the E alarm are inputs here). Done when
 ### T6 — Failures are not `ok`: step-failure status, judgment-layer health, billing pre-flight
 Opened 25 Oct 2026 (Edmund's fortnight review; V3 #28). Size S–M. Scoring impact: none.
 
-**STATUS 31 Oct 2026: minimum set (item 13) BUILT locally, verified, NOT PUSHED — prod still runs the silent-failure scheduler and the LLM-gated 8-K path. Push in the first quiet window Edmund is at Railway. Items 2 (health amber on degraded/silent judgment layer), 4, 5 (lots cause — needs the log), 8 (remaining 9 unrecorded callers), 9, 10, 12, 14 (log export, needs `railway login`) remain.**
+**STATUS 31 Oct 2026 08:40 UTC: minimum set (item 13) LIVE on prod (`28bcbbd`, pushed 08:25, migrated 08:31, api 08:40; all four immediate checks passed). First run on the new code is Sun 1 Nov 06:00 UTC — check 5. Items 2 (health amber on degraded/silent judgment layer), 4, 5 (lots cause — needs the log), 8 (remaining 9 unrecorded callers), 9, 10, 12, 14 (log export, needs `railway login`) remain.**
 
 Why: Anthropic credits ran out at 22:15 UTC on 22 Oct. For three days every LLM step (assessor, extraction, claims, ledger, grading, editions) failed inside its try/except; scheduler_runs said `ok`, /health/platform said ok, and only the 2-day daily_brief bar alarmed on the morning of the 25th. 135 filings in the peak week have no analysis text; 13 board movers are unassessed; three editions are missing. Also: no v2d track lot has opened since 18 Sep despite five Strong Buy entries — unexplained until the Railway log is read.
 

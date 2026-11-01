@@ -1,8 +1,88 @@
 # DESK — shared board (Grok / Claude / Edmund)
 
-Updated 2026-10-09 (CLAUDE_TASKS T1: deploy triggers + E_DIAG).
+Updated 2026-11-01 (INCIDENT: second scheduler, below). Previous: 2026-10-09 (CLAUDE_TASKS T1: deploy triggers + E_DIAG).
 **Rule:** any sitting that changes plans or status updates this file
 in the same PR. Chat-only status essays do not count.
+
+## INCIDENT 2026-11-01 — a second scheduler on the production database (25 Jun → 1 Nov 2026)
+
+**What.** A second Railway project, `protective-cooperation`, deployed every
+push of this repo from 2026-06-25 13:58 UTC (db0eb5c "Add cloud scheduler for
+Railway", 17 min before `friendly-wisdom` existed) to 2026-10-31 (28bcbbd):
+195 deployments (GitHub deployment records, read 2026-11-01). One service,
+`financial-news-platform`; start command empty (Dockerfile CMD =
+`python scheduler_light.py`); variables ANTHROPIC_API_KEY, DATABASE_URL,
+FMP_API_KEY only — **no FILING_THEMES_RUBRIC_ERA**. Same database. It ran
+every daily, after-close and weekly job a second time.
+
+**Proof.**
+- Step 8c (only writer of `env_diagnostics` freshness rows) ran twice on 91
+  of 97 recorded dailies, 25 Jul → 1 Nov, and on every day 19–24 Jul.
+- 2026-11-01 06:00: two pre-flight rows 119 ms apart; 42 `scheduler_steps`
+  rows (two of every step); 4d unique-key and 5b3 lock-timeout failures are
+  the two copies colliding.
+- `protective-cooperation` deploy 200370ca log: E_DIAG 2026-11-01 06:58 UTC,
+  `era_env` null, 806 qualifiers, via
+  `score_all_stocks < _score_and_archive < daily_data_update`.
+- Already seen once, never traced: R1 comment (2026-09-20) "15–17 Sep 2026
+  were only filled by a second writer".
+
+**Effects.**
+- **Board provenance is mixed from 25 Jun.** The archive upserts every row,
+  so each day's board is whichever copy archived last.
+  - 25 Jun → 22 Aug (51 board days): no era variable existed; both copies
+    computed the same E. Provenance mixed, values not.
+  - 23 Aug → 1 Nov (68 board days): **27 mixed-era boards, 41 era-2 boards,
+    31 flips** — this IS the T2 "E flap". Signature: the T2 sentinel names
+    sit at narrative_score exactly 0.1000 on era-2 boards, ≈0.15 on mixed.
+    Mixed-era days: 08-25; 09-05..09-08; 09-11, 09-20, 09-22, 09-25, 09-26,
+    09-27, 09-29, 09-30; 10-01, 10-03, 10-05, 10-09, 10-10, 10-16, 10-19,
+    10-20, 10-21, 10-23, 10-26, 10-28, 10-31; 11-01.
+  - Everything else the scheduler writes is duplicated or last-writer-wins
+    for the same period: editions, assessor verdicts, extraction/ledger
+    calls, after-close lots (4t), FMP calls.
+- **LLM spend** doubled wherever a step is not idempotent (1 Nov: ≈$3 of
+  $8.93 was the second copy). Ledger and console totals since June include it.
+- **Possible contributors, NOT proven:** FMP 429 evenings (#25 — two copies
+  double the FMP call rate); the 09-09 / 09-14 lock outages (two schedulers
+  contending for the same tables).
+- **Never backfill** the mixed-era boards; platform_notes carries the record.
+
+**Shutdown.** GitHub repo disconnected and deployment removed in
+`protective-cooperation` on 2026-11-01 — reported in progress when this was
+written; confirm in Railway. First single-copy run: Mon 2 Nov 06:00 UTC.
+
+**Guard — `014d1dc`, LOCAL, NOT PUSHED.** One owner per run slot:
+`_run_job_recorded` claims the `scheduler_runs` row atomically; the owner
+heartbeats every 60 s; a second instance finding a live claim stands down
+and writes `env_diagnostics` 'duplicate_scheduler' naming both instances;
+claims silent 300 s are dead (rescue still works); fail-open on an
+un-migrated DB. Columns `owner`, `heartbeat_at` via db/migrate.py.
+Instance tag on claim, pre-flight row and start-up banner.
+`scripts/test_scheduler_guard.py` (throwaway Postgres, real workers): 12/12.
+Takes effect only after a scheduler restart, i.e. a push in a clear window.
+Follow-up: surface 'duplicate_scheduler' in /health/platform and the brief.
+
+**Monday 2 Nov — first era-2-only board** (real scorer run twice on 1 Nov
+data, archive hysteresis vs the 1 Nov board; the mixed recompute matched
+the archived 1 Nov tiers on 821/821):
+- Story score moves for 800 of 821 names: median 0.12, max 0.95 on the
+  10-point scale; none reaches the 1.0 E-only wake line.
+- Exit: CF (Watch, 3.40 → 3.17, under the 3.2 exit line).
+- ADBE, AM: Buy → raw Watch inside the 10% corridor → HELD, assessor
+  materiality ruling on Monday's run.
+- TPL (raw SB → Buy), INTU (raw Buy → Watch): already displayed at the
+  lower tier — no visible change.
+- No entries, no upgrades. Monday's own data will add ordinary moves.
+
+**Read back Mon 2 Nov 06:00:** one pre-flight row (instance
+`friendly-wisdom/...` once the guard is live), 21 step rows, one freshness
+row, no 4d/5b3 race failures, sentinels at 0.1000, no
+'duplicate_scheduler' rows.
+
+**platform_notes** row drafted (2026-11-01, chat), NOT inserted: it must be
+active before Mon 2 Nov 06:00 UTC so the ADBE/AM rulings and the edition
+see it.
 
 ## Status
 
@@ -147,6 +227,10 @@ bench therefore computes E under the mixed read. Not the prod cause
   CLAUDE_TASKS T2, un-parked 2026-10-09): E for ~800/822 names
   toggles between era-2 and mixed reads, on and off since 25 Sep.
   T1's `E_DIAG` line is the instrument; T2 is the fix.
+  **CAUSE FOUND 2026-11-01:** the second scheduler in
+  `protective-cooperation` (no era variable) — see INCIDENT above. The
+  flap stops when that copy stops; T2's query-helper default still
+  matters for the Streamlit bench (unset there too).
 - **15–17 Sep** snapshots / editions / lots: real gap. `platform_notes`
   id 7 already labels it (active 09-15 → 09-22). **Never backfill.**
 - **FMP 429 evenings** (#25 design note): parked pending Edmund's plan

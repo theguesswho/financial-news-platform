@@ -1425,12 +1425,14 @@ CATCHUP_LOOKBACK_MIN = 45
 DEADRUN_LOOKBACK_MIN = 1200
 
 def _record_run(job_id: str, slot_ts, phase: str, status: str | None = None,
-                error: str | None = None):
+                error: str | None = None, owner: str | None = None):
     """Run ledger. 'start' stamps started_at and clears status/error;
     'finish' stamps finished_at + status ('ok' | 'failed' | 'timeout') +
     error. The status/error columns are owned by db/migrate.py; should a
     start-up ever race that migration, the legacy two-column write still
-    lands so the ledger never goes dark."""
+    lands so the ledger never goes dark. `owner` (set only when this
+    instance holds the claim, so the column is known to exist) keeps a
+    finish from overwriting a run another instance has taken over."""
     from pipeline.hidden_gem_scorer import get_engine
     eng = get_engine()
     try:
@@ -1455,10 +1457,13 @@ def _record_run(job_id: str, slot_ts, phase: str, status: str | None = None,
             params = {"j": job_id, "s": slot_ts}
         else:
             new = ("UPDATE scheduler_runs SET finished_at = NOW(), status = :st, error = :er "
-                   "WHERE job_id = :j AND slot_ts = :s")
+                   "WHERE job_id = :j AND slot_ts = :s"
+                   + (" AND (owner IS NULL OR owner = :me)" if owner else ""))
             old = "UPDATE scheduler_runs SET finished_at = NOW() WHERE job_id = :j AND slot_ts = :s"
             params = {"j": job_id, "s": slot_ts, "st": status or "ok",
                       "er": (error or None) and str(error)[:500]}
+            if owner:
+                params["me"] = owner
         try:
             with eng.begin() as conn:
                 conn.execute(text(new), params)
@@ -1504,24 +1509,120 @@ JOB_FUNCS = {"daily": daily_data_update, "after_close": after_close_refresh,
              "weekly": weekly_deep_refresh, "midday": midday_refresh}
 STALE_DAILY_HOURS = 30   # start-up rule: newest finished daily older than this → run one
 
+# ── Single-scheduler guard (2026-11-01) ──────────────────────────────────────
+# From 25 Jun to 1 Nov a second Railway project ran this same scheduler on
+# this same database: every job ran twice, raced itself (unique-key and lock
+# failures), doubled LLM spend, and — lacking the era variable — set the
+# board on 27 of 68 days with a mixed-era E read. One slot now has ONE owner:
+# the run row is CLAIMED atomically before anything else happens, the owner
+# heartbeats while its child works, and a second instance that finds a live
+# claim stands down with a named alarm (env_diagnostics 'duplicate_scheduler').
+# A claim is free when the slot has no row, the row has finished (deliberate
+# re-run), or its heartbeat is stale (the owner died — dead-run rescue).
+HEARTBEAT_S = 60            # owner beats this often while the child runs
+STALE_HEARTBEAT_S = 300     # a claim with no beat for this long is dead
+CLAIM_RETRY_S = 30          # catch-up re-tries a live claim this often…
+CATCHUP_CLAIM_WAIT_S = 900  # …for this long (deploy overlap: the old container still holds it)
 
-def _run_job_recorded(job_id: str, slot) -> str:
+
+def _claim_run(eng, job_id: str, slot, me: str):
+    """True = this instance owns the run; False = another instance holds a
+    live claim; None = the claim could not be checked (columns not migrated,
+    DB error) — the caller falls back to the legacy start (fail-open: a lone
+    scheduler must still run)."""
+    try:
+        with eng.begin() as conn:
+            row = conn.execute(text("""
+                INSERT INTO scheduler_runs
+                    (job_id, slot_ts, started_at, status, error, owner, heartbeat_at)
+                VALUES (:j, :s, NOW(), NULL, NULL, :me, NOW())
+                ON CONFLICT (job_id, slot_ts) DO UPDATE
+                   SET started_at = NOW(), finished_at = NULL, status = NULL,
+                       error = NULL, owner = EXCLUDED.owner, heartbeat_at = NOW()
+                 WHERE scheduler_runs.finished_at IS NOT NULL
+                    OR scheduler_runs.heartbeat_at IS NULL
+                    OR scheduler_runs.heartbeat_at < NOW() - make_interval(secs => :stale)
+                RETURNING owner"""),
+                {"j": job_id, "s": slot, "me": me, "stale": STALE_HEARTBEAT_S}).fetchone()
+        return row is not None
+    except Exception as e:
+        logger.warning(f"run claim unavailable for {job_id} ({str(e)[:120]}) — legacy start")
+        return None
+
+
+def _heartbeat(eng, job_id: str, slot, me: str):
+    """Owner's beat. Returns False only when the row is provably no longer
+    ours (another instance claimed it after our beats lapsed); None on error."""
+    try:
+        with eng.begin() as conn:
+            n = conn.execute(text("""
+                UPDATE scheduler_runs SET heartbeat_at = NOW()
+                WHERE job_id = :j AND slot_ts = :s AND owner = :me"""),
+                {"j": job_id, "s": slot, "me": me}).rowcount
+        return n > 0
+    except Exception:
+        return None
+
+
+def _run_owner(eng, job_id: str, slot) -> str:
+    try:
+        with eng.connect() as conn:
+            r = conn.execute(text("""
+                SELECT owner, heartbeat_at FROM scheduler_runs
+                WHERE job_id = :j AND slot_ts = :s"""), {"j": job_id, "s": slot}).fetchone()
+        return f"{r[0]} (last beat {r[1]:%H:%M:%S} UTC)" if r and r[1] else (r[0] if r else "?")
+    except Exception:
+        return "?"
+
+
+def _run_job_recorded(job_id: str, slot, claim_wait_s: int = 0) -> str:
     """Run ONE job in a child process under its ceiling; this (parent)
-    process owns the ledger. Returns 'ok' | 'failed' | 'timeout'."""
+    process owns the ledger. Returns 'ok' | 'failed' | 'timeout' |
+    'degraded' | 'skipped' (another instance owns this slot).
+    claim_wait_s: how long to keep re-trying a live claim held elsewhere
+    (catch-up uses it to ride out a deploy overlap; cron fires use 0)."""
     import subprocess
     import time as _time
+    from pipeline.run_ledger import instance_tag, alarm
+    from pipeline.hidden_gem_scorer import get_engine as _gel
     ceiling_s = JOB_CEILINGS_MIN.get(job_id, 240) * 60
+    me = instance_tag()
+    _el = _gel()
     try:
-        _record_run(job_id, slot, "start")
-    except Exception as e:
-        logger.warning(f"run-ledger start failed for {job_id}: {e}")
+        claimed = _claim_run(_el, job_id, slot, me)
+        waited = 0
+        while claimed is False and waited < claim_wait_s:
+            _time.sleep(CLAIM_RETRY_S)
+            waited += CLAIM_RETRY_S
+            claimed = _claim_run(_el, job_id, slot, me)
+        if claimed is False:
+            holder = _run_owner(_el, job_id, slot)
+            logger.error(f"    ✗  {job_id} [{slot:%Y-%m-%d %H:%M}]: DUPLICATE SCHEDULER — slot already "
+                         f"claimed by {holder}; this instance ({me}) stands down")
+            alarm(_el, "duplicate_scheduler", {"job": job_id, "slot": slot.isoformat(),
+                                               "holder": holder, "stood_down": me})
+            return "skipped"
+        if claimed is None:
+            try:
+                _record_run(job_id, slot, "start")
+            except Exception as e:
+                logger.warning(f"run-ledger start failed for {job_id}: {e}")
+        return _run_claimed(job_id, slot, me if claimed else None, _el, ceiling_s)
+    finally:
+        _el.dispose()
+
+
+def _run_claimed(job_id: str, slot, owner, _el, ceiling_s: int) -> str:
+    """The body of a run this instance owns (owner=None: legacy, unclaimed)."""
+    import subprocess
+    import time as _time
     # Pre-flight (T6): one 5-token call; a billing/auth failure is named NOW,
     # in the log, in env_diagnostics and in the run row — never nine silent days.
     try:
-        from pipeline.run_ledger import preflight
+        from pipeline.run_ledger import preflight, instance_tag
         from pipeline.hidden_gem_scorer import get_engine as _gep
         _ep = _gep()
-        pf = preflight(_ep)
+        pf = preflight(_ep, instance=owner or instance_tag())
         _ep.dispose()
         if pf["ok"]:
             logger.info("    ✓  LLM pre-flight ok")
@@ -1538,9 +1639,27 @@ def _run_job_recorded(job_id: str, slot) -> str:
     try:
         # stdout/stderr inherited → the child's step log streams to Railway as before
         proc = subprocess.Popen(cmd, cwd=str(root))
-        try:
-            rc = proc.wait(timeout=ceiling_s)
-        except subprocess.TimeoutExpired:
+        # Wait in heartbeat-sized slices; the ceiling is unchanged. A lost
+        # claim (our beats lapsed and another instance took the slot) is
+        # named, not acted on: the finish below will not overwrite its row.
+        rc, lost = None, False
+        while True:
+            left = ceiling_s - (_time.monotonic() - t0)
+            if left <= 0:
+                break
+            try:
+                rc = proc.wait(timeout=min(HEARTBEAT_S, left))
+                break
+            except subprocess.TimeoutExpired:
+                if owner and not lost and _heartbeat(_el, job_id, slot, owner) is False:
+                    lost = True
+                    holder = _run_owner(_el, job_id, slot)
+                    logger.error(f"    ✗  {job_id}: CLAIM LOST — {holder} took this slot after our "
+                                 f"heartbeat lapsed; finishing without writing its run row")
+                    from pipeline.run_ledger import alarm
+                    alarm(_el, "duplicate_scheduler", {"job": job_id, "slot": slot.isoformat(),
+                                                       "holder": holder, "lost_claim": owner})
+        if rc is None:
             proc.kill()
             try:
                 proc.wait(timeout=60)
@@ -1571,7 +1690,7 @@ def _run_job_recorded(job_id: str, slot) -> str:
             status, err = "degraded", "steps: " + ", ".join(bad)[:480]
             logger.error(f"    ✗  {job_id}: DEGRADED — {err}")
     try:
-        _record_run(job_id, slot, "finish", status=status, error=err)
+        _record_run(job_id, slot, "finish", status=status, error=err, owner=owner)
     except Exception as e:
         logger.warning(f"run-ledger finish failed for {job_id}: {e}")
     logger.info(f"  {job_id} [{slot:%Y-%m-%d %H:%M}]: {status} after "
@@ -1640,7 +1759,7 @@ def _catchup_missed_slots(jobs: dict):
                 continue
             logger.info(f"⚠ CATCH-UP: slot {slot} UTC for '{job_id}' has no recorded "
                         f"run (deploy ate it?) — running now")
-            _run_job_recorded(job_id, slot)
+            _run_job_recorded(job_id, slot, claim_wait_s=CATCHUP_CLAIM_WAIT_S)
         # Liveness rule (V3 #26 R1): newest FINISHED daily older than 30h →
         # run one now, whatever the slot arithmetic says. Covers the case
         # both rules above miss — a slot that never recorded a start at
@@ -1654,7 +1773,7 @@ def _catchup_missed_slots(jobs: dict):
                 minute=0, second=0, microsecond=0)
             logger.warning(f"⚠ CATCH-UP: newest finished daily is {last_ok} "
                            f"(> {STALE_DAILY_HOURS}h) — running one now for slot {slot}")
-            _run_job_recorded("daily", slot)
+            _run_job_recorded("daily", slot, claim_wait_s=CATCHUP_CLAIM_WAIT_S)
     except Exception as e:
         logger.error(f"catch-up check failed: {e}")
     finally:
@@ -1699,6 +1818,8 @@ def start_scheduler():
 
     scheduler.start()
     _banner("CLOUD SCHEDULER STARTED")
+    from pipeline.run_ledger import instance_tag
+    logger.info(f"  instance: {instance_tag()}  (one owner per slot — duplicates stand down)")
     for job in scheduler.get_jobs():
         logger.info(f"  • {job.name} — next run: {job.next_run_time}")
     logger.info("=" * 72)

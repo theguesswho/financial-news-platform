@@ -80,6 +80,38 @@ def step_end(status: str, note: str | None = None, error: str | None = None) -> 
         pass
 
 
+def instance_tag() -> str:
+    """Which scheduler instance is talking: Railway project/service and
+    deployment when Railway provides them, else the host; plus the pid.
+    Stamped on the run claim, the pre-flight row and any duplicate alarm,
+    so a second scheduler is NAMED in the database, never inferred
+    (2026-11-01: a forgotten second project ran every job for four months)."""
+    import socket
+    proj = os.getenv("RAILWAY_PROJECT_NAME") or "-"
+    svc = os.getenv("RAILWAY_SERVICE_NAME") or "-"
+    dep = (os.getenv("RAILWAY_DEPLOYMENT_ID") or "")[:8]
+    if not dep:
+        try:
+            dep = socket.gethostname()[:24]
+        except Exception:
+            dep = "?"
+    return f"{proj}/{svc}@{dep}:{os.getpid()}"[:120]
+
+
+def alarm(engine, source: str, payload: dict) -> None:
+    """Named alarm row in env_diagnostics. Fail-open."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS env_diagnostics (
+                    id SERIAL PRIMARY KEY, source VARCHAR(40), result JSONB,
+                    created_at TIMESTAMP DEFAULT NOW())"""))
+            conn.execute(text("INSERT INTO env_diagnostics (source, result) VALUES (:s, :r)"),
+                         {"s": source[:40], "r": json.dumps(payload, default=str)})
+    except Exception:
+        pass
+
+
 def failed_steps(engine, job_id: str, slot) -> list[str]:
     """Steps of one run that ended failed/deferred (parent reads this)."""
     try:
@@ -96,10 +128,10 @@ def failed_steps(engine, job_id: str, slot) -> list[str]:
 
 # ── Pre-flight ───────────────────────────────────────────────────────────────
 
-def preflight(engine) -> dict:
+def preflight(engine, instance: str | None = None) -> dict:
     """One tiny call. Returns {"ok": bool, "kind": ok|billing|auth|other, "detail": str}.
-    Writes env_diagnostics(source='llm_preflight') on failure so the brief
-    and /health/platform can name it."""
+    Writes env_diagnostics(source='llm_preflight') on every run so the brief
+    and /health/platform can name a failure; `instance` names who ran it."""
     out = {"ok": True, "kind": "ok", "detail": ""}
     try:
         import anthropic
@@ -116,6 +148,8 @@ def preflight(engine) -> dict:
         else:
             kind = "other"
         out = {"ok": False, "kind": kind, "detail": msg}
+    if instance:
+        out["instance"] = instance
     try:
         with engine.begin() as conn:
             conn.execute(text("""

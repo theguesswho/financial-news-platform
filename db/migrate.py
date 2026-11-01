@@ -75,6 +75,12 @@ MIGRATIONS: list[Step] = [
     # scheduler_runs — run ledger (R1: status/error for the subprocess runner)
     col("scheduler_runs", "status", "VARCHAR(12)"),
     col("scheduler_runs", "error", "TEXT"),
+    # Single-scheduler guard (2026-11-01): a second Railway project ran every
+    # job a second time on this database from 25 Jun to 1 Nov. Each run is now
+    # claimed by ONE instance (owner) and kept alive by a heartbeat; another
+    # instance that finds a live claim stands down and raises an alarm.
+    col("scheduler_runs", "owner", "VARCHAR(120)"),
+    col("scheduler_runs", "heartbeat_at", "TIMESTAMP"),
 
     # fundamentals — PEG normalizer (2026-07-22) + FMP growth provenance (V3 #20)
     col("fundamentals", "peg_vendor", "NUMERIC(12,2)"),

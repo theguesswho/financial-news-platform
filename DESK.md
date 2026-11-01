@@ -49,10 +49,10 @@ every daily, after-close and weekly job a second time.
 - **Never backfill** the mixed-era boards; platform_notes carries the record.
 
 **Shutdown.** GitHub repo disconnected and deployment removed in
-`protective-cooperation` on 2026-11-01 — reported in progress when this was
-written; confirm in Railway. First single-copy run: Mon 2 Nov 06:00 UTC.
+`protective-cooperation` on 2026-11-01 — CONFIRMED by Edmund; its last
+GitHub deploy record now reads `inactive` and the 7ee40af push created none. First single-copy run: Mon 2 Nov 06:00 UTC.
 
-**Guard — `014d1dc`, LOCAL, NOT PUSHED.** One owner per run slot:
+**Guard — `014d1dc`, LIVE on prod since 2026-11-01 (pushed as `7ee40af` with the docs commits, Edmund-authorised; Railway deploy record 12:46:27 UTC friendly-wisdom only — protective-cooperation got none; migration applied ~2 min after push). Read-back 12:49 UTC: origin 7ee40af; `scheduler_runs.owner` + `heartbeat_at` present; /health/platform 200 ok; /board 200 (63); /ops/backlog 200, no error keys; 30-s lock watch clean; no catch-up run fired; 0 duplicate alarms. Pre-flight instance stamp first appears Mon 2 Nov 06:00. Dashboard service states: Edmund to confirm.** One owner per run slot:
 `_run_job_recorded` claims the `scheduler_runs` row atomically; the owner
 heartbeats every 60 s; a second instance finding a live claim stands down
 and writes `env_diagnostics` 'duplicate_scheduler' naming both instances;
@@ -80,9 +80,8 @@ the archived 1 Nov tiers on 821/821):
 row, no 4d/5b3 race failures, sentinels at 0.1000, no
 'duplicate_scheduler' rows.
 
-**platform_notes** row drafted (2026-11-01, chat), NOT inserted: it must be
-active before Mon 2 Nov 06:00 UTC so the ADBE/AM rulings and the edition
-see it.
+**platform_notes** id 9 INSERTED 2026-11-01 (Edmund-approved text, active
+2026-06-25 → 2026-11-15), read back identical; active on Mon 2 Nov with id 8.
 
 ## Status
 

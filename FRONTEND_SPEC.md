@@ -1113,3 +1113,153 @@ needs user sign-off to start):
       product's proof, wins and losses unconditionally
 - [ ] P-E: onboarding/education — methodology explained in plain words
       (what the lens is, what the bands mean, what the twin is)
+
+## ACCEPTED 2026-11-01 — On-page data assistant (as amended; UNSCHEDULED)
+
+**Proposed 2026-10-31. ACCEPTED by Edmund 2026-11-01 with his answers
+in section 9 and the amendments in section 10. UNSCHEDULED: nothing is
+built, no code exists, no date is set; methodology files are
+untouched.** Product name is open.
+*Rescoped 2026-11-01 at Edmund's correction: ONE user, Edmund. Accounts,
+per-user limits, disclaimers and the P-A / P-B / P-C gates are out. If
+other users ever matter, that is a new proposal.*
+
+### 1. What this is, and the one rule: explainer, not judge
+- A chat panel on the site where Edmund asks questions about the
+  platform's own data. Answers are composed only from read-only API
+  results fetched for that question. Every claim carries a source chip
+  to its row: tier, component, filing, ledger op, platform note,
+  edition line, assessor rationale.
+- It never forms its own verdict: no "looks cheap", no ranking of its
+  own, no telling Edmund what to buy or how much. Rationale is quoted
+  verbatim and dated, never paraphrased into a verdict or rewritten.
+- Server check: every number and quote must appear in a cited row.
+  One retry, then "I can't tie that to the record."
+- Surface laws bind it unchanged: hold is silence, Street labeled,
+  nulls omitted, one clock (answers stamped with their board and
+  edition dates), never contradict the book.
+- **Law 12 gate:** the assessor is still dark on every surface. Until
+  Edmund lifts it, the tools strip the rationale and the assistant
+  says nothing assessor-flavored. T5's `assessor_verdict` descriptor
+  is assessor text too: same gate.
+
+### 2. Outside information
+- General knowledge (what a 10-Q is): answered freely.
+- Outside facts about a company: only in a separate block, "Outside
+  our record", each with source and date; never in a sentence with a
+  platform number; never used to explain or adjust a score or call.
+  No source and date, no fact. Needs a search tool: later (Q4).
+
+### 3. "Why did it move?"
+- Needs T5. Until `band_events` and `GET /stocks/{symbol}/band_events`
+  are live: "No cause is recorded for this move." It may list what the
+  record shows on those dates (tier before and after, filings that
+  landed), never joined by "because".
+- After T5 it states the recorded descriptor. `data_noise` and
+  `measuring_stick` are said plainly as our measurement, not company
+  news. "The market caught up" only under `price`. `unknown` or no
+  row: no recorded cause.
+- T2 is a dependency too: its noise flag and E-change alarm feed T5,
+  and verdicts flagged as written on noise are quoted only with the
+  flag. Without it, flap days read as company news (27 Sep verdicts).
+
+### 4. Honesty about the instrument
+The server, not the model's memory, adds a state block to every turn:
+open `env_diagnostics` freshness alarms by name (or "none open"),
+active `platform_notes` with windows (id 8 today: narrative and
+qualitative legs stale to 14 Nov), and `/health/platform` status. Any
+answer a stale leg touches names it.
+
+### 5. Guardrails
+Plain lexicon, 10-point scores only: tools return values after the
+API's 10-point conversion, and answers are checked against a
+banned-terms list of internal names. Downgrades carry the same weight
+as upgrades. Text inside tool results (filings, quotes) is data,
+never orders.
+
+### 6. Architecture sketch
+- New `api/routers/assistant.py`: `POST /assistant/ask` runs an
+  Anthropic tool-use loop (cap 6 calls) whose tools wrap existing
+  read endpoints in-process, each result carrying a ref and as-of
+  date: `/board`, `/board/scorecard`, `/stocks/{symbol}`,
+  `/narratives` (+ `/landing`, `/{id}`, `/{id}/roster`),
+  `/reports/latest`, `/reports/{d}`, `/wire`, `/wire/{d}`,
+  `/health/platform`. `/ops/backlog` is operator-facing: not shown.
+- New read-only endpoints: `GET /notes/active` and `GET /freshness`
+  (no product endpoint serves them today), `GET /stocks/{symbol}/
+  band_events` (T5).
+- web/: chat panel scoped to the page (symbol, as-of date); citations
+  are chips linking to the section showing the row.
+- State in NEW tables only (CREATE TABLE IF NOT EXISTS):
+  `assistant_conversations`, `assistant_messages` (question, answer,
+  refs, model, tokens, cost, citation check). The log is how we prove
+  it never judged.
+- One lock, not accounts: `api/` has no auth today and every question
+  costs money, so `/assistant/ask` takes a single shared secret
+  (env var), as the spec's old Auth note proposed for single-user.
+
+### 7. Spend
+- `llm_usage.budget = 'product'`, module `assistant`, own daily
+  ceiling (proposed $2), named alarm `assistant_budget` at 80% and
+  100%, a notice that does not page. At the ceiling it rests until
+  tomorrow; it never borrows from daily or drain. 5 questions a
+  minute as a runaway guard. Own API key in its own console
+  workspace, so it cannot run the pipeline out of credits (22 Oct).
+- Prompt caching on system prompt, lexicon and tool definitions; the
+  state block sits after the cached part. Haiku for lookups, Sonnet
+  for explanations and comparisons; escalate on explain / why /
+  compare or two failed citation checks.
+- **Coupling found:** `run_ledger.spend_today` folds any unknown
+  budget tag into 'daily', so 'product' rows would eat the
+  scheduler's daily ceiling. Needs a one-line methodology-track fix
+  (Q2).
+
+| Model  | For          | Tokens in / out (assumed) | Per question |
+|--------|--------------|---------------------------|--------------|
+| Haiku  | lookups      | ~6k / ~0.6k               | about $0.01  |
+| Sonnet | explanations | ~8k / ~0.8k               | $0.03-0.04   |
+
+One person asking 10 to 30 questions a day, 70/30 Haiku to Sonnet
+(~$0.0175 each): about $0.18 to $0.53 a day, $5 to $16 a month. The
+$2 ceiling is about 115 questions a day. Estimates until a week of
+real use is reconciled to the console (T6 item 8).
+
+### 8. Sequencing
+Recovery drain done and lot verification passed (T6), then T2, then
+T5, then build. Local verify first; no push without Edmund saying so.
+*Amended 2026-11-01 (section 10): after T2, one early lookups-only
+slice may be built without T5; "why did it move" waits for T5.*
+
+### 9. Open questions — answered by Edmund 2026-11-01
+1. **Law 12:** keep assessor text out until the gate is lifted? —
+   **Yes.** Assessor text stays out until Edmund lifts the gate.
+2. **Spend ledger:** tag in `llm_usage` or own table? — **The tag.**
+   The `spend_today` fix in `pipeline/run_ledger.py` (an unknown budget
+   tag must not count against the scheduler's daily ceiling) is a
+   METHODOLOGY-track item and lands before any build.
+3. **Ceiling and models:** — **$2 a day; Haiku by default; Sonnet only
+   for explain / why / compare.**
+4. **Outside facts:** — **Later, not at launch.**
+5. **Scope:** — **Page-scoped panel first.**
+6. **Log:** — **Yes, keep every conversation.** The weekly spot-check of
+   20 answers against the record is done by Grok (review-only), not
+   Edmund; the citation-failure rate gets a named alarm.
+
+### 10. Amendments (Edmund, 2026-11-01) — binding on any build
+- **(a) Secret placement:** the shared secret is held by the web server
+  and added on the way to the API. It is never sent from the browser.
+- **(b) "Compare":** recorded values side by side, never a ranking or
+  a verdict.
+- **(c) Number check:** the server check allows stated rounding and
+  the 10-point conversion; every rejection is logged.
+- **(d) Slices, not the board:** tools return slices, never the whole
+  board. The cost table in section 7 stays an estimate until a week of
+  real use is reconciled to the console.
+- **(e) State block:** also reports degraded runs
+  (`scheduler_runs.status = 'degraded'`, with the failed steps named)
+  and the track-record lot hold (`TRACK_LOTS_HOLD`).
+
+**Sequencing (recorded 2026-11-01):** after T2, one early lookups-only
+slice may be built without T5. "Why did it move" waits for T5.
+**Status: ACCEPTED as amended, UNSCHEDULED — build nothing until Edmund
+opens a sitting.**

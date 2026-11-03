@@ -167,3 +167,10 @@ Proposed fix (inputs and a check — the machinery still does the assessing; not
 5. Price moves carry their dates (added 3 Nov 2026, Edmund, from the evening-closes incident, DESK 2026-11-03): the trigger's "MARKET REACTION: the stock moved X% on the latest session" names the two closes it compares ("close 2 Nov vs close 30 Oct") and says whether the release came before or after the later close, from the filing's timestamp. The 2 Nov verdicts show why: ON's rationale tied Friday's -4.7% to Monday's Synaptics announcement and FN's called Friday's -6.1% "the session move". The number check (item 3) must accept the move only with those dates.
 
 Done when: deltas and dates reach every judgment prompt as structured facts; the shared check runs on every assessor rationale with rejections logged and surfaced; ADBE replay caught; sample clean. Then delete T7.
+
+
+### T8 — insider_trades duplicates: safe swap (designed 3 Nov 2026, awaiting Edmund's go-ahead)
+Opened 3 Nov 2026 (Edmund). Status: DESIGNED and harness-tested on local branch `insider-dedup-swap` (3 commits on top of 296bfed); NOT on main, NOT run on prod. Merging that branch and pushing IS the run (db/migrate.py executes the swap at start-up). Full plan, numbers, rollback and the draft note to readers: INSIDER_DEDUP_PLAN.md on the branch.
+Not a scoring change: no score, band, assessor or ledger input reads insider_trades (traced: brief, product stock page, Streamlit views, sentinel MAX only) — no freeze ritual, no before/after board.
+Facts (prod, 3 Nov): 2,136,629 rows for 22,522 real trades; ids not unique; no keys at all; the model's old five-column key would merge 1,273 real lots, so the key is the full trade (adds price, shares owned after, Form 4 URL), NULLS NOT DISTINCT. Swap: dedup copy built lock-free, keys on the copy, exclusive lock with 3 s timeout x 5 tries (0.13 s at prod scale on the harness), old table kept as insider_trades_pre_dedup_<date> until Edmund drops it. Harness scripts/test_insider_swap.py 16/16.
+Readers saw inflated figures: CRBG "119 insiders, USD 896.6M" (2 Nov brief) was 9 purchases by one filer (Nippon Life Insurance Co), USD 70.3M.

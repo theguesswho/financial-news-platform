@@ -10,6 +10,8 @@ checks all of them; violations are logged loudly, stored (env_diagnostics,
 source='freshness'), and surfaced in the daily brief as system-health
 warnings the user actually sees.
 """
+from datetime import date, timedelta
+
 from sqlalchemy import text
 
 from pipeline.universe import ETF_SYMBOLS
@@ -56,6 +58,51 @@ def check_freshness(engine) -> list[dict]:
                                    "age_days": round(float(age), 1) if age else None,
                                    "max_days": max_days})
     return violations
+
+
+# Price COVERAGE check (DESK incident 2026-11-03). MAX(eod_prices.date) is
+# satisfied by one row: from 21 Sep to 3 Nov the 22:00 run stored only SPY
+# for the session that had just closed (the benchmark fetch has no `end`),
+# the other ~820 names arrived at 06:00 the next day, and every check read
+# "fresh". Coverage counts the NAMES that have the session's close against
+# the names that traded in the two weeks before it. Benchmarks/ETFs are
+# excluded from both counts so a benchmark row can never pass the check.
+PRICE_COVERAGE_MIN = 0.95
+
+
+def price_coverage(conn, session: date, min_share: float = PRICE_COVERAGE_MIN) -> dict:
+    """{ok, session, have, reference, min_share}. `conn` is a Connection;
+    both counts are index-only scans on (symbol, date)."""
+    from pipeline.track_record import BENCHMARKS   # light module (datetime + sqlalchemy)
+    etfs = sorted(set(ETF_SYMBOLS) | set(BENCHMARKS))   # SPY is a benchmark, not in ETF_SYMBOLS
+    have = conn.execute(text("""
+        SELECT COUNT(*) FROM eod_prices
+        WHERE date = :d AND NOT (symbol = ANY(:etf))"""), {"d": session, "etf": etfs}).scalar() or 0
+    ref = conn.execute(text("""
+        SELECT COUNT(DISTINCT symbol) FROM eod_prices
+        WHERE date >= :lo AND date < :d AND NOT (symbol = ANY(:etf))"""),
+        {"d": session, "lo": session - timedelta(days=14), "etf": etfs}).scalar() or 0
+    return {"ok": ref > 0 and have >= min_share * ref, "session": session.isoformat(),
+            "have": int(have), "reference": int(ref), "min_share": min_share}
+
+
+def check_price_coverage(engine, session: date | None = None) -> list[dict]:
+    """Violation list in the sentinel's shape (empty when covered).
+    Default session: the last NYSE session that has closed."""
+    from pipeline.trading_days import last_closed_session
+    session = session or last_closed_session()
+    try:
+        with engine.connect() as conn:
+            c = price_coverage(conn, session)
+    except Exception as exc:
+        return [{"source": "eod_prices coverage", "latest": None, "age_days": None,
+                 "max_days": None, "error": str(exc)[:120]}]
+    if c["ok"]:
+        return []
+    return [{"source": "eod_prices coverage",
+             "latest": f"{c['have']} of {c['reference']} names have the {c['session']} close",
+             "age_days": None, "max_days": None,
+             "detail": c}]
 
 
 # Growth-block content check (V3 #20c, 2026-09-06/07 — the AECOM lesson):
@@ -132,7 +179,8 @@ def check_growth_quarters(engine) -> list[dict]:
 def run_sentinel(engine) -> list[dict]:
     """Check, log loudly, persist latest result for the brief to read."""
     import json
-    violations = check_freshness(engine) + check_growth_quarters(engine)
+    violations = (check_freshness(engine) + check_price_coverage(engine)
+                  + check_growth_quarters(engine))
     with engine.begin() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS env_diagnostics (
@@ -145,8 +193,9 @@ def run_sentinel(engine) -> list[dict]:
     if violations:
         print("🚨 DATA FRESHNESS VIOLATIONS:")
         for v in violations:
-            print(f"   {v['source']}: latest={v['latest']} "
-                  f"(age {v['age_days']}d, max {v['max_days']}d)")
+            age = (f" (age {v['age_days']}d, max {v['max_days']}d)"
+                   if v.get("age_days") is not None else "")
+            print(f"   {v['source']}: latest={v['latest']}{age}")
     else:
         print("✓ All data sources within freshness expectations")
     return violations

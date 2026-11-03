@@ -1,8 +1,106 @@
 # DESK — shared board (Grok / Claude / Edmund)
 
-Updated 2026-11-01 (INCIDENT: second scheduler, below). Previous: 2026-10-09 (CLAUDE_TASKS T1: deploy triggers + E_DIAG).
+Updated 2026-11-03 (INCIDENT: evening boards on the previous session's closes, below). Previous: 2026-11-01 (INCIDENT: second scheduler, below). Previous: 2026-10-09 (CLAUDE_TASKS T1: deploy triggers + E_DIAG).
 **Rule:** any sitting that changes plans or status updates this file
 in the same PR. Chat-only status essays do not count.
+
+## INCIDENT 2026-11-03 — evening boards scored on the previous session's closes (21 Sep → 3 Nov 2026)
+
+**Status: fix BUILT LOCALLY, NOT PUSHED. Prod still has it** — every 22:00 UTC
+board until the push scores on the previous session's closes.
+
+**What.** `pipeline/prices.py` passed `end=date.today()` to Yahoo; Yahoo's
+`end` is exclusive. At the 22:00 UTC after-close, today IS the session that
+just closed, so it was never stored; the ~820 names' closes arrived at the
+next 06:00 daily. SPY alone was stored at 22:00 (the benchmark fetch has no
+`end`), so every MAX(date) check — sentinel, `/health/platform` — read
+"fresh". The scorer's own SPY download (gap score) had the same `end=today`.
+DATA_SCORECARD stated "same evening (22:00 run)": a stated latency that was
+false = incident (CLAUDE.md data rule 2).
+
+**Since when.** R1 (pushed 20 Sep) retired the FMP price writer, which had
+written each session's closes the same evening (60-day series, no `end`,
+in after-close step 3b before scoring). First affected evening: Mon 21 Sep.
+Proof: stored volumes match FMP, not Yahoo, on 20 Aug / 2 Sep / 10 Sep /
+18 Sep (0–1 of 20 sample names match Yahoo) and match Yahoo on 21 Sep,
+23 Sep, 8 Oct, 20 Oct (17–19 of 20). On all 22 October sessions SPY's row
+(written at 22:00) was inserted before every other name's row of the date.
+2 Nov: after-close step 1 "0 price records added" (40 min); eod_prices held
+one row (SPY) for 2 Nov until 06:00 on 3 Nov.
+
+**Effects.**
+- Evening boards (after-close step 4) and the session report editions
+  built on them: previous session's closes, ~30 evenings. Morning boards
+  were right — the offline replay with Monday's closes reproduces the
+  stored 3 Nov morning board exactly (821 of 821 to 4 dp).
+- Size on one evening (offline, read-only, today's inputs; closes through
+  Fri 30 Oct vs through Mon 2 Nov): score moved for 609 of 821 names,
+  median 0.019 points (10-point scale), largest SMCI 4.27 → 4.46. Raw band
+  crossings: STX, FFIV, CF up into Watch; PSN, ALSN, FLS, LHX below the
+  Watch entry line (all four stay on the board by exit hysteresis).
+- Assessor: the trigger's "MARKET REACTION: the stock moved X% on the
+  latest session" quoted the previous session. 2 Nov: ON's upgrade
+  rationale tied Friday's −4.7% to Monday's Synaptics announcement (ON's
+  Monday move: −2.2%); FN's called Friday's −6.1% "the session move" (FN's
+  Monday move, still pre-release: −3.8%). REPLAY (platform assessor,
+  read-only, as-of 2 Nov 23:58 context, 3 runs per variant, llm_usage not
+  written, ≈$0.20): ON Buy (upgrade) 6 of 6, FN Strong Buy (hold) 6 of 6,
+  with the Friday move and with the Monday move — neither verdict changes.
+  Their scores do not depend on the closes (identical before/after).
+- Found in passing: 22 Sep 2026 has closes for 80 names only (outside the
+  7-day window). The old writer could not fill a hole once later rows
+  existed (per-row flush + rollback discarded the earlier new row). Filling
+  22 Sep is Edmund's call; not done.
+
+**Fix (local; one commit).**
+- `pipeline/trading_days.py` (new): one NYSE calendar for pipeline + API
+  (`api/trading_days.py` imports it; its due-session rule is unchanged,
+  checked hour by hour against HEAD). `last_closed_session` /
+  `yahoo_end` = the day after the last closed session (16:15 ET). Eastern
+  time from the tz database, with a built-in rule as fallback.
+- `pipeline/prices.py`: `end = yahoo_end`; no row dated after the last
+  closed session; set-based upserts (holes in the window fill);
+  `refresh_sessions=2` on the 06:00 run overwrites the last two sessions
+  when Yahoo's values changed (SPY included). On an ex-dividend date this
+  moves the dividend step one session earlier in the stored series;
+  multi-month returns are unchanged.
+- `pipeline/hidden_gem_scorer.py`: the gap score's SPY download uses
+  `yahoo_end` too (the benchmark must cover the same sessions as the
+  stocks — coherence). Data-timing fix, no formula change.
+- Coverage check (`pipeline/freshness_sentinel.price_coverage`): ≥ 95% of
+  the names that traded in the prior 14 days (ETFs and benchmarks
+  excluded) must have the session's close. In the 06:00 sentinel, at the
+  end of 22:00 step 1 (step FAILED by name, run degraded) and in
+  `/health/platform` (503 when short).
+- `/ops/backlog`: 8-Ks out of "filings without analysis" (they are
+  classified, never theme-extracted); hard 45 s deadline → 503 naming the
+  section it was stuck in. The two overnight failures were most likely the
+  connection, not the SQL (every section ran in ≤ 6 s by hand; the page
+  answered in 0.9 s at 13:34 UTC; Railway logs would prove it). `api/deps.py`: connect_timeout 10 s,
+  tcp_user_timeout 30 s, TCP keepalives — a silently dropped connection
+  now fails in ~30 s instead of ~15 min (this part cannot be reproduced
+  locally; the deadline can, and is tested).
+- Brief/sentinel print a coverage alarm without "age None".
+
+**Proof.** `scripts/test_price_freshness.py` 37/37 (throwaway PG 18; HEAD's
+price code run on the same inputs stores 0 of 3 Monday closes and leaves
+the hole; the fixed code stores 3 of 3, fills it, never stores a partial
+bar, corrects only the last two sessions in the morning; coverage fails on
+the 2 Nov 22:00 state where MAX(date) passed; health 503 on SPY-only;
+backlog 503 in 3 s stuck behind a lock and on a dead connection;
+DDL lint clean). `scripts/test_scheduler_guard.py` 12/12.
+
+**DRAFT platform note — NOT inserted (Edmund inserts on his word).**
+Suggested window: active_from = push date, active_to = push date + 14 days.
+> From 21 Sep to 3 Nov 2026 our evening run (22:00 UTC) scored the board
+> on the PREVIOUS session's closing prices: a vendor date cut-off left out
+> the session that had just closed. Morning boards (06:00 UTC) used the
+> correct closes. In that window, a "session move" quoted in an evening
+> verdict was the previous session's move, not the market's reaction to
+> that day's news, and part of any score change between an evening board
+> and the next morning's board is one session of prices arriving late.
+> This is about OUR data timing, not the company.
+(If the push lands later than 3 Nov, the end date changes to the push date.)
 
 ## INCIDENT 2026-11-01 — a second scheduler on the production database (25 Jun → 1 Nov 2026)
 

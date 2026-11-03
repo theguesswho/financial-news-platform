@@ -168,8 +168,9 @@ def _build_prompt(signals: dict) -> str:
     if signals.get("health"):
         lines.append("SYSTEM HEALTH WARNINGS (data pipelines stale — surface these prominently):")
         for h in signals["health"]:
-            lines.append(f"  {h.get('source')}: latest {h.get('latest')} "
-                         f"(age {h.get('age_days')}d, allowed {h.get('max_days')}d)")
+            age = (f" (age {h.get('age_days')}d, allowed {h.get('max_days')}d)"
+                   if h.get("age_days") is not None else "")
+            lines.append(f"  {h.get('source')}: latest {h.get('latest')}{age}")
 
     if signals.get("theme_shifts"):
         lines.append("NARRATIVE LIFECYCLE EVENTS (last 7 days — the brain moved):")

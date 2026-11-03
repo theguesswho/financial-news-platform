@@ -473,14 +473,22 @@ def daily_data_update():
     try:
         from db.session import get_session
         from pipeline.prices import fetch_prices
+        from pipeline.track_record import BENCHMARKS
         s = get_session()
         try:
             # 7-day window (was 2): a short outage must not leave permanent
             # holes — 15-17 Sep 2026 were only filled by a second writer.
-            r = fetch_prices(s, symbols, days=7)
+            # refresh_sessions=2 (Edmund 2026-11-03): the morning OVERWRITES
+            # the last two sessions, so a close stored at 22:00 is corrected
+            # from Yahoo's settled values. Benchmarks ride along so SPY's
+            # 22:00 row is corrected the same way.
+            r = fetch_prices(s, symbols + [b for b in BENCHMARKS if b not in symbols],
+                             days=7, refresh_sessions=2)
         finally:
             s.close()
-        _ok(f"{r.get('added', 0)} price records added")
+        _ok(f"{r.get('added', 0)} added, {r.get('corrected', 0)} corrected "
+            f"(refreshed {', '.join(r.get('refreshed') or []) or 'none'}); "
+            f"{r.get('session_names', 0)} names have the {r.get('last_session')} close")
         # SPY benchmark freshness (moved out of get_scorecard 2026-08-16
         # — read endpoints must never write; see after-close step 1).
         from pipeline.track_record import _ensure_benchmark_prices
@@ -859,10 +867,13 @@ def after_close_refresh():
         try:
             # 7-day window (was 2): a short outage must not leave permanent
             # holes — 15-17 Sep 2026 were only filled by a second writer.
+            # The fetch now INCLUDES the session that just closed (Yahoo's
+            # `end` is exclusive; DESK incident 2026-11-03).
             r = fetch_prices(s, symbols, days=7)
         finally:
             s.close()
-        _ok(f"{r.get('added', 0)} price records added")
+        _ok(f"{r.get('added', 0)} added; {r.get('session_names', 0)} names have the "
+            f"{r.get('last_session')} close")
         # SPY benchmark freshness lives HERE now, not in get_scorecard —
         # a read endpoint must never write (scorecard-on-read 500'd the
         # 828 sweep and would upsert prod on every pageview, 2026-08-16).
@@ -870,7 +881,14 @@ def after_close_refresh():
         from pipeline.hidden_gem_scorer import get_engine as _ge1b
         _e1b = _ge1b()
         _ensure_benchmark_prices(_e1b)
+        # Coverage, not MAX(date): the session that just closed must be
+        # stored for the universe before step 4 scores on it. Short -> the
+        # step is FAILED by name and the run is degraded the same evening.
+        from pipeline.freshness_sentinel import check_price_coverage
+        short = check_price_coverage(_e1b)
         _e1b.dispose()
+        if short:
+            raise RuntimeError(f"price coverage short: {short[0].get('latest') or short[0].get('error')}")
     except Exception as e:
         _err("Prices failed", e)
 

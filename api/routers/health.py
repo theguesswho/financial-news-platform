@@ -8,7 +8,10 @@ named in `failing`. Checks (V3 #26 R1):
   scheduler_recent_finish  some scheduler run finished in the last 26h
   blocked_readers          no backend blocked on a core table
   board_snapshot           leaderboard_history covers the last due session
-  eod_prices               eod_prices covers the last due session
+  eod_prices               >= 95% of the names that traded in the prior two
+                           weeks have a close for the last due session
+                           (coverage, not MAX(date): one SPY row passed the
+                           old check every evening 21 Sep - 3 Nov 2026)
 """
 from datetime import datetime, timezone
 
@@ -17,6 +20,7 @@ from sqlalchemy import text
 
 from api.deps import get_engine
 from api.trading_days import last_trading_day
+from pipeline.freshness_sentinel import price_coverage
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -52,12 +56,19 @@ def _run_checks() -> dict:
         checks["blocked_readers"] = {"ok": not detail, "blocked": len(detail),
                                      "tables": list(CORE_TABLES), "detail": detail[:5]}
 
-        for name, sql in (("board_snapshot", "SELECT MAX(date) FROM leaderboard_history"),
-                          ("eod_prices", "SELECT MAX(date) FROM eod_prices")):
-            latest = conn.execute(text(sql)).scalar()
-            checks[name] = {"ok": latest is not None and latest >= due,
-                            "latest": latest.isoformat() if latest else None,
-                            "expected_min": due.isoformat()}
+        latest = conn.execute(text("SELECT MAX(date) FROM leaderboard_history")).scalar()
+        checks["board_snapshot"] = {"ok": latest is not None and latest >= due,
+                                    "latest": latest.isoformat() if latest else None,
+                                    "expected_min": due.isoformat()}
+
+        cov = price_coverage(conn, due)
+        latest = conn.execute(text("SELECT MAX(date) FROM eod_prices")).scalar()
+        checks["eod_prices"] = {"ok": cov["ok"],
+                                "latest": latest.isoformat() if latest else None,
+                                "expected_min": due.isoformat(),
+                                "names_with_close": cov["have"],
+                                "names_trading": cov["reference"],
+                                "min_share": cov["min_share"]}
     failing = [k for k, v in checks.items() if not v["ok"]]
     return {"status": "ok" if not failing else "fail",
             "checked_at": now.isoformat(timespec="seconds"),

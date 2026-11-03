@@ -35,7 +35,7 @@ breach, ticket named; DUAL = two writers on one field (forbidden).
 | peg_ratio (+ peg_vendor, peg_source) | Yahoo vendor PEG, `_vendor_peg_writable` guard, `peg_normalizer` sustainable-growth replacement | Yahoo + our normalizer | daily; conflict class same run | assessor context ONLY — absent from scoring math (V3 #17) | OK |
 | price_vs_52w_high, analysts_count, analyst_target_price | Yahoo info | Yahoo | daily | priced-in / crowding inputs, assessor | OK |
 | sector, industry | Yahoo info | Yahoo | static | value bucket cascade | OK |
-| eod_prices | Yahoo `yf.download(auto_adjust=True)` — pipeline/prices.py, **7-day window** (was 2) at 06:00 and 22:00; benchmarks via track_record._ensure_benchmark_prices (Yahoo, adjusted) | Yahoo — SOLE writer since 2026-09-20 | same evening (22:00 run) | priced-in, gap price-lag, track record fills, momentum context | OK (sentinel max 4d). Basis: Yahoo dividend/split-adjusted closes as of fetch time. FMP `historical-price-full` writer (ingestion.py, RAW closes, 60-day window, whole universe every after-close) RETIRED 2026-09-20 — it was a second silent owner on a different price basis and is what filled 15–17 Sep 2026; those three days' rows remain FMP-raw (left as is; three days of dividend drift is negligible; replacing them is Edmund's call). |
+| eod_prices | Yahoo `yf.download(auto_adjust=True)` — pipeline/prices.py, **7-day window** at 06:00 and 22:00. `end` = the day after the last CLOSED NYSE session (pipeline/trading_days.yahoo_end; Yahoo's `end` is exclusive) — until the 2026-11-03 fix `end` was `date.today()`, which at 22:00 UTC excluded the session that had just closed. No row dated after the last closed session is stored. The 06:00 run OVERWRITES the latest two sessions when Yahoo's values changed (late prints, corrections); the 22:00 run only inserts. Benchmarks: track_record._ensure_benchmark_prices (Yahoo, adjusted, no `end`) + the 06:00 refresh | Yahoo — SOLE writer since 2026-09-20 | same evening (22:00 run). **INCIDENT 2026-11-03: the ACTUAL latency from 21 Sep was the NEXT MORNING (06:00).** Fix built locally; prod still has it until pushed | priced-in, gap price-lag, track record fills, momentum context, the assessor trigger's "session move" | **INCIDENT OPEN** (DESK 2026-11-03). Check: COVERAGE of the last closed session — ≥95% of the names that traded in the prior 14 days (ETFs and benchmarks excluded) — in the sentinel (06:00), at the end of 22:00 step 1 (step FAILED when short) and in /health/platform. MAX(date) is kept only as the whole-table backstop: it passed every evening on one SPY row. Writers by date (verified 2026-11-03: stored volumes match FMP, not Yahoo, on 20 Aug, 2 Sep, 10 Sep and 18 Sep; match Yahoo from 21 Sep): rows dated ≤ 18 Sep 2026 were written by the FMP `historical-price-full` writer (ingestion.py, RAW closes, the evening of the session) — not only 15–17 Sep as this row said before; from 21 Sep by Yahoo. FMP writer RETIRED 2026-09-20 (second silent owner). 22 Sep 2026 has closes for 80 names only (hole outside the 7-day window; filling it is Edmund's call). Basis: Yahoo adjusted as of fetch time; on an ex-dividend date the 06:00 overwrite moves the dividend step one session earlier in the stored series (multi-month returns unchanged). |
 
 ## B. Narrative / qual inputs
 
@@ -56,6 +56,7 @@ breach, ticket named; DUAL = two writers on one field (forbidden).
 | historical_metrics | MAX(fetched_at) | 10d | Refresh heartbeat (stamped on every row the weekly upsert touches). 115d on MAX(date) hid a dead table for four months (V3 #21). |
 | historical_metrics newest quarter | MAX(date) | 60d | Newest quarter-end; lags 30-50 days by construction (10-Q lag). |
 | growth_quarter:SYMBOL (per symbol) | fundamentals.growth_quarter_end vs latest 10-Q/10-K filing_date in `filings` | breach when the filing is >3d old AND (quarter_end IS NULL OR quarter_end < filing_date − 95d) | Content check, one alarm row per symbol. Keys on the QUARTER END, not FMP's fillingDate. Calibrated 2026-09-07: healthy gap 10..62d across 820 symbols. Symbols with no 10-Q/10-K on record are not checked. ETFs are out of the universe (`pipeline.universe.ETF_SYMBOLS`, currently GLD) plus the shape rule (no sector AND no vendor statements) — not a one-name mute. |
+| eod_prices coverage | names with a close on the last closed NYSE session vs names that traded in the 14 days before it (ETFs + benchmarks excluded) | < 95% = breach | Added 2026-11-03 (DESK incident): MAX(date) is satisfied by one row — SPY alone passed it every evening 21 Sep–3 Nov. Same function at the end of 22:00 step 1 (step FAILED, run degraded) and in /health/platform. |
 | eod_prices / leaderboard / daily_brief / 8-K / transcripts / qual / narrative_exposures / narrative_history / insider_trades | MAX(timestamp) | 2–9d | Fetch-recency checks; adequate for document feeds where arrival = content. |
 
 | growth_quarter (per symbol) | score quarter vs latest 10-Q/10-K | 3d after filing | Excludes non-filers via `pipeline.universe.ETF_SYMBOLS` (GLD confirmed 2026-09-20) + shape rule (no sector AND no vendor statements). R1's `{GLD}` mute is retired as the strategy. |
@@ -74,10 +75,10 @@ site root). Checks, each named in `failing` when red:
 | scheduler_recent_finish | some `scheduler_runs.finished_at` within 26 h |
 | blocked_readers | no backend in `pg_stat_activity` blocked on fundamentals / leaderboard_history / filings / eod_prices |
 | board_snapshot | `MAX(leaderboard_history.date)` ≥ last due NYSE session |
-| eod_prices | `MAX(eod_prices.date)` ≥ last due NYSE session |
+| eod_prices | ≥ 95% of the names that traded in the prior 14 days have a close for the last due NYSE session (`pipeline.freshness_sentinel.price_coverage`; was `MAX(eod_prices.date)` ≥ due session until 2026-11-03 — one SPY row passed it) |
 
 "Last due session" = latest NYSE weekday not in the static holiday
-table (api/trading_days.py, 2026–2027), due from 01:00 UTC the next
+table (pipeline/trading_days.py since 2026-11-03, imported by api/trading_days.py; 2026–2027), due from 01:00 UTC the next
 day (the after-close run has finished by then). DB unreachable or the
 API's 15-s statement timeout → 503 with `error`.
 
@@ -133,6 +134,8 @@ Logged as `growth block done: written=… empty_count=… empty_rate=…
 buckets[etf=…, quota_429=…, transport=…, true_hole=…] empty=[…]`.
 
 ## D. Change log
+
+- 2026-11-03 — INCIDENT (DESK 2026-11-03): eod_prices' stated latency ("same evening") was false from 21 Sep. Yahoo's `end` is exclusive and prices.py passed `date.today()`, so the 22:00 run never stored the session that had just closed; the evening board, the assessor's "session move" and the session report ran one session behind. The scorer's own SPY download (gap score) had the same off-by-one. Fixed locally, not pushed: shared NYSE calendar (pipeline/trading_days.py), `end` = day after the last closed session in prices.py AND the scorer's SPY download, set-based upserts (holes inside the window now fill), 06:00 overwrite of the last two sessions incl. SPY, COVERAGE check (sentinel C, 22:00 step 1, /health/platform C2). Proof: scripts/test_price_freshness.py (36 checks, HEAD code shown failing on the same inputs); offline board with Monday's closes reproduces the stored 3 Nov morning board exactly (821/821 to 4 dp).
 
 - 2026-10-31 — T6 minimum set BUILT locally (not pushed): see C3. 8-K
   ingestion stores first, classifies after (events.py); recovered filings

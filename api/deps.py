@@ -33,7 +33,20 @@ def get_engine():
             _url(),
             pool_pre_ping=True,
             pool_recycle=1800,
-            connect_args={"options": f"-c statement_timeout={API_STATEMENT_TIMEOUT_MS}"},
+            connect_args={
+                "options": f"-c statement_timeout={API_STATEMENT_TIMEOUT_MS}",
+                # A connection the network dropped SILENTLY (no reset) can
+                # hold a request until the kernel gives up (many minutes) —
+                # the likely cause of the /ops/backlog silences of 3 Nov
+                # 2026. These bound it:
+                # connect in 10s; unacknowledged data fails after 30s;
+                # an idle socket is probed after 30s and declared dead
+                # after 3 missed probes. libpq >= 12 (psycopg2-binary 2.9).
+                "connect_timeout": 10,
+                "tcp_user_timeout": 30000,
+                "keepalives": 1, "keepalives_idle": 30,
+                "keepalives_interval": 10, "keepalives_count": 3,
+            },
         )
     return _engine
 

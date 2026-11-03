@@ -705,10 +705,15 @@ def compute_gap_score(engine) -> dict:
     spy_6m = None
     try:
         import yfinance as yf
+        from pipeline.trading_days import yahoo_end
+        # end = the day after the last CLOSED session (Yahoo `end` is
+        # exclusive). `end=today` cut the benchmark one session short at
+        # the 22:00 run; the stocks' closes now include that session, so
+        # the benchmark must too (DESK incident 2026-11-03, coherence).
         spy_raw = yf.download(
             "SPY",
             start=six_months_ago - timedelta(days=5),
-            end=today,
+            end=yahoo_end(),
             auto_adjust=True,
             progress=False,
         )

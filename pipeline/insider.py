@@ -13,7 +13,7 @@ from decimal import Decimal, InvalidOperation
 
 import requests
 from bs4 import BeautifulSoup
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from db.models import InsiderTrade
@@ -172,6 +172,7 @@ def run_insiders(session: Session, tickers: list[str]) -> dict:
             for filing in form4_filings:
                 try:
                     trades = _parse_form4(filing["url"], symbol)
+                    keep = []
                     for trade in trades:
                         # Only store meaningful transactions
                         _nm = (trade.get("person_name") or "").upper()
@@ -186,12 +187,19 @@ def run_insiders(session: Session, tickers: list[str]) -> dict:
                             continue
                         if trade["transaction_type"] not in ("BUY", "SELL"):
                             continue
-                        try:
-                            session.add(InsiderTrade(**trade))
-                            session.commit()
-                            added += 1
-                        except IntegrityError:
-                            session.rollback()  # duplicate — already stored
+                        keep.append(trade)
+                    if keep:
+                        # One statement per filing. The unique trade key
+                        # (uq_insider_trades_trade, 2026-11-03) makes a trade
+                        # already stored a no-op. The old per-row insert
+                        # counted on a duplicate-key error that never fired
+                        # once the Railway migration dropped the key: every
+                        # run re-inserted the whole 90-day window.
+                        stmt = (pg_insert(InsiderTrade.__table__).values(keep)
+                                .on_conflict_do_nothing()
+                                .returning(InsiderTrade.__table__.c.id))
+                        added += len(session.execute(stmt).fetchall())
+                        session.commit()
                     time.sleep(0.1)
                 except Exception as exc:
                     print(f"    parse error: {exc}")

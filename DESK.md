@@ -6,8 +6,16 @@ in the same PR. Chat-only status essays do not count.
 
 ## INCIDENT 2026-11-03 — evening boards scored on the previous session's closes (21 Sep → 3 Nov 2026)
 
-**Status: fix BUILT LOCALLY, NOT PUSHED. Prod still has it** — every 22:00 UTC
-board until the push scores on the previous session's closes.
+**Status: fix LIVE — pushed 3 Nov 14:20:54 UTC (cf87d80, Edmund at the
+dashboard); deploy SUCCESS 14:23:36.** Read-back 14:23–14:25 UTC: origin
+main = cf87d80; /health/platform 200 with the coverage check live (819 of
+821 names have the 2 Nov close); API /board 200 (61 board rows); site root
+and /changed 200; /ops/backlog 200 in 0.95 s, no 8-K line; 30 s lock watch
+clean (0 blocked, 0 waiting locks, no long or idle transactions, no live
+run). Platform note **id 10 inserted** (active 3–17 Nov), read back
+identical to the draft below. Proof still pending: tonight's 22:00 step 1
+must store the 3 Nov close for ~820 names; tomorrow's 06:00 step 1 must
+show "corrected (refreshed 2026-11-02, 2026-11-03)".
 
 **What.** `pipeline/prices.py` passed `end=date.today()` to Yahoo; Yahoo's
 `end` is exclusive. At the 22:00 UTC after-close, today IS the session that
@@ -90,7 +98,7 @@ the 2 Nov 22:00 state where MAX(date) passed; health 503 on SPY-only;
 backlog 503 in 3 s stuck behind a lock and on a dead connection;
 DDL lint clean). `scripts/test_scheduler_guard.py` 12/12.
 
-**DRAFT platform note — NOT inserted (Edmund inserts on his word).**
+**Platform note — INSERTED 3 Nov as id 10 (Edmund's word), active 3–17 Nov.**
 Suggested window: active_from = push date, active_to = push date + 14 days.
 > From 21 Sep to 3 Nov 2026 our evening run (22:00 UTC) scored the board
 > on the PREVIOUS session's closing prices: a vendor date cut-off left out

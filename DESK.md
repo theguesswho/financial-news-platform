@@ -7,7 +7,9 @@ in the same PR. Chat-only status essays do not count.
 ## INCIDENT 2026-11-03 — evening boards scored on the previous session's closes (21 Sep → 3 Nov 2026)
 
 **Status: fix LIVE — pushed 3 Nov 14:20:54 UTC (cf87d80, Edmund at the
-dashboard); deploy SUCCESS 14:23:36.** Read-back 14:23–14:25 UTC: origin
+dashboard); deploy SUCCESS 14:23:36; Edmund confirmed the Railway dashboard
+healthy (financial-news-platform and api SUCCESS, web SKIPPED) on 3 Nov.**
+Read-back 14:23–14:25 UTC: origin
 main = cf87d80; /health/platform 200 with the coverage check live (819 of
 821 names have the 2 Nov close); API /board 200 (61 board rows); site root
 and /changed 200; /ops/backlog 200 in 0.95 s, no 8-K line; 30 s lock watch

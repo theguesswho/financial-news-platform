@@ -77,12 +77,14 @@ def _gather_signals(session: Session) -> dict:
 
     recent_events = _events(48) or _events(24 * 7)
 
-    # Insider cluster buys (2+ insiders, last 14 days)
+    # Insider cluster buys (2+ insiders, last 14 days). COUNT(DISTINCT person):
+    # the brief printed "N insiders" from a ROW count — CRBG's "119 insiders"
+    # on 2 Nov 2026 was 9 trades by one filer, copied 119 times (dedup swap).
     clusters = session.execute(text("""
-        SELECT symbol, COUNT(*) AS cnt, SUM(total_value) AS total
+        SELECT symbol, COUNT(DISTINCT person_name) AS cnt, SUM(total_value) AS total
         FROM insider_trades
         WHERE transaction_type = 'BUY' AND transaction_date >= :cutoff
-        GROUP BY symbol HAVING COUNT(*) >= 2
+        GROUP BY symbol HAVING COUNT(DISTINCT person_name) >= 2
         ORDER BY SUM(total_value) DESC NULLS LAST LIMIT 8
     """), {"cutoff": date.today() - timedelta(days=14)}).fetchall()
 

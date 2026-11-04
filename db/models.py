@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger, Column, Date, DateTime, Integer,
-    Numeric, String, Text, UniqueConstraint, Boolean, ForeignKey, JSON,
+    Index, Numeric, String, Text, UniqueConstraint, Boolean, ForeignKey, JSON,
 )
 from sqlalchemy.orm import declarative_base
 
@@ -257,7 +257,7 @@ class InsiderTrade(Base):
     __tablename__ = "insider_trades"
 
     id = Column(Integer, primary_key=True)
-    symbol = Column(String(10), nullable=False, index=True)
+    symbol = Column(String(10), nullable=False)
     person_name = Column(String(200))
     person_title = Column(String(200))
     transaction_date = Column(Date, nullable=False)
@@ -269,9 +269,16 @@ class InsiderTrade(Base):
     form4_url = Column(String(1000))
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # One row per real trade (2026-11-03 dedup swap, db/migrate.py). The old
+    # five-column key merged distinct same-day lots of equal size (21,249 vs
+    # 22,522 real trades on prod); price and shares-owned-after tell lots
+    # apart, the filing URL ties a row to its Form 4. NULLS NOT DISTINCT:
+    # 274 rows have a blank in the key and must still be unique.
     __table_args__ = (
-        UniqueConstraint("symbol", "person_name", "transaction_date", "transaction_type", "shares",
-                         name="_insider_trade_uc"),
+        Index("uq_insider_trades_trade", "symbol", "person_name", "transaction_date",
+              "transaction_type", "shares", "price_per_share", "shares_owned_after", "form4_url",
+              unique=True, postgresql_nulls_not_distinct=True),
+        Index("ix_insider_trades_symbol_date", "symbol", "transaction_date"),
     )
 
 

@@ -23,9 +23,15 @@ Entry kinds:
   col(table, column, type_sql)         -> ADD COLUMN IF NOT EXISTS
   idx(name, table, cols_sql, unique)   -> CREATE [UNIQUE] INDEX IF NOT EXISTS
   raw(label, sql, needed_sql)          -> run sql when needed_sql returns a row
+  proc(label, fn, needed_sql)          -> call fn(engine) when needed_sql returns a row
+                                          (multi-step work that one statement cannot do
+                                          safely, e.g. a table swap with lock retries)
 """
 import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import text
 
@@ -40,6 +46,7 @@ class Step:
     sql: str
     needed_sql: str | None          # SELECT that returns a row when the step is still needed
     params: dict | None = None
+    fn: Callable | None = None      # proc(): called with the engine instead of running `sql`
 
 
 def col(table: str, column: str, type_sql: str) -> Step:
@@ -68,6 +75,107 @@ def idx(name: str, table: str, cols_sql: str, unique: bool = False) -> Step:
 
 def raw(label: str, sql: str, needed_sql: str | None, params: dict | None = None) -> Step:
     return Step(label=label, sql=sql, needed_sql=needed_sql, params=params)
+
+
+def proc(label: str, fn: Callable, needed_sql: str | None, params: dict | None = None) -> Step:
+    return Step(label=label, sql="", needed_sql=needed_sql, params=params, fn=fn)
+
+
+# ── insider_trades: deduplicating SWAP (designed 2026-11-03, NOT YET APPROVED) ──
+# The Railway migration (July 2026) dropped this table's unique key, primary
+# key and sequence history. insider.py relies on a duplicate-key error to skip
+# trades it already has; with no key that error never fires, so every daily
+# run re-inserted the full 90-day Form 4 window: 2,136,629 rows for 22,522
+# real trades on 3 Nov 2026 (ids are not unique either: 21,003 distinct ids
+# among the trades' first copies). Readers that SUM the rows (daily brief,
+# product stock page, Streamlit) showed inflated figures. No score, band,
+# assessor or ledger input reads this table.
+#
+# Safe swap, never an in-place DELETE of 2.1M rows under a lock:
+#   1. build insider_trades_dedup_new: one row per real trade (earliest copy),
+#      ids renumbered in first-seen order (the sequence is far above them);
+#   2. primary key, unique trade key (NULLS NOT DISTINCT: 274 rows have a
+#      blank in the key) and a (symbol, transaction_date) index on the COPY —
+#      the live table is only read, readers and the writer are never blocked;
+#   3. swap under ACCESS EXCLUSIVE with a 3 s lock_timeout (a queued lock
+#      blocks every reader behind it — the 09-14 lesson), 5 tries 10 s apart:
+#      copy any row written since step 1, rename live -> insider_trades_pre_dedup_<date>
+#      (kept for rollback), rename the copy -> insider_trades, move the
+#      sequence's ownership to the new table;
+#   4. if the lock never comes: drop the copy, live table untouched, FAIL
+#      the step by label (logged at start-up), retry at the next start-up.
+# Rollback (manual, documented in INSIDER_DEDUP_PLAN.md): rename back; the
+# deduplicated table is kept as insider_trades_dedup_rolledback, whose
+# presence stops this step from re-running.
+INSIDER_KEY = ("symbol", "person_name", "transaction_date", "transaction_type", "shares",
+               "price_per_share", "shares_owned_after", "form4_url")
+INSIDER_COLS = ("id", "symbol", "person_name", "person_title", "transaction_date", "transaction_type",
+                "shares", "price_per_share", "total_value", "shares_owned_after", "form4_url", "created_at")
+INSIDER_UQ = "uq_insider_trades_trade"
+SWAP_LOCK_TIMEOUT = "3s"
+SWAP_TRIES = 5
+SWAP_RETRY_S = 10
+
+
+def _insider_dedup_swap(engine) -> dict:
+    key = ", ".join(INSIDER_KEY)
+    cols = ", ".join(INSIDER_COLS)
+    data_cols = ", ".join(INSIDER_COLS[1:])
+    keep = f"insider_trades_pre_dedup_{datetime.utcnow():%Y%m%d}"
+    t0 = time.time()
+    with engine.begin() as c:                       # leftovers of an interrupted attempt are ours
+        c.execute(text(f"SET LOCAL lock_timeout = '{SWAP_LOCK_TIMEOUT}'"))
+        c.execute(text("DROP TABLE IF EXISTS insider_trades_dedup_new"))
+    # 1. the deduplicated copy, from one consistent snapshot of the live table
+    with engine.begin() as c:
+        c.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+        c.execute(text(f"SET LOCAL lock_timeout = '{SWAP_LOCK_TIMEOUT}'"))
+        snap = c.execute(text("SELECT COUNT(*), COALESCE(MAX(created_at), NOW()) FROM insider_trades")).fetchone()
+        c.execute(text("CREATE TABLE insider_trades_dedup_new (LIKE insider_trades INCLUDING DEFAULTS)"))
+        c.execute(text(f"""
+            INSERT INTO insider_trades_dedup_new ({cols})
+            SELECT ROW_NUMBER() OVER (ORDER BY created_at, id), {data_cols}
+            FROM (SELECT DISTINCT ON ({key}) * FROM insider_trades
+                  ORDER BY {key}, created_at, id) first_copies"""))
+    # 2. keys on the copy — nothing here touches the live table
+    with engine.begin() as c:
+        c.execute(text("ALTER TABLE insider_trades_dedup_new ADD CONSTRAINT insider_trades_pkey PRIMARY KEY (id)"))
+        c.execute(text(f"CREATE UNIQUE INDEX {INSIDER_UQ} ON insider_trades_dedup_new ({key}) NULLS NOT DISTINCT"))
+        c.execute(text("CREATE INDEX ix_insider_trades_symbol_date ON insider_trades_dedup_new (symbol, transaction_date)"))
+        c.execute(text("ANALYZE insider_trades_dedup_new"))
+        kept = c.execute(text("SELECT COUNT(*) FROM insider_trades_dedup_new")).scalar()
+    built_s = time.time() - t0
+    # 3. the swap: short exclusive lock, bounded wait, retried
+    last_err = None
+    for attempt in range(1, SWAP_TRIES + 1):
+        try:
+            t1 = time.time()
+            with engine.begin() as c:
+                c.execute(text(f"SET LOCAL lock_timeout = '{SWAP_LOCK_TIMEOUT}'"))
+                c.execute(text("LOCK TABLE insider_trades IN ACCESS EXCLUSIVE MODE"))
+                late = c.execute(text(f"""
+                    INSERT INTO insider_trades_dedup_new ({data_cols})
+                    SELECT {data_cols} FROM insider_trades WHERE created_at > :t
+                    ON CONFLICT DO NOTHING RETURNING 1"""), {"t": snap[1]}).fetchall()
+                c.execute(text(f"ALTER TABLE insider_trades RENAME TO {keep}"))
+                c.execute(text("ALTER TABLE insider_trades_dedup_new RENAME TO insider_trades"))
+                c.execute(text("ALTER SEQUENCE IF EXISTS insider_trades_id_seq OWNED BY insider_trades.id"))
+            out = {"rows_before": int(snap[0]), "trades_kept": int(kept), "late_rows_added": len(late),
+                   "kept_for_rollback": keep, "build_s": round(built_s, 1),
+                   "lock_s": round(time.time() - t1, 2), "attempt": attempt}
+            logger.info("migrate: insider_trades swapped: %s", out)
+            return out
+        except Exception as exc:
+            last_err = exc
+            if "lock timeout" not in str(exc).lower() and "55P03" not in str(exc):
+                break
+            logger.warning("migrate: insider swap attempt %d/%d could not get the lock in %s",
+                           attempt, SWAP_TRIES, SWAP_LOCK_TIMEOUT)
+            time.sleep(SWAP_RETRY_S)
+    with engine.begin() as c:                       # never leave a half-built copy behind
+        c.execute(text(f"SET LOCAL lock_timeout = '{SWAP_LOCK_TIMEOUT}'"))
+        c.execute(text("DROP TABLE IF EXISTS insider_trades_dedup_new"))
+    raise RuntimeError(f"insider swap not done, live table untouched: {str(last_err)[:160]}")
 
 
 # ── The inventory (V3 #26, 2026-09-20). Order: by table, then history. ──────
@@ -170,6 +278,16 @@ MIGRATIONS: list[Step] = [
     idx("idx_sched_steps_run", "scheduler_steps", "job_id, slot_ts"),
     col("filings", "backfilled", "BOOLEAN DEFAULT FALSE"),
     col("llm_usage", "budget", "VARCHAR(10)"),
+
+    # insider_trades dedup swap + unique trade key (designed 2026-11-03; see
+    # _insider_dedup_swap). Needed while the live table has no trade key and
+    # no deliberate rollback is on record.
+    proc("insider_trades dedup swap + unique trade key", _insider_dedup_swap,
+         "SELECT 1 FROM information_schema.tables WHERE table_name = 'insider_trades' "
+         "AND NOT EXISTS (SELECT 1 FROM pg_indexes WHERE tablename = 'insider_trades' "
+         "                AND indexname = 'uq_insider_trades_trade') "
+         "AND NOT EXISTS (SELECT 1 FROM information_schema.tables "
+         "                WHERE table_name = 'insider_trades_dedup_rolledback')"),
 ]
 
 
@@ -187,9 +305,12 @@ def run_migrations(engine, lock_timeout: str = LOCK_TIMEOUT) -> dict:
                 if not needed:
                     summary["skipped"] += 1
                     continue
-            with engine.begin() as conn:
-                conn.execute(text(f"SET LOCAL lock_timeout = '{lock_timeout}'"))
-                conn.execute(text(step.sql), step.params or {})
+            if step.fn is not None:
+                step.fn(engine)                     # manages its own transactions and lock timeouts
+            else:
+                with engine.begin() as conn:
+                    conn.execute(text(f"SET LOCAL lock_timeout = '{lock_timeout}'"))
+                    conn.execute(text(step.sql), step.params or {})
             summary["applied"] += 1
             logger.info("migrate: applied %s", step.label)
         except Exception as exc:
